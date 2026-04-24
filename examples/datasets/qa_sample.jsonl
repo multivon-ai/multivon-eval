@@ -1,0 +1,5 @@
+{"input": "What is the capital of France?", "expected_output": "Paris", "tags": ["geography", "factual"]}
+{"input": "Summarize the following: The Eiffel Tower was built in 1889 for the World's Fair. It stands 330 meters tall and is located in Paris, France.", "context": "The Eiffel Tower was built in 1889 for the World's Fair. It stands 330 meters tall and is located in Paris, France.", "tags": ["summarization"]}
+{"input": "What are the benefits of exercise?", "tags": ["health", "open-ended"]}
+{"input": "Translate 'Hello, how are you?' to Spanish.", "expected_output": "Hola, ¿cómo estás?", "tags": ["translation"]}
+{"input": "Write a JSON object with fields: name (string), age (integer), active (boolean).", "tags": ["structured-output"]}
