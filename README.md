@@ -350,4 +350,4 @@ pytest tests/
 
 ## License
 
-MIT — built by [Multivon](https://multivon.ai)
+Apache 2.0 — built by [Multivon](https://multivon.ai)
