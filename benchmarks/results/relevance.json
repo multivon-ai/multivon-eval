@@ -1,0 +1,38 @@
+{
+  "benchmark": "answer_relevance",
+  "dataset": "multivon_golden_set",
+  "n_cases": 40,
+  "note": "Golden set curated manually: 20 relevant + 20 irrelevant answers across factual, instructional, and opinion QA",
+  "results": {
+    "multivon_eval (Relevance)": {
+      "precision": 0.909,
+      "recall": 1.0,
+      "f1": 0.952,
+      "avg_latency_ms": 3135,
+      "tp": 20,
+      "fp": 2,
+      "fn": 0,
+      "tn": 18
+    },
+    "simple_judge (yes/no)": {
+      "precision": 0.952,
+      "recall": 1.0,
+      "f1": 0.976,
+      "avg_latency_ms": 602,
+      "tp": 20,
+      "fp": 1,
+      "fn": 0,
+      "tn": 19
+    },
+    "deepeval (GPT-4o-mini)": {
+      "precision": 1.0,
+      "recall": 0.95,
+      "f1": 0.974,
+      "avg_latency_ms": 7091,
+      "tp": 19,
+      "fp": 0,
+      "fn": 1,
+      "tn": 20
+    }
+  }
+}

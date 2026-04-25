@@ -1,0 +1,48 @@
+{
+  "benchmark": "hallucination_detection",
+  "dataset": "halueval_qa",
+  "n_samples": 50,
+  "n_cases": 100,
+  "results": {
+    "multivon_eval (QAG)": {
+      "precision": 0.788,
+      "recall": 0.82,
+      "f1": 0.804,
+      "avg_latency_ms": 2955,
+      "tp": 41,
+      "fp": 11,
+      "fn": 9,
+      "tn": 39
+    },
+    "keyword_overlap": {
+      "precision": 0.605,
+      "recall": 0.46,
+      "f1": 0.523,
+      "avg_latency_ms": 0,
+      "tp": 23,
+      "fp": 15,
+      "fn": 27,
+      "tn": 35
+    },
+    "simple_judge (1-10)": {
+      "precision": 0.617,
+      "recall": 1.0,
+      "f1": 0.763,
+      "avg_latency_ms": 708,
+      "tp": 50,
+      "fp": 31,
+      "fn": 0,
+      "tn": 19
+    },
+    "deepeval (GPT-4o-mini)": {
+      "precision": 0.456,
+      "recall": 0.82,
+      "f1": 0.586,
+      "avg_latency_ms": 1421,
+      "tp": 41,
+      "fp": 49,
+      "fn": 9,
+      "tn": 1
+    }
+  }
+}

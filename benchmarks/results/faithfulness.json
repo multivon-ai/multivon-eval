@@ -1,0 +1,48 @@
+{
+  "benchmark": "faithfulness",
+  "dataset": "halueval_summarization",
+  "n_samples": 30,
+  "n_cases": 60,
+  "results": {
+    "multivon_eval (Faithfulness)": {
+      "precision": 0.6,
+      "recall": 0.4,
+      "f1": 0.48,
+      "avg_latency_ms": 5071,
+      "tp": 12,
+      "fp": 8,
+      "fn": 18,
+      "tn": 22
+    },
+    "keyword_overlap": {
+      "precision": 0.762,
+      "recall": 0.533,
+      "f1": 0.627,
+      "avg_latency_ms": 0,
+      "tp": 16,
+      "fp": 5,
+      "fn": 14,
+      "tn": 25
+    },
+    "simple_judge (1-10)": {
+      "precision": 0.5,
+      "recall": 1.0,
+      "f1": 0.667,
+      "avg_latency_ms": 782,
+      "tp": 30,
+      "fp": 30,
+      "fn": 0,
+      "tn": 0
+    },
+    "deepeval (GPT-4o-mini)": {
+      "precision": 0.464,
+      "recall": 0.433,
+      "f1": 0.448,
+      "avg_latency_ms": 3028,
+      "tp": 13,
+      "fp": 15,
+      "fn": 17,
+      "tn": 15
+    }
+  }
+}

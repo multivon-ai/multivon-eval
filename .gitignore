@@ -7,3 +7,5 @@ dist/
 .venv/
 venv/
 eval_reports/
+.gstack/
+.deepeval/
