@@ -1,0 +1,223 @@
+"""
+Agent evaluators — evaluate multi-step AI agent execution traces.
+
+These evaluators operate on AgentStep traces attached to EvalCase,
+not just the final output string. This is the key differentiator:
+framework-agnostic evaluation of tool use, planning, and task completion.
+"""
+from __future__ import annotations
+import json
+import re
+
+from .base import Evaluator
+from .llm_judge import _judge_call, _parse_yes_no, _qag_eval
+from ..case import EvalCase, AgentStep
+from ..result import EvalResult
+
+
+def _trace_str(trace: list[AgentStep]) -> str:
+    """Render an agent trace as readable text for the judge."""
+    lines = []
+    for i, step in enumerate(trace, 1):
+        lines.append(f"Step {i}:")
+        if step.thought:
+            lines.append(f"  Thought: {step.thought}")
+        for tc in step.tool_calls:
+            args = json.dumps(tc.arguments, indent=2) if tc.arguments else "{}"
+            result_str = str(tc.result)[:200] if tc.result is not None else "(no result)"
+            lines.append(f"  Tool call: {tc.name}({args})")
+            lines.append(f"  Result: {result_str}")
+        if step.output:
+            lines.append(f"  Output: {step.output}")
+    return "\n".join(lines)
+
+
+class ToolCallAccuracy(Evaluator):
+    """
+    Evaluates whether the agent called the right tools in the right order.
+
+    Checks:
+    - Were all expected tools called?
+    - Were they called in the correct order (if order matters)?
+    - Were any unexpected tools called?
+
+    Requires case.agent_trace and case.expected_tool_calls.
+    """
+    name = "tool_call_accuracy"
+
+    def __init__(self, require_order: bool = False, threshold: float = 0.7):
+        super().__init__(threshold)
+        self.require_order = require_order
+
+    def evaluate(self, case: EvalCase, output: str) -> EvalResult:
+        if not case.agent_trace:
+            return self._result(0.0, "No agent_trace provided")
+        if not case.expected_tool_calls:
+            return self._result(0.0, "No expected_tool_calls provided")
+
+        actual_calls = [
+            tc.name
+            for step in case.agent_trace
+            for tc in step.tool_calls
+        ]
+        expected = case.expected_tool_calls
+
+        if self.require_order:
+            # Ordered match
+            matches = sum(1 for a, e in zip(actual_calls, expected) if a == e)
+            score = matches / len(expected)
+            missing = [e for e in expected if e not in actual_calls]
+            unexpected = [a for a in actual_calls if a not in expected]
+        else:
+            # Unordered: fraction of expected tools that were called
+            called_set = set(actual_calls)
+            expected_set = set(expected)
+            matched = called_set & expected_set
+            score = len(matched) / len(expected_set)
+            missing = list(expected_set - called_set)
+            unexpected = list(called_set - expected_set)
+
+        reasons = [f"Called: {actual_calls}", f"Expected: {expected}"]
+        if missing:
+            reasons.append(f"Missing tools: {missing}")
+        if unexpected:
+            reasons.append(f"Unexpected tools: {unexpected}")
+
+        return self._result(score, "\n".join(reasons))
+
+
+class ToolArgumentAccuracy(Evaluator):
+    """
+    Evaluates whether tool arguments were correct and well-formed.
+    Uses LLM judge to assess argument quality since exact matching is too rigid.
+    Requires case.agent_trace.
+    """
+    name = "tool_argument_accuracy"
+
+    def __init__(self, threshold: float = 0.7):
+        super().__init__(threshold)
+
+    def evaluate(self, case: EvalCase, output: str) -> EvalResult:
+        if not case.agent_trace:
+            return self._result(0.0, "No agent_trace provided")
+
+        all_tool_calls = [tc for step in case.agent_trace for tc in step.tool_calls]
+        if not all_tool_calls:
+            return self._result(1.0, "No tool calls in trace")
+
+        results, reasons = [], []
+        for tc in all_tool_calls[:8]:
+            args_str = json.dumps(tc.arguments, indent=2) if tc.arguments else "{}"
+            prompt = (
+                f"Task: {case.input}\n\n"
+                f"Tool called: {tc.name}\n"
+                f"Arguments provided:\n{args_str}\n\n"
+                f"Are these arguments appropriate and well-formed for the tool '{tc.name}' given the task?"
+                f"\nAnswer \"Yes\" or \"No\"."
+            )
+            try:
+                answer = _judge_call(prompt, max_tokens=10)
+                good = _parse_yes_no(answer)
+                results.append(good)
+                reasons.append(f"{'✓' if good else '✗'} {tc.name}({args_str[:60]})")
+            except Exception as e:
+                results.append(False)
+                reasons.append(f"✗ {tc.name} (error: {e})")
+
+        score = sum(results) / len(results) if results else 0.0
+        return self._result(score, "\n".join(reasons))
+
+
+class PlanQuality(Evaluator):
+    """
+    Evaluates whether the agent's plan is logical, complete, and efficient.
+    Looks at the sequence of steps and tool calls as a whole.
+    Requires case.agent_trace.
+    """
+    name = "plan_quality"
+
+    def __init__(self, threshold: float = 0.7):
+        super().__init__(threshold)
+
+    def evaluate(self, case: EvalCase, output: str) -> EvalResult:
+        if not case.agent_trace:
+            return self._result(0.0, "No agent_trace provided")
+
+        trace = _trace_str(case.agent_trace)
+        ctx = f"Task: {case.input}\n\nAgent execution trace:\n{trace}\n\nFinal output: {output}"
+        questions = [
+            ("Does the agent's plan address all aspects of the task?", True),
+            ("Are the steps in the agent's plan in a logical order?", True),
+            ("Does the agent avoid redundant or unnecessary steps?", True),
+            ("Does each step in the plan follow logically from the previous one?", True),
+            ("Would an expert consider this plan efficient for the task?", True),
+        ]
+        score, reasons = _qag_eval(questions, ctx)
+        return self._result(score, "\n".join(reasons))
+
+
+class TaskCompletion(Evaluator):
+    """
+    Evaluates whether the agent successfully completed the given task.
+    Assesses the final output against the task goal — not just the process.
+    """
+    name = "task_completion"
+
+    def __init__(self, threshold: float = 0.7):
+        super().__init__(threshold)
+
+    def evaluate(self, case: EvalCase, output: str) -> EvalResult:
+        trace_str = ""
+        if case.agent_trace:
+            trace_str = f"\n\nAgent trace summary:\n{_trace_str(case.agent_trace)}"
+
+        ctx = f"Task: {case.input}{trace_str}\n\nFinal output: {output}"
+        questions = [
+            ("Does the final output successfully complete the task?", True),
+            ("Does the final output address all requirements of the task?", True),
+            ("Is the final output a complete response (not partial or cut off)?", True),
+            ("Did the agent fail to complete the task or produce an error?", False),
+        ]
+        score, reasons = _qag_eval(questions, ctx)
+        return self._result(score, "\n".join(reasons))
+
+
+class StepFaithfulness(Evaluator):
+    """
+    Evaluates whether each agent step faithfully follows from the task and prior steps.
+    Detects hallucinated reasoning or steps that contradict the task.
+    Requires case.agent_trace.
+    """
+    name = "step_faithfulness"
+
+    def __init__(self, threshold: float = 0.7):
+        super().__init__(threshold)
+
+    def evaluate(self, case: EvalCase, output: str) -> EvalResult:
+        if not case.agent_trace:
+            return self._result(0.0, "No agent_trace provided")
+
+        results, reasons = [], []
+        for i, step in enumerate(case.agent_trace[:8], 1):
+            prior = _trace_str(case.agent_trace[:i-1]) if i > 1 else "(no prior steps)"
+            step_str = _trace_str([step])
+            prompt = (
+                f"Task: {case.input}\n\n"
+                f"Prior steps:\n{prior}\n\n"
+                f"Current step {i}:\n{step_str}\n\n"
+                f"Does this step follow logically from the task and prior steps, "
+                f"without introducing contradictions or hallucinated information?"
+                f"\nAnswer \"Yes\" or \"No\"."
+            )
+            try:
+                answer = _judge_call(prompt, max_tokens=10)
+                faithful = _parse_yes_no(answer)
+                results.append(faithful)
+                thought_preview = step.thought[:60] if step.thought else "(no thought)"
+                reasons.append(f"{'✓' if faithful else '✗'} Step {i}: {thought_preview}")
+            except Exception as e:
+                results.append(False)
+                reasons.append(f"✗ Step {i} (error: {e})")
+
+        score = sum(results) / len(results) if results else 0.0
+        return self._result(score, f"{sum(results)}/{len(results)} steps faithful\n" + "\n".join(reasons))
