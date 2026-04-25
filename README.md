@@ -1,17 +1,17 @@
-# llm-evals
+# multivon-eval
 
 ![Python](https://img.shields.io/badge/python-3.10+-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
-![Status](https://img.shields.io/badge/status-active-brightgreen.svg)
+![PyPI](https://img.shields.io/pypi/v/multivon-eval.svg)
 
-**Practical LLM evaluation for teams that ship to production.**
+**AI evaluation for teams that ship models to production.**
 
-Run structured evals over your model outputs — from simple string checks to LLM-as-judge scoring — with a clean Python API, beautiful terminal reports, and CI/CD integration out of the box.
+Run structured evals over your AI outputs — from simple string checks to LLM-as-judge scoring to agent trace validation — with a clean Python API, beautiful terminal reports, and CI/CD integration out of the box.
 
 ---
 
 ```python
-from llm_evals import EvalSuite, EvalCase, Relevance, Faithfulness, NotEmpty
+from multivon_eval import EvalSuite, EvalCase, Relevance, Faithfulness, NotEmpty
 
 suite = EvalSuite("Support Bot Eval")
 suite.add_cases([
@@ -42,27 +42,29 @@ report = suite.run(my_model_fn)
 
 ---
 
-## Why llm-evals
+## Why multivon-eval
 
-Every team building LLM-powered products hits the same problem: **how do you know if your model is getting better or worse?**
+Every team building AI products hits the same problem: **how do you know if your model is getting better or worse?**
 
 Existing tools have real limitations:
 - **DeepEval** — powerful but LLM-as-judge for everything is expensive, slow, and hard to audit
 - **RAGAS** — excellent, but RAG-only
 - **Promptfoo** — YAML-driven, feels rigid for Python teams
 
-`llm-evals` is different in one important way: **QAG scoring** (Question-Answer Generation). Instead of asking a judge "rate this 1-10" — which introduces its own hallucination risk — we generate a set of yes/no questions about the output and score by the fraction answered correctly. This approach is:
+`multivon-eval` is different in three ways:
 
-- **More reliable** — binary questions are easier for LLMs to get right than numeric ratings
-- **Auditable** — you can see exactly which questions passed and failed
-- **Cheaper** — shorter judge prompts, fewer tokens
+**QAG scoring** — Instead of asking a judge "rate this 1-10", we generate yes/no questions about the output and score by the fraction answered correctly. Binary questions are easier for LLMs to get right, fully auditable, and cheaper.
+
+**Agent-native** — Built-in evaluators for tool call accuracy, plan quality, step faithfulness, and task completion. Covers agent traces from any framework (LangChain, LlamaIndex, custom).
+
+**Four tiers** — Deterministic (free, instant), LLM-judge (QAG), agent-trace, and conversation evaluators. Mix and match; pay for LLM calls only where it matters.
 
 ---
 
 ## Install
 
 ```bash
-pip install llm-evals
+pip install multivon-eval
 ```
 
 ```bash
@@ -77,7 +79,7 @@ cp .env.example .env
 ### `EvalCase` — A test case
 
 ```python
-from llm_evals import EvalCase
+from multivon_eval import EvalCase
 
 case = EvalCase(
     input="What caused the 2008 financial crisis?",          # required
@@ -88,9 +90,24 @@ case = EvalCase(
 )
 ```
 
+For agent evals:
+
+```python
+from multivon_eval import EvalCase, AgentStep, ToolCall
+
+case = EvalCase(
+    input="search for recent AI papers and summarize",
+    agent_trace=[
+        AgentStep(tool_calls=[ToolCall(name="search", arguments={"query": "AI papers 2025"})]),
+        AgentStep(tool_calls=[ToolCall(name="summarize")]),
+    ],
+    expected_tool_calls=["search", "summarize"],
+)
+```
+
 ### Evaluators
 
-Three tiers — pick what fits your use case.
+Four tiers — pick what fits your use case.
 
 #### Tier 1: Deterministic (free, instant, no LLM needed)
 
@@ -103,20 +120,9 @@ Three tiers — pick what fits your use case.
 | `JSONSchemaEval(schema)` | Response is valid JSON matching a schema |
 | `WordCount(min, max)` | Word count within range |
 | `Latency(max_ms)` | Response time under limit |
-
-```python
-from llm_evals import ExactMatch, Contains, JSONSchemaEval
-
-# Validate structured output
-JSONSchemaEval({
-    "type": "object",
-    "properties": {"sentiment": {"type": "string"}, "score": {"type": "number"}},
-    "required": ["sentiment", "score"],
-})
-
-# Check for required content
-Contains(["refund policy", "contact us"], threshold=1.0)
-```
+| `BLEU(n)` | BLEU-n score vs expected output |
+| `ROUGE` | ROUGE-L F1 vs expected output |
+| `StartsWith(prefix)` | Response starts with prefix |
 
 #### Tier 2: LLM-as-judge (QAG scoring)
 
@@ -127,12 +133,17 @@ Contains(["refund policy", "contact us"], threshold=1.0)
 | `Relevance` | Response addresses the question | No |
 | `Coherence` | Response is clear and well-structured | No |
 | `Toxicity` | Response is safe and non-harmful | No |
-| `CustomRubric` | Your own criteria | Optional |
+| `Bias` | Response is free of demographic bias | No |
+| `Summarization` | Summary captures key points faithfully | Yes |
+| `AnswerAccuracy` | Factual correctness vs expected | No |
+| `ContextPrecision` | Relevant context retrieved | Yes |
+| `ContextRecall` | All needed context retrieved | Yes |
+| `CustomRubric` | Your own yes/no criteria | Optional |
+| `GEval` | Holistic numeric quality score | Optional |
 
 ```python
-from llm_evals import Faithfulness, Hallucination, CustomRubric
+from multivon_eval import Faithfulness, CustomRubric
 
-# Custom rubric for a specific use case
 CustomRubric(
     name="support_quality",
     criteria=[
@@ -144,29 +155,72 @@ CustomRubric(
 )
 ```
 
+#### Tier 3: Agent trace evaluators
+
+| Evaluator | What it checks |
+|-----------|---------------|
+| `ToolCallAccuracy` | Expected tools called (ordered or unordered) |
+| `ToolArgumentAccuracy` | Quality of tool arguments |
+| `PlanQuality` | Plan logic, completeness, efficiency |
+| `TaskCompletion` | Final output satisfies the task goal |
+| `StepFaithfulness` | Each step follows logically from prior |
+
+```python
+from multivon_eval import ToolCallAccuracy
+
+ToolCallAccuracy(require_order=True)  # strict ordering
+ToolCallAccuracy(require_order=False) # set match (default)
+```
+
+#### Tier 4: Conversation evaluators
+
+| Evaluator | What it checks |
+|-----------|---------------|
+| `ConversationRelevance` | Each response stays on topic |
+| `KnowledgeRetention` | Model remembers earlier context |
+| `ConversationCompleteness` | Conversation resolves the original goal |
+| `TurnConsistency` | No contradictions across turns |
+
+```python
+from multivon_eval import EvalCase
+
+case = EvalCase(
+    input="Is this product available in blue?",
+    conversation=[
+        {"role": "user", "content": "I need a new laptop"},
+        {"role": "assistant", "content": "I can help you find a laptop. What's your budget?"},
+        {"role": "user", "content": "Around $1000"},
+        {"role": "assistant", "content": "Here are some options around $1000..."},
+    ],
+)
+```
+
 ### `EvalSuite` — The runner
 
 ```python
-from llm_evals import EvalSuite
+from multivon_eval import EvalSuite
 
 suite = EvalSuite("My Eval", model_id="gpt-4o")
 suite.add_cases(cases)
 suite.add_evaluators(NotEmpty(), Relevance(), Faithfulness(threshold=0.7))
 
-report = suite.run(
-    model_fn=my_model,        # any callable: str -> str
-    verbose=True,             # print terminal report
-    fail_threshold=0.8,       # exit(1) in CI if pass rate < 80%
-)
+# Serial
+report = suite.run(model_fn, verbose=True, fail_threshold=0.8)
+
+# Parallel (thread-based)
+report = suite.run(model_fn, workers=8)
+
+# Async
+import asyncio
+report = asyncio.run(suite.run_async(model_fn, concurrency=10))
 ```
 
 ### Loading datasets
 
 ```python
-from llm_evals import load
+from multivon_eval import load
 
-# Auto-detects format from extension
-cases = load("tests/dataset.jsonl")
+cases = load("tests/dataset.jsonl")  # auto-detects format
 cases = load("tests/dataset.csv")
 ```
 
@@ -186,24 +240,31 @@ Summarize this.,,Long text here,summarization
 ### Exporting results
 
 ```python
-report.save_json("results.json")   # full detail
-report.save_csv("results.csv")     # one row per evaluator per case
+report.save_json("results.json")
+report.save_csv("results.csv")
+```
+
+---
+
+## CLI
+
+```bash
+multivon-eval run eval.py
+multivon-eval report results.json
 ```
 
 ---
 
 ## CI/CD integration
 
-Run evals as a quality gate in your pipeline:
-
 ```python
 # eval.py
-report = suite.run(model_fn, fail_threshold=0.85)  # exits with code 1 if < 85% pass
+report = suite.run(model_fn, fail_threshold=0.85)  # exits 1 if < 85% pass
 ```
 
 ```yaml
 # .github/workflows/eval.yml
-- name: Run LLM evals
+- name: Run evals
   run: python eval.py
   env:
     ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -220,7 +281,9 @@ EvalSuite.run(model_fn)
      │     ├── call model_fn(case.input) → output
      │     └── for each Evaluator:
      │           ├── Deterministic → no LLM, instant
-     │           └── LLM Judge → QAG yes/no questions → fraction score
+     │           ├── LLM Judge → QAG yes/no questions → fraction score
+     │           ├── Agent → trace inspection + LLM judge
+     │           └── Conversation → multi-turn analysis
      │
      └── EvalReport
            ├── CaseResult × N
@@ -229,7 +292,7 @@ EvalSuite.run(model_fn)
            └── export → JSON / CSV
 ```
 
-**Judge model:** Configured via `JUDGE_MODEL` and `JUDGE_PROVIDER` env vars. Defaults to `claude-sonnet-4-6`. The model being evaluated and the judge model can be different providers.
+**Judge model:** Configured via `JUDGE_MODEL` and `JUDGE_PROVIDER` env vars. Defaults to `claude-sonnet-4-6`. The model under test and the judge model can be different providers.
 
 ---
 
@@ -240,11 +303,6 @@ EvalSuite.run(model_fn)
 | [`basic_eval.py`](examples/basic_eval.py) | Deterministic evaluators, no LLM judge |
 | [`rag_eval.py`](examples/rag_eval.py) | Faithfulness + hallucination for RAG systems |
 | [`ci_eval.py`](examples/ci_eval.py) | CI/CD integration with pass threshold |
-
-```bash
-python examples/basic_eval.py
-python examples/rag_eval.py
-```
 
 ---
 
@@ -259,12 +317,16 @@ pytest tests/ -v
 
 ## Roadmap
 
-- [ ] Async evaluation runner for faster parallel evals
+- [x] Deterministic evaluators (BLEU, ROUGE, regex, JSON schema, latency)
+- [x] LLM-as-judge with QAG scoring
+- [x] Agent trace evaluators (tool call accuracy, plan quality)
+- [x] Conversation evaluators
+- [x] Parallel + async runners
+- [x] CLI (`multivon-eval run`, `multivon-eval report`)
 - [ ] HTML report export
 - [ ] Pytest plugin (`@eval_case` decorator)
-- [ ] Model comparison mode — run same cases against two models, diff results
-- [ ] Eval versioning — track scores over time, detect regressions
-- [ ] Built-in Langfuse integration for eval tracing
+- [ ] Model comparison mode — diff two models on same cases
+- [ ] Eval versioning — track scores over time
 
 ---
 
@@ -276,7 +338,7 @@ Issues and PRs welcome.
 **Large changes** (new evaluators, architecture): open an issue first.
 
 ```bash
-git clone https://github.com/OmniTensorLabs/llm-evals
+git clone https://github.com/multivon-ai/llm-evals
 cd llm-evals
 pip install -e ".[dev]"
 pytest tests/
@@ -286,4 +348,4 @@ pytest tests/
 
 ## License
 
-MIT — built by [OmniTensorLabs](https://omnitensorlabs.com)
+MIT — built by [Multivon](https://multivon.ai)
