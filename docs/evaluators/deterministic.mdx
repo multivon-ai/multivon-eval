@@ -9,61 +9,94 @@ Deterministic evaluators run in milliseconds with no API calls. Use them as a fi
 
 Passes if the output is non-empty after stripping whitespace.
 
-```python
-from multivon_eval import NotEmpty
+**When to use:** As the first guard in any eval suite — there's no point running other evaluators on an empty string.
 
+```python
+from multivon_eval import EvalCase, NotEmpty
+
+case = EvalCase(input="Describe the product")
 NotEmpty()
 ```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `threshold` | `float` | `1.0` | Minimum score to pass (inherited from base) |
 
 ## ExactMatch
 
 Passes if the output exactly matches `expected_output` (stripped). Case-insensitive by default.
 
-```python
-from multivon_eval import ExactMatch
+**When to use:** Classification outputs, yes/no questions, or any task where the valid answer is one of a small fixed set.
 
+```python
+from multivon_eval import EvalCase, ExactMatch
+
+case = EvalCase(
+    input="Is this review positive or negative?",
+    expected_output="positive",
+)
 ExactMatch()                        # case-insensitive
 ExactMatch(case_sensitive=True)     # strict
 ```
 
 Requires `expected_output` on the `EvalCase`.
 
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `case_sensitive` | `bool` | `False` | If `True`, match is case-sensitive |
+| `threshold` | `float` | `1.0` | Minimum score to pass |
+
 ## Contains
 
 Passes if the output contains all required substrings. Score is the fraction found.
 
-```python
-from multivon_eval import Contains
+**When to use:** When the output must include certain keywords, section headers, or phrases — but you don't care about exact wording.
 
+```python
+from multivon_eval import EvalCase, Contains
+
+case = EvalCase(input="Explain our refund policy")
 Contains(["refund policy", "contact us"])               # all required
 Contains(["Paris"], threshold=1.0)                      # must find all
 Contains(["red", "blue", "green"], threshold=0.67)      # 2/3 is enough
 ```
 
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `substrings` | required | List of strings to look for |
-| `case_sensitive` | `False` | Case-sensitive matching |
-| `threshold` | `1.0` | Minimum fraction to pass |
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `substrings` | `list[str]` | required | List of strings the output must contain |
+| `case_sensitive` | `bool` | `False` | If `True`, matching is case-sensitive |
+| `threshold` | `float` | `1.0` | Minimum fraction of substrings found to pass |
 
 ## RegexMatch
 
-Passes if the output matches a regex pattern anywhere.
+Passes if the output matches a regex pattern anywhere in the text.
+
+**When to use:** Structured format checks — phone numbers, dates, citation patterns, JSON keys, code blocks.
 
 ```python
-from multivon_eval import RegexMatch
+from multivon_eval import EvalCase, RegexMatch
 
+case = EvalCase(input="What year was Python created?")
 RegexMatch(r"\d{4}")          # matches any 4-digit number
 RegexMatch(r"^(yes|no)$")     # exact yes/no
 ```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `pattern` | `str` | required | Regex pattern string |
+| `flags` | `int` | `re.IGNORECASE` | Python `re` flags (e.g. `re.IGNORECASE`, `re.DOTALL`) |
+| `threshold` | `float` | `1.0` | Minimum score to pass |
 
 ## JSONSchemaEval
 
 Passes if the output is valid JSON that conforms to a JSON Schema.
 
-```python
-from multivon_eval import JSONSchemaEval
+**When to use:** Structured output tasks where the model must return well-typed JSON (e.g. API response generation, extraction pipelines).
 
+```python
+from multivon_eval import EvalCase, JSONSchemaEval
+
+case = EvalCase(input="Classify this review")
 JSONSchemaEval({
     "type": "object",
     "properties": {
@@ -74,37 +107,65 @@ JSONSchemaEval({
 })
 ```
 
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `schema` | `dict` | required | A valid JSON Schema dict |
+| `threshold` | `float` | `1.0` | Minimum score to pass |
+
 ## WordCount
 
 Passes if the word count is within `[min_words, max_words]`.
 
-```python
-from multivon_eval import WordCount
+**When to use:** Enforcing response length — summaries that must be concise, reports that must have a minimum length.
 
+```python
+from multivon_eval import EvalCase, WordCount
+
+case = EvalCase(input="Summarize this article in 50-200 words")
 WordCount(min_words=50, max_words=200)   # must be 50-200 words
 WordCount(max_words=100)                  # at most 100 words
 WordCount(min_words=10)                   # at least 10 words
 ```
 
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `min_words` | `int` | `0` | Minimum number of words required |
+| `max_words` | `int` | `10000` | Maximum number of words allowed |
+| `threshold` | `float` | `1.0` | Minimum score to pass |
+
 ## Latency
 
 Passes if response latency is under `max_ms` milliseconds. Requires `latency_ms` to be passed to `evaluate()` — the suite handles this automatically.
 
-```python
-from multivon_eval import Latency
+**When to use:** SLA enforcement in production — catching regressions where a model or pipeline exceeds your latency budget.
 
+```python
+from multivon_eval import EvalCase, Latency
+
+case = EvalCase(input="What is 2+2?")
 Latency(max_ms=2000)    # must respond within 2 seconds
 ```
 
 Score degrades linearly above the limit rather than hard-failing.
 
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `max_ms` | `float` | required | Maximum allowed latency in milliseconds |
+| `threshold` | `float` | `1.0` | Minimum score to pass |
+
 ## BLEU
 
 BLEU-n score between output and `expected_output`. Pure Python, no dependencies.
 
-```python
-from multivon_eval import BLEU
+**When to use:** Translation evaluation, constrained generation where phrasing matters, or any task with a canonical reference output.
 
+```python
+from multivon_eval import EvalCase, BLEU
+
+case = EvalCase(
+    input="Translate to French: 'Good morning'",
+    expected_output="Bonjour",
+)
 BLEU()          # BLEU-4 (default), threshold 0.5
 BLEU(n=2)       # bigram BLEU
 BLEU(n=1, threshold=0.7)
@@ -112,29 +173,53 @@ BLEU(n=1, threshold=0.7)
 
 Score of 1.0 = perfect match. Includes brevity penalty.
 
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `n` | `int` | `4` | Maximum n-gram order (BLEU-1 through BLEU-4) |
+| `threshold` | `float` | `0.5` | Minimum score to pass |
+
 ## ROUGE
 
 ROUGE-L F1 score (longest common subsequence) between output and `expected_output`.
 
-```python
-from multivon_eval import ROUGE
+**When to use:** Summarization tasks where recall of key content matters more than exact wording.
 
+```python
+from multivon_eval import EvalCase, ROUGE
+
+case = EvalCase(
+    input="Summarize this article",
+    expected_output="The article discusses climate change impacts on coastal cities.",
+)
 ROUGE()                  # threshold 0.5
 ROUGE(threshold=0.7)
 ```
 
 Score of 1.0 = perfect recall and precision on LCS.
 
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `threshold` | `float` | `0.5` | Minimum score to pass |
+
 ## StartsWith
 
 Passes if output starts with the given prefix. Case-insensitive by default.
 
-```python
-from multivon_eval import StartsWith
+**When to use:** Enforcing response format conventions — code blocks that must open with a fence, structured outputs that must begin with a specific token.
 
+```python
+from multivon_eval import EvalCase, StartsWith
+
+case = EvalCase(input="Generate a JSON response")
 StartsWith("Sure")
 StartsWith("```json", case_sensitive=True)
 ```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `prefix` | `str` | required | Expected prefix string |
+| `case_sensitive` | `bool` | `False` | If `True`, match is case-sensitive |
+| `threshold` | `float` | `1.0` | Minimum score to pass |
 
 ## Combining evaluators
 

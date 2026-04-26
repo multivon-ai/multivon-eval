@@ -38,17 +38,25 @@ def run_all():
     from benchmarks.run_hallucination_benchmark import run_benchmark as run_hal
     from benchmarks.run_faithfulness_benchmark import run_benchmark as run_faith
     from benchmarks.run_relevance_benchmark import run_benchmark as run_rel
+    from benchmarks.run_coherence_benchmark import run_benchmark as run_coh
+    from benchmarks.run_answer_accuracy_benchmark import run_benchmark as run_acc
 
     results = {}
 
-    print("\n[1/3] Hallucination Detection (HaluEval QA)")
+    print("\n[1/5] Hallucination Detection (HaluEval QA)")
     results["hallucination"] = run_hal(n_samples=50)
 
-    print("\n[2/3] Faithfulness (HaluEval Summarization)")
+    print("\n[2/5] Faithfulness (HaluEval Summarization)")
     results["faithfulness"] = run_faith(n_samples=30)
 
-    print("\n[3/3] Answer Relevance (Golden Set)")
+    print("\n[3/5] Answer Relevance (Golden Set)")
     results["relevance"] = run_rel()
+
+    print("\n[4/5] Coherence Detection (Golden Set)")
+    results["coherence"] = run_coh()
+
+    print("\n[5/5] Answer Accuracy (Golden Set)")
+    results["answer_accuracy"] = run_acc()
 
     # Combined summary
     print("\n" + "="*70)
@@ -64,6 +72,7 @@ def run_all():
         "simple_judge": "Simple LLM judge",
         "simple_judge (yes/no)": "Simple LLM judge",
         "keyword_overlap": "Keyword overlap",
+        "exact_match": "Exact match",
     }
 
     for bench_name, bench_results in results.items():

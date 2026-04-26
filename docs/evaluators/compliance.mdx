@@ -9,7 +9,9 @@ Compliance evaluators run entirely within your environment. No data leaves your 
 
 ## PIIEvaluator
 
-Scans LLM outputs for personally identifiable information using local regex patterns.
+Scans LLM outputs for personally identifiable information using local regex patterns. Zero API calls — runs entirely in-process.
+
+**When to use:** Any regulated deployment (healthcare, finance, legal) where PII in model outputs is a compliance risk. Run it in CI/CD so regressions are caught before production.
 
 **Passes** when no PII is detected. **Fails** with a per-type breakdown.
 
@@ -32,10 +34,44 @@ suite.add_evaluators(PIIEvaluator(patterns={"employee_id": r"EMP-\d{6}"}))
 | `redact` | `False` | Replace PII with `[REDACTED-TYPE]` in reports |
 | `threshold` | `1.0` | Pass threshold (default: any PII = fail) |
 
-**HIPAA jurisdiction** adds patterns for 13 of the 18 HIPAA Safe Harbor PHI identifiers:
-medical record numbers, health plan beneficiary numbers, VINs, fax numbers, admission/discharge dates, device identifiers, account numbers, NPI/DEA/license numbers, certificate numbers, and URLs.
+### Jurisdiction coverage
 
-The 5 identifiers that cannot be reliably detected via regex — names, geographic subdivisions below state, photographs, biometrics, and arbitrary unique identifiers — require upstream de-identification before evaluation.
+Each jurisdiction value extends the base pattern set (email, US/international phones, SSN, credit card, IBAN, IP address, date of birth, passport, NHS number, address):
+
+| Jurisdiction | Additional patterns |
+|---|---|
+| `"all"` | All patterns from all jurisdictions below |
+| `"gdpr"` | EU VAT numbers |
+| `"ccpa"` | Bank account numbers |
+| `"pipeda"` | No additions (base patterns satisfy PIPEDA) |
+| `"hipaa"` | See HIPAA PHI table below |
+
+### HIPAA PHI coverage
+
+HIPAA Safe Harbor requires de-identifying 18 PHI identifier categories. Of these, 13 can be detected via regex and 5 cannot:
+
+| PHI Identifier | Detection method |
+|---|---|
+| Medical record numbers (`MRN-XXXXXXXX`) | Regex |
+| Health plan beneficiary numbers (`HPN-`, `Member ID`) | Regex |
+| Vehicle identifiers and serial numbers (VIN, 17-char) | Regex |
+| Fax numbers | Regex (shares US phone pattern) |
+| Admission and discharge dates | Regex |
+| Device identifiers and serial numbers (`UDI`, `Device ID`) | Regex |
+| Account numbers (`Acct #XXXXXXXX`) | Regex |
+| NPI, DEA, and license numbers | Regex |
+| Certificate and license numbers (`Cert #XXXXXX`) | Regex |
+| Web URLs | Regex |
+| Social Security Numbers | Regex (base pattern) |
+| Email addresses | Regex (base pattern) |
+| Phone numbers | Regex (base pattern) |
+| **Names** | **Cannot detect** — high false positive rate on common words |
+| **Geographic subdivisions below state** | **Cannot detect** — free text, no canonical form |
+| **Full-face photographs** | **Cannot detect** — binary content, not text |
+| **Biometric identifiers** (fingerprints, voiceprints) | **Cannot detect** — binary content, not text |
+| **Arbitrary unique identifying numbers** not listed above | **Cannot detect** — no pattern to match |
+
+The 5 identifiers that cannot be reliably detected via regex require upstream de-identification before evaluation.
 
 **Sample output:**
 ```
@@ -48,7 +84,9 @@ PII detected (2 type(s)):
 
 ## SchemaEvaluator
 
-Validates that LLM outputs conform to a Pydantic model or JSON Schema dict.
+Validates that LLM outputs conform to a Pydantic model or JSON Schema dict. Zero API calls — validation is purely local.
+
+**When to use:** Structured output tasks — extraction, classification, API response generation — where you need per-field failure breakdowns rather than a binary pass/fail.
 
 **Passes** when output is valid JSON matching the schema. **Fails** with per-field error messages.
 
@@ -76,13 +114,15 @@ suite.add_evaluators(SchemaEvaluator({
 
 **Parameters:**
 
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `schema` | required | Pydantic model class or JSON Schema dict |
-| `strict` | `False` | Fail on extra fields not in schema |
-| `threshold` | `1.0` | Pass threshold (default: any field error = fail) |
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `schema` | `type \| dict` | required | Pydantic model class or JSON Schema dict |
+| `strict` | `bool` | `False` | If `True`, extra fields not in the schema are also treated as failures |
+| `threshold` | `float` | `1.0` | Minimum score to pass (default: any field error = fail) |
 
-Strips markdown code fences automatically before parsing.
+**`strict` mode behavior:** When `strict=False` (default), extra keys in the JSON output are ignored — only required fields and type constraints are checked. When `strict=True`, any key present in the output that is not declared in the schema is counted as a violation. Use strict mode when you need to enforce that the model doesn't leak internal fields or hallucinate extra properties.
+
+Strips markdown code fences automatically before parsing. For JSON Schema, scoring is proportional: `score = max(0.0, 1.0 - errors/10)`. For Pydantic models, any validation error returns score 0.0.
 
 **Sample output:**
 ```

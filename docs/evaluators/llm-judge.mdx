@@ -23,126 +23,223 @@ The model under test and the judge model can be different providers.
 
 Checks that the output is grounded in the provided context — no invented facts.
 
-```python
-from multivon_eval import Faithfulness
+**When to use:** RAG pipelines, document Q&A, or any task where the model must answer strictly from a provided source.
 
+```python
+from multivon_eval import EvalCase, Faithfulness
+
+case = EvalCase(
+    input="What does the report say about Q3 revenue?",
+    context="Q3 revenue was $4.2M, up 18% YoY...",
+)
 Faithfulness()
 Faithfulness(threshold=0.8)
 ```
 
 Requires `context` on the `EvalCase`.
 
-```python
-EvalCase(
-    input="What does the report say about Q3 revenue?",
-    context="Q3 revenue was $4.2M, up 18% YoY...",
-)
-```
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `threshold` | `float` | `0.7` | Minimum score to pass |
 
 ## Hallucination
 
 Checks that the output doesn't introduce claims not supported by context.
 
-```python
-from multivon_eval import Hallucination
+**When to use:** Complement to `Faithfulness` — Faithfulness checks what's present in the answer; Hallucination checks what shouldn't be there.
 
+```python
+from multivon_eval import EvalCase, Hallucination
+
+case = EvalCase(
+    input="Summarize the contract terms",
+    context="Contract: 12-month term, $500/month, 30-day cancellation notice.",
+)
 Hallucination()
+Hallucination(threshold=0.8)
 ```
 
-Requires `context`. Complement to Faithfulness — Faithfulness checks what's in the answer, Hallucination checks what shouldn't be.
+Requires `context`.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `threshold` | `float` | `0.7` | Minimum score to pass |
 
 ## Relevance
 
 Checks that the output actually addresses the input question.
 
-```python
-from multivon_eval import Relevance
+**When to use:** Catch evasive, off-topic, or boilerplate responses that technically answer but don't address what was asked.
 
+```python
+from multivon_eval import EvalCase, Relevance
+
+case = EvalCase(input="How do I reset my password?")
 Relevance()
 Relevance(threshold=0.7)
 ```
 
 No `context` required.
 
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `threshold` | `float` | `0.7` | Minimum score to pass |
+
 ## Coherence
 
 Checks that the output is clear, well-structured, and logically sound.
 
-```python
-from multivon_eval import Coherence
+**When to use:** Long-form generation (articles, reports, explanations) where logical flow and clarity matter.
 
+```python
+from multivon_eval import EvalCase, Coherence
+
+case = EvalCase(input="Explain how photosynthesis works")
 Coherence()
+Coherence(threshold=0.8)
 ```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `threshold` | `float` | `0.7` | Minimum score to pass |
 
 ## Toxicity
 
 Checks that the output is safe, non-harmful, and appropriate.
 
-```python
-from multivon_eval import Toxicity
+**When to use:** User-facing products, content moderation pipelines, or any deployment where harmful output is unacceptable. Score 1.0 = not toxic; 0.0 = toxic.
 
+```python
+from multivon_eval import EvalCase, Toxicity
+
+case = EvalCase(input="Write a response to this angry customer message")
 Toxicity()
+Toxicity(threshold=0.9)
 ```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `threshold` | `float` | `0.9` | Minimum score to pass (higher default reflects zero-tolerance) |
 
 ## Bias
 
 Checks that the output is free of demographic, political, or cultural bias.
 
-```python
-from multivon_eval import Bias
+**When to use:** HR tools, news summarizers, recommendation systems, or any application where systematic favoritism is a risk. Score 1.0 = no bias detected; 0.0 = significant bias.
 
+```python
+from multivon_eval import EvalCase, Bias
+
+case = EvalCase(input="Describe the ideal job candidate for this role")
 Bias()
+Bias(threshold=0.8)
 ```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `threshold` | `float` | `0.8` | Minimum score to pass |
 
 ## Summarization
 
-Checks that a summary captures the key points of the source faithfully.
+Checks that a summary captures the key points of the source faithfully, without adding or omitting critical information.
+
+**When to use:** Summarization pipelines — news, legal documents, meeting transcripts.
 
 ```python
-from multivon_eval import Summarization
+from multivon_eval import EvalCase, Summarization
 
+case = EvalCase(
+    input="Summarize this article",
+    context="[Full source article text here...]",
+)
 Summarization()
+Summarization(threshold=0.8)
 ```
 
 Requires `context` (the source document).
 
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `threshold` | `float` | `0.7` | Minimum score to pass |
+
 ## AnswerAccuracy
 
-Checks factual correctness of the output against `expected_output`.
+Checks factual correctness of the output against `expected_output`. Uses judge comparison rather than string matching, so paraphrasing is handled correctly.
+
+**When to use:** Knowledge QA, fact retrieval, or any task with a known correct answer where the phrasing may vary.
 
 ```python
-from multivon_eval import AnswerAccuracy
+from multivon_eval import EvalCase, AnswerAccuracy
 
+case = EvalCase(
+    input="What is the capital of France?",
+    expected_output="Paris",
+)
 AnswerAccuracy()
+AnswerAccuracy(threshold=0.8)
 ```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `threshold` | `float` | `0.7` | Minimum score to pass |
 
 ## ContextPrecision
 
-For RAG systems: checks that retrieved context is actually relevant to the question.
+For RAG systems: checks that retrieved context chunks are actually relevant to the question. High precision = low noise in retrieval.
+
+**When to use:** Evaluating the retrieval stage of a RAG pipeline independently from generation.
 
 ```python
-from multivon_eval import ContextPrecision
+from multivon_eval import EvalCase, ContextPrecision
 
+case = EvalCase(
+    input="What is our refund policy?",
+    context=["Refund policy: 30 days...", "Shipping rates: ...", "Contact us at..."],
+)
 ContextPrecision()
+ContextPrecision(threshold=0.8)
 ```
+
+Accepts `context` as either a string or a list of strings (chunks). Evaluates up to 8 chunks.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `threshold` | `float` | `0.7` | Minimum score to pass |
 
 ## ContextRecall
 
-For RAG systems: checks that all information needed to answer the question was retrieved.
+For RAG systems: checks that the retrieved context contains everything needed to derive the expected answer.
+
+**When to use:** Diagnosing retrieval gaps — cases where the model gave a wrong answer because the right chunk wasn't retrieved.
 
 ```python
-from multivon_eval import ContextRecall
+from multivon_eval import EvalCase, ContextRecall
 
+case = EvalCase(
+    input="What is the cancellation fee?",
+    context="Cancellation within 30 days: $50 fee applies.",
+    expected_output="$50",
+)
 ContextRecall()
+ContextRecall(threshold=0.8)
 ```
+
+Requires both `context` and `expected_output`.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `threshold` | `float` | `0.7` | Minimum score to pass |
 
 ## CustomRubric
 
-Define your own yes/no criteria. Each criterion is a `(question, expected_answer)` tuple.
+Define your own yes/no criteria. Each criterion is a `(question, expected_answer)` tuple. Score = fraction of criteria where the judge's answer matches `expected_answer`.
+
+**When to use:** Domain-specific quality checks that don't map to the built-in evaluators — support tone, legal disclaimers, brand voice.
 
 ```python
-from multivon_eval import CustomRubric
+from multivon_eval import EvalCase, CustomRubric
 
+case = EvalCase(input="Handle this support ticket: 'My order hasn't arrived'")
 CustomRubric(
     name="support_quality",
     criteria=[
@@ -155,15 +252,22 @@ CustomRubric(
 )
 ```
 
-Score = fraction of criteria where the model's answer matches `expected_answer`.
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `criteria` | `list[tuple[str, bool]]` | required | List of `(question, expect_yes)` pairs |
+| `name` | `str` | `"custom_rubric"` | Display name for this evaluator in reports |
+| `threshold` | `float` | `0.7` | Minimum fraction of criteria to pass |
 
 ## GEval
 
-Holistic numeric scoring for qualities that don't decompose well into yes/no questions (creativity, tone, polish).
+Holistic numeric scoring for qualities that don't decompose well into yes/no questions (creativity, tone, polish). The judge returns a 0.0–1.0 score directly with reasoning.
+
+**When to use:** Subjective qualities like writing style, creativity, or polish where binary questions don't capture the nuance. Use sparingly — less auditable than QAG evaluators.
 
 ```python
-from multivon_eval import GEval
+from multivon_eval import EvalCase, GEval
 
+case = EvalCase(input="Write a product description for wireless headphones")
 GEval(
     name="writing_quality",
     criteria="The response is engaging, concise, and professionally written.",
@@ -171,4 +275,10 @@ GEval(
 )
 ```
 
-GEval is the only evaluator that uses a 0.0–1.0 numeric score directly from the judge rather than QAG aggregation. Use it sparingly.
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `criteria` | `str` | required | Free-text description of what to evaluate |
+| `name` | `str` | `"g_eval"` | Display name for this evaluator in reports |
+| `threshold` | `float` | `0.7` | Minimum score to pass |
+
+GEval is the only evaluator that uses a numeric score directly from the judge rather than QAG aggregation.

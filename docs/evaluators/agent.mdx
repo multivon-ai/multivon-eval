@@ -37,6 +37,8 @@ case = EvalCase(
 
 Checks that the agent called the expected tools. By default, order doesn't matter (set match).
 
+**When to use:** Regression testing — confirm that new model versions still call the right tools for standard tasks.
+
 ```python
 from multivon_eval import ToolCallAccuracy
 
@@ -54,27 +56,58 @@ Score = fraction of expected tools that were called.
 
 When `require_order=True`, uses sequence alignment — partially correct order scores between 0 and 1.
 
+Requires `case.agent_trace` and `case.expected_tool_calls`.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `require_order` | `bool` | `False` | If `True`, tools must be called in the exact listed order |
+| `threshold` | `float` | `0.7` | Minimum score to pass |
+
 ## ToolArgumentAccuracy
 
 LLM judge that evaluates whether the arguments passed to tools were appropriate and well-formed.
 
-```python
-from multivon_eval import ToolArgumentAccuracy
+**When to use:** Catching argument-level bugs — wrong field names, missing required params, or semantically incorrect values — that tool call name checks miss.
 
+```python
+from multivon_eval import EvalCase, AgentStep, ToolCall, ToolArgumentAccuracy
+
+case = EvalCase(
+    input="Search for quarterly reports from 2024",
+    agent_trace=[
+        AgentStep(tool_calls=[
+            ToolCall(name="search", arguments={"query": "quarterly reports 2024", "limit": 10})
+        ])
+    ],
+)
 ToolArgumentAccuracy()
 ToolArgumentAccuracy(threshold=0.8)
 ```
 
-Looks at each tool call's arguments and judges whether they make sense for the task at hand.
+Evaluates up to 8 tool calls. Requires `case.agent_trace`.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `threshold` | `float` | `0.7` | Minimum score to pass |
 
 ## PlanQuality
 
 LLM judge that evaluates the overall quality of the agent's plan — logic, completeness, and efficiency.
 
-```python
-from multivon_eval import PlanQuality
+**When to use:** Evaluating the agent's reasoning process, not just the outcome. Useful when debugging why an agent succeeds or fails on complex multi-step tasks.
 
+```python
+from multivon_eval import EvalCase, AgentStep, ToolCall, PlanQuality
+
+case = EvalCase(
+    input="Research competitors and draft a comparison table",
+    agent_trace=[
+        AgentStep(thought="I'll search for each competitor first", tool_calls=[ToolCall(name="search")]),
+        AgentStep(thought="Now I'll compile the results", tool_calls=[ToolCall(name="format_table")]),
+    ],
+)
 PlanQuality()
+PlanQuality(threshold=0.8)
 ```
 
 Assesses:
@@ -83,30 +116,62 @@ Assesses:
 - Are there unnecessary or redundant steps?
 - Is anything missing?
 
+Requires `case.agent_trace`.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `threshold` | `float` | `0.7` | Minimum score to pass |
+
 ## TaskCompletion
 
 LLM judge that evaluates whether the agent's final output actually satisfies the original task.
 
-```python
-from multivon_eval import TaskCompletion
+**When to use:** End-to-end success metric — the primary evaluator for whether the agent delivered. Use alongside trajectory evaluators to distinguish "right answer, bad process" from "wrong answer".
 
+```python
+from multivon_eval import EvalCase, AgentStep, ToolCall, TaskCompletion
+
+case = EvalCase(
+    input="Book a meeting for Monday at 2pm",
+    agent_trace=[
+        AgentStep(tool_calls=[ToolCall(name="create_event", arguments={"day": "Monday", "time": "14:00"})]),
+    ],
+)
 TaskCompletion()
 TaskCompletion(threshold=0.9)
 ```
 
-This is the end-to-end success metric — did the agent actually do what was asked?
+Works with or without `agent_trace` — if no trace is attached, evaluates the final output alone.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `threshold` | `float` | `0.7` | Minimum score to pass |
 
 ## StepFaithfulness
 
 LLM judge that checks whether each step follows logically from the prior steps and the original task.
 
-```python
-from multivon_eval import StepFaithfulness
+**When to use:** Catching hallucinated reasoning steps — agents that invent observations, skip over failures, or take actions that contradict earlier tool results.
 
+```python
+from multivon_eval import EvalCase, AgentStep, ToolCall, StepFaithfulness
+
+case = EvalCase(
+    input="Find the cheapest flight to NYC and book it",
+    agent_trace=[
+        AgentStep(thought="Searching for flights", tool_calls=[ToolCall(name="search_flights")]),
+        AgentStep(thought="Booking the cheapest result found", tool_calls=[ToolCall(name="book_flight")]),
+    ],
+)
 StepFaithfulness()
+StepFaithfulness(threshold=0.8)
 ```
 
-Catches agents that take unexpected detours or perform steps that contradict earlier observations.
+Evaluates up to 8 steps. Requires `case.agent_trace`.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `threshold` | `float` | `0.7` | Minimum score to pass |
 
 ---
 
@@ -208,6 +273,8 @@ case = EvalCase(
 
 Evaluates whether a multi-session agent uses prior context correctly — retrieving accurately, not hallucinating past context, and forgetting appropriately.
 
+**When to use:** Multi-session assistants, long-running agents, or any system that must carry state across separate conversations.
+
 Requires `case.context` (prior session summary or log) and `case.input` (current query that needs memory).
 
 ```python
@@ -219,6 +286,7 @@ case = EvalCase(
     expected_output="auth module",
 )
 suite.add_evaluators(AgentMemoryEval())
+suite.add_evaluators(AgentMemoryEval(threshold=0.8))
 ```
 
 Assesses:
@@ -226,6 +294,10 @@ Assesses:
 - Does it avoid hallucinating facts not in the prior context?
 - Does it ignore superseded or stale information?
 - If `expected_output` is provided, does the response include it?
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `threshold` | `float` | `0.7` | Minimum score to pass |
 
 Aligned with [AMA-Bench (2025)](https://arxiv.org/abs/2503.08174), the first benchmark for multi-session agent memory.
 

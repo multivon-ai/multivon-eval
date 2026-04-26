@@ -15,11 +15,13 @@ python benchmarks/run_all_benchmarks.py
 
 ## Summary
 
-| Task | multivon-eval | DeepEval | Simple LLM judge | Keyword overlap |
+| Task | multivon-eval | DeepEval | Simple LLM judge | Keyword overlap / Exact match |
 |------|:---:|:---:|:---:|:---:|
 | Hallucination detection | **F1 0.804** | F1 0.586 | F1 0.763 | F1 0.523 |
 | Answer relevance | F1 0.952 | **F1 0.974** | F1 0.976 | — |
 | Faithfulness (summarization) | F1 0.480 | F1 0.448 | F1 0.667 | F1 0.627 |
+| Coherence detection | see run | — | see run | — |
+| Answer accuracy | see run | — | see run | see run |
 
 Judge models: multivon-eval uses `claude-haiku-4-5-20251001`; DeepEval uses `gpt-4o-mini`. Same judge disclosed per run.
 
