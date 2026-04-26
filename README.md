@@ -53,9 +53,9 @@ Existing tools have real limitations:
 - **RAGAS** — excellent, but RAG-only
 - **Promptfoo** — YAML-driven, feels rigid for Python teams
 
-`multivon-eval` is different in three ways:
+`multivon-eval` is different:
 
-**QAG scoring** — Instead of asking a judge "rate this 1-10", we generate yes/no questions about the output and score by the fraction answered correctly. Binary questions are easier for LLMs to get right, fully auditable, and cheaper.
+**QAG scoring** — Instead of asking a judge "rate this 1-10", we generate yes/no questions about the output and score by the fraction answered correctly. Binary questions are easier for LLMs to get right, fully auditable, and cheaper. [Benchmarked at 65% fewer false positives](https://github.com/multivon-ai/multivon-eval/tree/main/benchmarks) than numeric scoring.
 
 **Agent-native** — Built-in evaluators for tool call accuracy, plan quality, step faithfulness, and task completion. Covers agent traces from any framework (LangChain, LlamaIndex, custom).
 
@@ -63,7 +63,9 @@ Existing tools have real limitations:
 
 **No cold-start** — Generate eval cases from your docs with `generate_from_file()`. No labeled data required to get started.
 
-**Experiment tracking** — Record every run, compare across model versions, catch regressions before they reach users.
+**Reliability & flakiness detection** — LLMs are non-deterministic. Run each case N times with `suite.run(runs=5)` to detect cases that pass sometimes and fail others. Statistical significance in experiment comparison tells you whether a regression is real or noise.
+
+**Experiment tracking** — Record every run, compare across model versions, catch regressions before they reach users. p-values included.
 
 ---
 
@@ -215,6 +217,16 @@ report = suite.run(model_fn, verbose=True, fail_threshold=0.8)
 
 # Parallel (thread-based)
 report = suite.run(model_fn, workers=8)
+
+# Multi-run: detect flaky cases, get score confidence intervals
+report = suite.run(model_fn, runs=5)
+print(report.flaky_count)       # cases that sometimes pass, sometimes fail
+print(report.stability_score)   # 1.0 = fully consistent
+
+for cr in report.case_results:
+    print(cr.run_pass_rate)  # e.g. 0.6 = passed 3/5 runs
+    print(cr.score_std)      # score variance across runs
+    print(cr.is_flaky)       # True if inconsistent
 
 # Async
 import asyncio
