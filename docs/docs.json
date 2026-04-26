@@ -48,6 +48,8 @@
             "group": "Guides",
             "pages": [
               "guides/datasets",
+              "guides/synthetic-data",
+              "guides/experiments",
               "guides/ci-cd",
               "guides/custom-evaluators"
             ]

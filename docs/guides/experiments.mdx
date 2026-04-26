@@ -1,0 +1,129 @@
+---
+title: Experiment tracking
+description: Record every suite run locally and compare results across model and prompt versions.
+---
+
+`Experiment` records every `suite.run()` to disk so you can compare runs across model versions, prompt changes, or time. No cloud or account required — runs are stored as JSONL under `~/.multivon/experiments/` (override with the `MULTIVON_HOME` environment variable).
+
+## Recording a run
+
+```python
+from multivon_eval import EvalSuite, Experiment
+
+suite = EvalSuite("rag-pipeline")
+# ... add cases and evaluators ...
+report = suite.run(my_model)
+
+exp = Experiment("rag-pipeline")
+run_id = exp.record(report, tags={"model": "gpt-4o", "prompt_v": "3"})
+```
+
+### `Experiment(name)`
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `name` | string | Experiment name. Used as the JSONL filename under `~/.multivon/experiments/`. |
+
+### `Experiment.record(report, tags=None, run_id=None)`
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `report` | `EvalReport` | required | The report returned by `suite.run()`. |
+| `tags` | `dict[str, str]` | `None` | Optional metadata such as model name, prompt version, or commit hash. |
+| `run_id` | string | auto | Explicit run ID. If omitted, an 8-character hex ID is generated. |
+
+Returns the `run_id` string — keep it around to compare against later runs.
+
+Each recorded run captures:
+
+| Field | Description |
+|-------|-------------|
+| `run_id` | Unique ID for the run. |
+| `suite_name` | The suite name from the report. |
+| `model_id` | Model identifier reported by the suite. |
+| `timestamp` | ISO 8601 UTC timestamp. |
+| `pass_rate` | Fraction of cases that passed (0–1). |
+| `avg_score` | Mean score across all evaluators. |
+| `total` / `passed` / `failed` | Case counts. |
+| `scores_by_evaluator` | Per-evaluator average scores. |
+| `tags` | Whatever you passed to `record()`. |
+
+## Listing history
+
+```python
+runs = exp.history(n=20)        # newest first
+exp.print_history(n=10)          # pretty table
+```
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `history(n=20)` | `list[RunRecord]` | Last `n` runs, newest first. |
+| `print_history(n=10)` | `None` | Print the last `n` runs as a table. |
+
+## Comparing two runs
+
+```python
+exp.compare(old_run_id, new_run_id)
+```
+
+Prints a side-by-side diff: pass rate, average score, evaluator-level scores, and tags. The verdict line summarizes the change as `IMPROVED`, `REGRESSION`, or `No meaningful change` based on pass-rate delta.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `run_id_a` | string | Baseline run ID. |
+| `run_id_b` | string | New run ID. Deltas are reported as `b - a`. |
+
+Raises `ValueError` if either run ID is missing from the experiment.
+
+## Listing all experiments
+
+```python
+from multivon_eval import list_experiments
+
+names = list_experiments()
+# ["rag-pipeline", "summarizer-v2", ...]
+```
+
+Returns the names of every experiment with at least one recorded run.
+
+## Storage location
+
+By default, runs are written to `~/.multivon/experiments/<name>.jsonl`. Override the base directory with the `MULTIVON_HOME` environment variable:
+
+```bash
+export MULTIVON_HOME=/path/to/eval-history
+```
+
+Each line is a JSON object with the fields listed above — easy to grep, ship to S3, or load into a notebook.
+
+## CLI
+
+```bash
+# List experiments that have at least one recorded run
+multivon-eval experiments list
+
+# Show recent runs for a specific experiment
+multivon-eval experiments history rag-pipeline --n 20
+
+# Compare two runs
+multivon-eval experiments compare rag-pipeline <run_a> <run_b>
+```
+
+| Subcommand | Arguments | Description |
+|------------|-----------|-------------|
+| `list` | — | Print every experiment with a recent timestamp. |
+| `history` | `<name>` `[--n N]` | Show the last `N` runs (default `10`) for an experiment. |
+| `compare` | `<name> <run_a> <run_b>` | Print a side-by-side diff between two runs. |
+
+## Tracking regressions in CI
+
+Pair experiment recording with `fail_threshold` to catch regressions automatically:
+
+```python
+report = suite.run(my_model, fail_threshold=0.85)
+
+exp = Experiment("rag-pipeline")
+exp.record(report, tags={"commit": os.environ["GITHUB_SHA"]})
+```
+
+Archive `~/.multivon/experiments/` as a CI artifact (or sync it to a shared volume) to keep history across runs.

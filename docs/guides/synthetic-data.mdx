@@ -1,0 +1,108 @@
+---
+title: Synthetic dataset generation
+description: Generate eval cases from raw text or files — no labeled data required.
+---
+
+When you don't have a labeled eval set yet, point `multivon-eval` at your existing docs, knowledge base, or transcripts and have it produce ready-to-run cases. Useful for cold-starting an eval suite, expanding coverage, or building hallucination benchmarks.
+
+Generation uses the same LLM judge backend as the rest of the SDK, so set `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` before running.
+
+## From raw text
+
+```python
+from multivon_eval import generate_from_text
+
+cases = generate_from_text(
+    text=open("docs/faq.md").read(),
+    n=20,
+    task="qa",
+)
+```
+
+`generate_from_text` parameters:
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `text` | string | required | Source text — docs, knowledge base, FAQ, transcripts, etc. |
+| `n` | int | `10` | Number of cases to generate. |
+| `task` | string | `"qa"` | One of `"qa"`, `"summarization"`, or `"hallucination"`. |
+| `context_window` | int | `3000` | Max characters of source included per generation prompt. Long inputs are split into overlapping chunks. |
+
+Returns a `list[EvalCase]` ready to pass to `suite.add_cases()`.
+
+## From a file
+
+```python
+from multivon_eval import generate_from_file
+
+cases = generate_from_file("docs/faq.md", n=15, task="qa")
+```
+
+Reads a UTF-8 text file (`.txt`, `.md`, `.rst`, `.py`, etc.) and forwards to `generate_from_text`.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `path` | string | required | Path to the source file. |
+| `n` | int | `10` | Number of cases to generate. |
+| `task` | string | `"qa"` | Same task choices as `generate_from_text`. |
+
+## Task types
+
+- **`qa`** — produces question/answer pairs grounded in the source. Each `EvalCase` has `input` (the question), `expected_output` (the answer), and `context` (the source excerpt).
+- **`summarization`** — produces source chunks with reference summaries. `input` is the chunk, `expected_output` is the expected summary.
+- **`hallucination`** — produces faithful-answer cases with `expected_output="faithful"`, suitable for pairing with `Hallucination` or `Faithfulness` evaluators.
+
+## Hallucination benchmark pairs
+
+For building hallucination detection benchmarks (HaluEval-style), generate explicit faithful + hallucinated answer pairs:
+
+```python
+from multivon_eval import generate_hallucination_pairs
+
+pairs = generate_hallucination_pairs(text=my_docs, n=10)
+# [{"question": ..., "context": ..., "faithful_answer": ..., "hallucinated_answer": ...}, ...]
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `text` | string | required | Source text to ground questions in. |
+| `n` | int | `10` | Number of pairs to generate. |
+
+Returns a `list[dict]`. Each dict has:
+
+| Key | Description |
+|-----|-------------|
+| `question` | A specific factual question answerable from the text. |
+| `context` | The relevant excerpt from the source. |
+| `faithful_answer` | An answer directly grounded in the context. |
+| `hallucinated_answer` | A plausible-sounding answer with at least one false claim. |
+
+## End-to-end example
+
+```python
+from multivon_eval import EvalSuite, generate_from_file, Faithfulness, NotEmpty
+
+cases = generate_from_file("docs/product.md", n=25, task="qa")
+
+suite = EvalSuite("Product Q&A")
+suite.add_cases(cases)
+suite.add_evaluators(NotEmpty(), Faithfulness())
+
+report = suite.run(my_model)
+```
+
+## CLI
+
+Generate cases from the terminal and write them to JSONL:
+
+```bash
+multivon-eval generate --from docs/faq.md --n 20 --task qa --output cases.jsonl
+```
+
+| Flag | Description |
+|------|-------------|
+| `--from <path>` | Source file. |
+| `--text <text>` | Raw text source (alternative to `--from`). |
+| `--n <int>` | Number of cases. Defaults to `10`. |
+| `--task` | One of `qa`, `summarization`, `hallucination`. Defaults to `qa`. |
+| `--output`, `-o` | Save to JSONL. If omitted, prints a preview to stdout. |
