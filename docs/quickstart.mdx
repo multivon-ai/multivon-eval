@@ -92,6 +92,29 @@ report = suite.run(my_model, fail_threshold=0.85)
 # exits with code 1 if pass rate < 85%
 ```
 
+## Use inside pytest
+
+Drop a suite into an existing pytest test file — no special plugin required.
+
+```python
+from multivon_eval import EvalSuite, EvalCase, NotEmpty, Faithfulness
+
+def test_support_bot_quality():
+    suite = EvalSuite("Support Bot")
+    suite.add_cases([
+        EvalCase(
+            input="How do I reset my password?",
+            context="Users reset passwords via the 'Forgot Password' link.",
+        ),
+    ])
+    suite.add_evaluators(NotEmpty(), Faithfulness())
+
+    report = suite.run(my_model, verbose=False)
+    assert report.pass_rate >= 0.85, f"Pass rate dropped: {report.pass_rate:.1%}"
+```
+
+Run it like any other test: `pytest tests/test_evals.py`. Pair with `fail_threshold` if you prefer an exit-code approach over an assertion.
+
 ## Track experiments across runs
 
 ```python
