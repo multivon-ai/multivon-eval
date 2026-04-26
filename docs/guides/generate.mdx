@@ -1,0 +1,88 @@
+---
+title: Synthetic Dataset Generation
+description: Generate eval cases from your docs — no labeled data required.
+---
+
+The hardest part of getting started with evals is having nothing to evaluate against. `generate_from_file()` eliminates that: point it at your documentation, knowledge base, or any text and get ready-to-run eval cases in seconds.
+
+## Quickstart
+
+```python
+from multivon_eval import generate_from_file, EvalSuite, Faithfulness, Relevance
+
+# Generate QA pairs from your docs
+cases = generate_from_file("docs/faq.md", n=20)
+
+suite = EvalSuite("FAQ Eval")
+suite.add_cases(cases)
+suite.add_evaluators(Faithfulness(), Relevance())
+report = suite.run(my_model)
+```
+
+## From raw text
+
+```python
+from multivon_eval import generate_from_text
+
+text = """
+Our return policy allows customers to return any item within 30 days
+of purchase for a full refund. Items must be in original condition.
+Shipping costs are non-refundable...
+"""
+
+cases = generate_from_text(text, n=10, task="qa")
+```
+
+## Task types
+
+### `qa` (default)
+Generates question-answer pairs with context excerpts. Best for RAG pipelines, chatbots, and knowledge base evaluation.
+
+```python
+cases = generate_from_file("docs/handbook.md", n=20, task="qa")
+# Each case: input=question, expected_output=answer, context=excerpt
+```
+
+### `summarization`
+Generates document chunks with faithful reference summaries. Use for evaluating summarization models.
+
+```python
+cases = generate_from_file("docs/whitepaper.txt", n=10, task="summarization")
+# Each case: input="Summarize the following text.", context=chunk, expected_output=summary
+```
+
+### `hallucination`
+Generates QA pairs where the expected answer is "faithful". Pair with the `Hallucination` evaluator to verify your model doesn't fabricate.
+
+```python
+cases = generate_from_file("docs/product-specs.md", n=15, task="hallucination")
+suite.add_evaluators(Hallucination())
+```
+
+## Build your own benchmark dataset
+
+`generate_hallucination_pairs()` returns both faithful and hallucinated answer variants — useful for building your own labeled benchmark:
+
+```python
+from multivon_eval import generate_hallucination_pairs
+
+pairs = generate_hallucination_pairs(my_docs, n=20)
+# Returns: [{question, context, faithful_answer, hallucinated_answer}, ...]
+```
+
+## CLI
+
+```bash
+# Generate and print to stdout
+multivon-eval generate --from docs/faq.md --n 20 --task qa
+
+# Generate and save to JSONL
+multivon-eval generate --from docs/faq.md --n 20 --output cases.jsonl
+```
+
+## Tips
+
+- **Start small** — generate 10-20 cases first, review them, then scale up.
+- **Use your actual docs** — cases generated from your real content catch real problems.
+- **Mix with manual cases** — generated cases cover breadth; manual cases cover the edge cases you already know about.
+- **Task choice matters** — use `qa` for RAG evaluation, `summarization` for summarization pipelines, `hallucination` when you want to stress-test faithfulness.

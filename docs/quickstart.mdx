@@ -17,14 +17,30 @@ export ANTHROPIC_API_KEY=sk-ant-...
 export OPENAI_API_KEY=sk-...
 ```
 
-## Write your first eval
+## Option A — Generate cases from your docs
+
+No labeled data? Point `generate_from_file()` at any text file and get eval cases immediately.
+
+```python
+from multivon_eval import generate_from_file, EvalSuite, Faithfulness, Relevance
+
+# Generate QA pairs from your docs
+cases = generate_from_file("docs/faq.md", n=20)
+
+def my_model(input: str) -> str:
+    # Your model call here
+    return call_my_llm(input)
+
+suite = EvalSuite("FAQ Eval")
+suite.add_cases(cases)
+suite.add_evaluators(Faithfulness(), Relevance())
+report = suite.run(my_model, verbose=True)
+```
+
+## Option B — Define cases manually
 
 ```python
 from multivon_eval import EvalSuite, EvalCase, NotEmpty, ExactMatch, Contains
-
-def my_model(input: str) -> str:
-    # Replace with your actual model call
-    return "The capital of France is Paris."
 
 suite = EvalSuite("My First Eval")
 
@@ -34,61 +50,18 @@ suite.add_cases([
         expected_output="Paris",
     ),
     EvalCase(
-        input="Name two primary colors.",
-        expected_output="red and blue",
-    ),
-])
-
-suite.add_evaluators(
-    NotEmpty(),
-    ExactMatch(),
-    Contains(["Paris", "France"]),
-)
-
-report = suite.run(my_model, verbose=True)
-```
-
-Run it:
-
-```bash
-python eval.py
-```
-
-You'll see a terminal report:
-
-```
-────────────────── My First Eval ──────────────────
-  #  Input                  Output              Score  Status
-  1  What is the capital…   The capital of Fr…  1.00   PASS
-  2  Name two primary co…   Red and blue.       0.67   FAIL
-
-                     By Evaluator
-  Evaluator     Avg Score   Pass Rate
-  not_empty        1.00      100%
-  exact_match      0.50       50%
-  contains         0.83       83%
-
-╭──────────────── Summary ────────────────╮
-│ Total: 2   Passed: 1   Failed: 1       │
-╰─────────────────────────────────────────╯
-```
-
-## Add an LLM judge
-
-```python
-from multivon_eval import Faithfulness, Relevance
-
-suite.add_cases([
-    EvalCase(
         input="Summarize this article.",
         context="The article discusses climate change and its effects on polar ice...",
     ),
 ])
 
 suite.add_evaluators(
-    Faithfulness(),   # is the output grounded in context?
-    Relevance(),      # does it answer the question?
+    NotEmpty(),
+    Contains(["Paris"]),
+    Faithfulness(),
 )
+
+report = suite.run(my_model, verbose=True)
 ```
 
 ## Load cases from a file
@@ -96,7 +69,7 @@ suite.add_evaluators(
 ```python
 from multivon_eval import load
 
-cases = load("cases.jsonl")  # or cases.csv
+cases = load("cases.jsonl")  # or .csv
 suite.add_cases(cases)
 ```
 
@@ -119,11 +92,26 @@ report = suite.run(my_model, fail_threshold=0.85)
 # exits with code 1 if pass rate < 85%
 ```
 
+## Track experiments across runs
+
+```python
+from multivon_eval import Experiment
+
+exp = Experiment("my-pipeline")
+run_id = exp.record(report, tags={"model": "gpt-4o", "prompt_v": "3"})
+
+# Later, compare two runs
+exp.compare(old_run_id, run_id)
+```
+
 ## Next steps
 
 <CardGroup cols={2}>
-  <Card title="Deterministic evaluators" href="/evaluators/deterministic">
-    All 11 built-in deterministic checks
+  <Card title="Synthetic generation" icon="wand-magic-sparkles" href="/guides/generate">
+    Generate eval cases from your docs
+  </Card>
+  <Card title="Experiment tracking" icon="chart-line" href="/guides/experiments">
+    Compare runs, catch regressions
   </Card>
   <Card title="LLM judge evaluators" href="/evaluators/llm-judge">
     Faithfulness, hallucination, relevance, and more

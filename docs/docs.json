@@ -47,9 +47,10 @@
           {
             "group": "Guides",
             "pages": [
+              "guides/generate",
+              "guides/experiments",
               "guides/datasets",
               "guides/synthetic-data",
-              "guides/experiments",
               "guides/ci-cd",
               "guides/custom-evaluators"
             ]

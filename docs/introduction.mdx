@@ -5,9 +5,11 @@ description: AI evaluation for teams that ship models to production.
 
 **multivon-eval** is an open source Python SDK for evaluating AI outputs — from simple string checks to LLM judges to agent trace analysis.
 
-## Why multivon-eval
+```bash
+pip install multivon-eval
+```
 
-Most eval tools force you into one mode: either fast-but-shallow (string matching) or thorough-but-expensive (LLM judge everywhere). multivon-eval gives you four tiers and lets you mix them freely.
+## What it does
 
 <CardGroup cols={2}>
   <Card title="Deterministic" icon="bolt">
@@ -24,11 +26,13 @@ Most eval tools force you into one mode: either fast-but-shallow (string matchin
   </Card>
 </CardGroup>
 
-## Key concepts
+## Key features
 
-**QAG scoring** — Instead of asking a judge "rate this 1-10", we generate binary yes/no questions about the output and score by fraction answered correctly. More reliable, auditable, and cheaper.
+**QAG scoring** — Instead of asking a judge "rate this 1-10", we generate binary yes/no questions about the output and score by fraction answered correctly. [Benchmarked at 65% fewer false positives](https://github.com/multivon-ai/multivon-eval/tree/main/benchmarks) than numeric scoring with the same judge model.
 
-**Tiers** — Use deterministic checks for things you can verify mechanically. Reach for LLM judges only where it matters. Pay for compute selectively.
+**No cold start** — Point `generate_from_file()` at your docs and get eval cases in seconds. No labeled dataset required to get started.
+
+**Experiment tracking** — Record every run to `~/.multivon/experiments/`. Compare two runs side-by-side and get a pass rate delta. Catch regressions before they ship.
 
 **CI/CD first** — One line exits with code 1 if your pass rate drops below a threshold. Evals that don't run in CI catch nothing.
 
@@ -40,6 +44,11 @@ pip install multivon-eval
 
 Requires Python 3.10+. Set `ANTHROPIC_API_KEY` and/or `OPENAI_API_KEY` for LLM-judge evaluators.
 
-<Card title="Quickstart" icon="rocket" href="/quickstart">
-  Up and running in 5 minutes
-</Card>
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Up and running in 5 minutes
+  </Card>
+  <Card title="Generate datasets" icon="wand-magic-sparkles" href="/guides/generate">
+    No labeled data? Generate cases from your docs
+  </Card>
+</CardGroup>
