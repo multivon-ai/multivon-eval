@@ -25,6 +25,7 @@ CLI:
 """
 from __future__ import annotations
 import json
+import math
 import os
 import uuid
 from dataclasses import dataclass, field
@@ -55,6 +56,9 @@ class RunRecord:
     failed: int
     scores_by_evaluator: dict[str, float]
     tags: dict[str, str] = field(default_factory=dict)
+    runs_per_case: int = 1
+    flaky_count: int = 0
+    stability_score: float = 1.0
 
     def to_dict(self) -> dict:
         return {
@@ -69,6 +73,9 @@ class RunRecord:
             "failed": self.failed,
             "scores_by_evaluator": self.scores_by_evaluator,
             "tags": self.tags,
+            "runs_per_case": self.runs_per_case,
+            "flaky_count": self.flaky_count,
+            "stability_score": self.stability_score,
         }
 
     @classmethod
@@ -85,6 +92,9 @@ class RunRecord:
             failed=d["failed"],
             scores_by_evaluator=d.get("scores_by_evaluator", {}),
             tags=d.get("tags", {}),
+            runs_per_case=d.get("runs_per_case", 1),
+            flaky_count=d.get("flaky_count", 0),
+            stability_score=d.get("stability_score", 1.0),
         )
 
 
@@ -130,6 +140,9 @@ class Experiment:
             failed=report.failed,
             scores_by_evaluator={k: round(v, 4) for k, v in report.scores_by_evaluator().items()},
             tags=tags or {},
+            runs_per_case=report.runs_per_case,
+            flaky_count=report.flaky_count,
+            stability_score=round(report.stability_score, 4),
         )
         with open(self._path, "a") as f:
             f.write(json.dumps(record.to_dict()) + "\n")
@@ -201,8 +214,35 @@ def _delta(a: float, b: float) -> str:
     diff = b - a
     if abs(diff) < 0.0001:
         return "  (no change)"
-    sign = "+" if diff > 0 else ""
-    return f"  {sign}{diff:+.4f}"
+    return f"  {diff:+.4f}"
+
+
+def _norm_cdf(x: float) -> float:
+    return (1 + math.erf(x / math.sqrt(2))) / 2
+
+
+def _two_proportion_z_test(p1: float, n1: int, p2: float, n2: int) -> float:
+    """Two-proportion z-test. Returns p-value (two-tailed)."""
+    if n1 == 0 or n2 == 0:
+        return 1.0
+    p_pool = (p1 * n1 + p2 * n2) / (n1 + n2)
+    if p_pool <= 0 or p_pool >= 1:
+        return 1.0
+    se = math.sqrt(p_pool * (1 - p_pool) * (1 / n1 + 1 / n2))
+    if se == 0:
+        return 1.0
+    z = abs((p2 - p1) / se)
+    return 2 * (1 - _norm_cdf(z))
+
+
+def _significance_label(p_value: float) -> str:
+    if p_value < 0.01:
+        return "p<0.01 ✦✦ highly significant"
+    if p_value < 0.05:
+        return f"p={p_value:.2f} ✦ significant"
+    if p_value < 0.10:
+        return f"p={p_value:.2f} marginal"
+    return f"p={p_value:.2f} not significant (likely noise)"
 
 
 def _print_comparison(a: RunRecord, b: RunRecord) -> None:
@@ -233,6 +273,11 @@ def _print_comparison(a: RunRecord, b: RunRecord) -> None:
     _row("Passed", a.passed, b.passed)
     _row("Failed", a.failed, b.failed)
 
+    if a.runs_per_case > 1 or b.runs_per_case > 1:
+        _row("Runs/case", a.runs_per_case, b.runs_per_case)
+        _row("Flaky cases", a.flaky_count, b.flaky_count)
+        _row("Stability", a.stability_score, b.stability_score, "f")
+
     all_evals = sorted(set(a.scores_by_evaluator) | set(b.scores_by_evaluator))
     if all_evals:
         print(f"\n  {'Evaluator scores':<24} {'Before':>12}     {'After':<12}")
@@ -246,9 +291,13 @@ def _print_comparison(a: RunRecord, b: RunRecord) -> None:
         print(f"\n  Tags A: {a.tags}")
         print(f"  Tags B: {b.tags}")
 
+    # Statistical significance
+    p_value = _two_proportion_z_test(a.pass_rate, a.total, b.pass_rate, b.total)
+    print(f"\n  Statistical significance: {_significance_label(p_value)}")
+
     # Verdict
     delta_pass = b.pass_rate - a.pass_rate
-    print(f"\n  Verdict: ", end="")
+    print(f"  Verdict: ", end="")
     if abs(delta_pass) < 0.01:
         print("No meaningful change in pass rate.")
     elif delta_pass > 0:
