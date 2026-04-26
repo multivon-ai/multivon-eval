@@ -47,6 +47,7 @@
           {
             "group": "Guides",
             "pages": [
+              "guides/examples",
               "guides/generate",
               "guides/experiments",
               "guides/reliability",

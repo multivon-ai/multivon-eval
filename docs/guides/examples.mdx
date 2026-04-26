@@ -1,0 +1,180 @@
+---
+title: Real-World Examples
+description: End-to-end walkthroughs for support bots, RAG pipelines, and coding agents.
+---
+
+Three concrete use cases showing what an eval looks like from setup to CI block.
+
+## Support Bot
+
+**Scenario:** A customer support bot answers questions from a help docs knowledge base. You ship a new knowledge base update and want to make sure responses stay faithful — the bot should never tell users to "contact billing" when the answer is in the docs.
+
+```python
+from multivon_eval import EvalSuite, EvalCase, NotEmpty, Faithfulness, Relevance
+
+suite = EvalSuite("Support Bot Eval", model_id="gpt-4o-mini")
+
+suite.add_cases([
+    EvalCase(
+        input="How do I reset my password?",
+        context="Users can reset their password by clicking 'Forgot Password' on the login page and entering their email.",
+        expected_output="reset password",
+    ),
+    EvalCase(
+        input="What are your business hours?",
+        context="Support is available Monday through Friday, 9am–6pm ET. Weekend support is available for Pro plans.",
+    ),
+    EvalCase(
+        input="How do I cancel my subscription?",
+        context="To cancel, go to Settings > Billing > Cancel subscription. Cancellations take effect at the end of the billing period.",
+    ),
+])
+
+suite.add_evaluators(NotEmpty(), Faithfulness(), Relevance())
+report = suite.run(my_support_bot, fail_threshold=0.85, verbose=True)
+```
+
+**What to look for:** Faithfulness failures mean the bot is hallucinating content not in the context. Relevance failures mean it's going off-topic. Both should block deployment.
+
+---
+
+## RAG Pipeline {#rag-pipeline}
+
+**Scenario:** You change your retrieval chunk size from 512 to 256 tokens to reduce latency. The change looks fine in manual testing. But experiment tracking reveals a 17-point drop in faithfulness — the smaller chunks miss critical context.
+
+```python
+from multivon_eval import EvalSuite, Experiment
+from multivon_eval.evaluators import Faithfulness, ContextPrecision, ContextRecall
+
+suite = EvalSuite("RAG Pipeline Eval")
+suite.add_cases(load("tests/rag_cases.jsonl"))
+suite.add_evaluators(Faithfulness(), ContextPrecision(), ContextRecall())
+
+exp = Experiment("rag-pipeline")
+
+# Before the chunk size change
+report_v1 = suite.run(rag_pipeline_v1)
+run_v1 = exp.record(report_v1, tags={"chunk_size": "512", "retriever": "v2"})
+
+# After
+report_v2 = suite.run(rag_pipeline_v2, fail_threshold=0.85)
+run_v2 = exp.record(report_v2, tags={"chunk_size": "256", "retriever": "v2"})
+
+# Compare — includes statistical significance
+exp.compare(run_v1, run_v2)
+```
+
+**Output:**
+```
+Pass rate   91.0%  →  74.0%  ↓  -17.0%
+faithfulness  0.8900  →  0.6800  ↓  -0.2100
+
+Statistical significance: p=0.01 ✦✦ highly significant
+Verdict: REGRESSION — pass rate down -17.0%
+
+Eval failed: pass rate 74.0% < threshold 85.0%
+```
+
+The deploy never happens. You investigate and find the 256-token chunks split mid-sentence on long policy documents. Chunk size reverted, faithfulness restored.
+
+---
+
+## Coding Agent {#coding-agent}
+
+**Scenario:** You're building a coding agent that calls external APIs (Slack, GitHub, Google Calendar). It looks fine on single runs. But users report intermittent failures. Multi-run evaluation reveals 3 of 5 tool call scenarios are flaky — the Slack and scheduling tools don't have retry logic.
+
+```python
+from multivon_eval import EvalSuite, EvalCase
+from multivon_eval.evaluators import ToolCallAccuracy, PlanQuality, TaskCompletion
+
+suite = EvalSuite("Coding Agent Eval")
+
+suite.add_cases([
+    EvalCase(
+        input="Fetch the profile for user ID 42",
+        expected_tool_calls=[{"tool": "get_user", "args": {"id": 42}}],
+    ),
+    EvalCase(
+        input="Send a Slack message to #general saying the deploy succeeded",
+        expected_tool_calls=[{"tool": "slack_send", "args": {"channel": "#general"}}],
+    ),
+    EvalCase(
+        input="Query the database for all orders placed today",
+        expected_tool_calls=[{"tool": "db_query", "args": {"filter": "today"}}],
+    ),
+    EvalCase(
+        input="Create a GitHub PR from branch feature/auth to main",
+        expected_tool_calls=[{"tool": "gh_pr_create", "args": {"head": "feature/auth", "base": "main"}}],
+    ),
+    EvalCase(
+        input="Schedule a 30-minute meeting with alice@company.com tomorrow at 2pm",
+        expected_tool_calls=[{"tool": "calendar_create", "args": {"duration": 30}}],
+    ),
+])
+
+suite.add_evaluators(ToolCallAccuracy(), PlanQuality(), TaskCompletion())
+
+# Run 5 times to surface non-determinism
+report = suite.run(coding_agent, runs=5, verbose=True)
+
+print(f"Flaky cases: {report.flaky_count}")
+print(f"Stability: {report.stability_score:.0%}")
+
+for cr in report.case_results:
+    if cr.is_flaky:
+        print(f"  FLAKY: {cr.case_input[:50]} ({cr.pass_count}/{cr.runs} passed)")
+```
+
+**Output:**
+```
+⚠ 3 flaky case(s) — passed inconsistently across 5 runs:
+  • 'Send a Slack message…'   (3/5 runs passed)
+  • 'Query the database…'     (4/5 runs passed)
+  • 'Schedule a meeting…'     (2/5 runs passed)
+
+Stability: 40%   Flaky: 3
+```
+
+The fix: add retry logic with exponential backoff to the Slack and Calendar tool wrappers. After the fix, re-run with `runs=5` — stability goes to 100%.
+
+---
+
+## CI/CD Template
+
+All three scenarios slot into the same CI pattern:
+
+```yaml
+# .github/workflows/eval.yml
+name: Eval
+on: [push, pull_request]
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install multivon-eval
+      - run: python evals/run.py
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+```
+
+```python
+# evals/run.py
+from multivon_eval import EvalSuite, Experiment
+import os
+
+suite = EvalSuite("prod-eval")
+suite.add_cases(load("evals/cases.jsonl"))
+suite.add_evaluators(Faithfulness(), Relevance())
+
+exp = Experiment("prod-eval")
+report = suite.run(model_fn, fail_threshold=0.85)  # exits 1 on regression
+
+exp.record(report, tags={
+    "git_sha": os.getenv("GITHUB_SHA", "local"),
+    "branch":  os.getenv("GITHUB_REF_NAME", "local"),
+})
+```
+
+Full history of every CI run, queryable by branch. Regressions blocked before merge.
