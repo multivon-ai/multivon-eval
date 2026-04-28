@@ -153,6 +153,26 @@ Score degrades linearly above the limit rather than hard-failing.
 | `max_ms` | `float` | required | Maximum allowed latency in milliseconds |
 | `threshold` | `float` | `1.0` | Minimum score to pass |
 
+## MaxLatency
+
+Alias for `Latency`. Passes if response latency is under `max_ms` milliseconds.
+
+**When to use:** Use whichever name reads better in your suite. `MaxLatency` emphasizes the upper bound; `Latency` reads more naturally inline.
+
+```python
+from multivon_eval import EvalCase, MaxLatency
+
+case = EvalCase(input="What is 2+2?")
+MaxLatency(max_ms=2000)
+```
+
+Score degrades linearly above the limit rather than hard-failing.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `max_ms` | `float` | required | Maximum allowed latency in milliseconds |
+| `threshold` | `float` | `1.0` | Minimum score to pass |
+
 ## BLEU
 
 BLEU-n score between output and `expected_output`. Pure Python, no dependencies.

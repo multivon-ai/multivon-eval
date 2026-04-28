@@ -23,9 +23,13 @@ case = EvalCase(
 )
 ```
 
+All conversation evaluators require `case.conversation`. The latest response (the assistant turn being evaluated) is passed in as the model's `output`.
+
 ## ConversationRelevance
 
-Checks that each assistant response stays on topic relative to the conversation.
+Checks that the latest assistant response stays on topic relative to the conversation history.
+
+**When to use:** Long support sessions, multi-turn assistants, or any chat where the model must track an ongoing thread instead of resetting context each turn.
 
 ```python
 from multivon_eval import ConversationRelevance
@@ -34,23 +38,36 @@ ConversationRelevance()
 ConversationRelevance(threshold=0.8)
 ```
 
-Catches assistants that go off-topic, bring up unrelated information, or lose the thread of the conversation.
+Catches assistants that go off-topic, bring up unrelated information, or lose the thread of the conversation. Requires `case.conversation`.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `threshold` | `float` | `0.7` | Minimum score to pass |
 
 ## KnowledgeRetention
 
 Checks that the assistant correctly recalls and applies information from earlier in the conversation.
 
+**When to use:** Personal assistants, onboarding flows, or any session where the user provides facts (preferences, constraints, identifiers) that the model must respect later.
+
 ```python
 from multivon_eval import KnowledgeRetention
 
 KnowledgeRetention()
+KnowledgeRetention(threshold=0.8)
 ```
 
-Example: if the user mentioned "I'm vegetarian" in turn 2, and the assistant recommends a steakhouse in turn 6, this fails.
+Example: if the user mentioned "I'm vegetarian" in turn 2, and the assistant recommends a steakhouse in turn 6, this fails. Requires `case.conversation`.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `threshold` | `float` | `0.7` | Minimum score to pass |
 
 ## ConversationCompleteness
 
-Checks that the conversation resolves the user's original goal.
+Checks that the conversation, taken as a whole, resolves the user's original goal.
+
+**When to use:** Support bots, task-completion agents, or any session whose success is measured by whether the user got what they came for — not just whether individual turns were helpful.
 
 ```python
 from multivon_eval import ConversationCompleteness
@@ -59,19 +76,30 @@ ConversationCompleteness()
 ConversationCompleteness(threshold=0.9)
 ```
 
-Useful for support bots and task-completion agents where you need to confirm the session actually delivered a result.
+Infers the user's original goal from the first user turn and assesses whether the final response brings the dialogue to a satisfying resolution. Requires `case.conversation`.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `threshold` | `float` | `0.7` | Minimum score to pass |
 
 ## TurnConsistency
 
-Checks for contradictions between turns — the assistant shouldn't say one thing and then say the opposite later.
+Checks for contradictions between turns — the assistant shouldn't say one thing and then contradict it later.
+
+**When to use:** Long sessions where the model's position can drift, or factual chat where flip-flopping erodes user trust.
 
 ```python
 from multivon_eval import TurnConsistency
 
 TurnConsistency()
+TurnConsistency(threshold=0.9)
 ```
 
-Catches cases where the model's position drifts across a long session.
+Catches cases where the model's stated facts, recommendations, or persona drift across the session. Requires `case.conversation`.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `threshold` | `float` | `0.8` | Minimum score to pass (higher default reflects that contradictions are a hard quality bar) |
 
 ## Full conversation eval example
 
