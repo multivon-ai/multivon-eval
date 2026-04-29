@@ -1,0 +1,214 @@
+---
+title: Framework Integrations
+description: Capture agent traces from LangChain, LangSmith, or any custom agent with a consistent OOP interface.
+---
+
+The integrations layer lets you connect multivon-eval to whatever framework your agent runs on. It provides three base abstractions you can extend or use directly:
+
+- **`AgentTracer`** — wrap any agent to capture execution traces
+- **`CaseImporter`** — pull pre-existing runs from an observability platform
+- **`ManualTracer`** — instrument agents that don't use a callback framework
+
+Install the extras you need:
+
+```bash
+pip install multivon-eval                     # core only
+pip install multivon-eval langchain-core      # LangChain tracing
+pip install multivon-eval langsmith langchain-core  # LangSmith tracing + import
+```
+
+## ManualTracer
+
+For any agent that doesn't use a callback framework. You call the tracer explicitly from inside your agent code.
+
+```python
+from multivon_eval.integrations import ManualTracer
+
+tracer = ManualTracer()
+
+def my_agent(input_text: str) -> str:
+    with tracer.step("I need to look this up") as step:
+        result = search_tool(input_text)
+        step.record_tool_call("search", {"query": input_text}, result)
+
+    with tracer.step("Now I can answer") as step:
+        answer = llm_call(result)
+        step.set_output(answer)
+
+    return answer
+
+report = suite.run(my_agent, tracer=tracer)
+```
+
+`tracer.step(thought)` returns a context manager. Inside it, call `record_tool_call(name, arguments, result)` for each tool the agent uses and `set_output(text)` for the final answer.
+
+You can also record calls at the top level without a step context:
+
+```python
+tracer.record_tool_call("search", {"query": q}, result)
+tracer.record_output("The answer is...")
+```
+
+## LangChainTracer
+
+For LangChain/LangGraph agents. Hooks into `BaseCallbackHandler` to capture tool calls and agent steps automatically.
+
+Your agent must accept and forward `**kwargs` so the callback handler reaches the underlying chain:
+
+```python
+from multivon_eval.integrations import LangChainTracer
+
+tracer = LangChainTracer()
+
+def my_langchain_agent(input_text: str, **kwargs) -> str:
+    return agent_executor.invoke(
+        {"input": input_text},
+        config={"callbacks": kwargs.get("callbacks", [])},
+    )
+
+report = suite.run(my_langchain_agent, tracer=tracer)
+```
+
+The tracer captures:
+- `on_agent_action` — agent's reasoning thought and which tool to call
+- `on_tool_start` / `on_tool_end` — tool inputs and results
+- `on_tool_error` — errors captured as `[ERROR: ...]` in the result
+- `on_agent_finish` — final output
+
+## LangSmithTracer
+
+Same as `LangChainTracer` but also logs runs to LangSmith for observability. Teams already using LangSmith get both the eval trace and the LangSmith run record with no extra work.
+
+```python
+from multivon_eval.integrations import LangSmithTracer
+
+tracer = LangSmithTracer(
+    project_name="my-agent-evals",
+    api_key=os.environ["LANGSMITH_API_KEY"],  # or omit to use LANGSMITH_API_KEY env var
+)
+
+report = suite.run(my_langchain_agent, tracer=tracer)
+```
+
+If `langchain-core` or `langsmith` is not installed, it silently falls back to trace-only mode (no LangSmith upload).
+
+## LangSmithImporter
+
+Pull existing LangSmith runs as eval cases — no need to re-run your agent.
+
+```python
+from multivon_eval.integrations import LangSmithImporter
+
+importer = LangSmithImporter(
+    project_name="production-agent",
+    api_key=os.environ["LANGSMITH_API_KEY"],
+)
+
+cases = importer.load(limit=100)
+
+suite.add_cases(cases)
+report = suite.run(importer.as_model_fn(cases))
+```
+
+`as_model_fn(cases)` returns a replay function that returns each run's original output in order — no model calls needed.
+
+### Filtering
+
+```python
+# Only successful runs
+cases = importer.load(filter='and(eq(error, ""), gt(latency, 0))')
+
+# Runs with a specific tag
+cases = importer.load(filter='has(tags, "production")')
+
+# LLM runs instead of chain runs
+cases = importer.load(run_type="llm", limit=50)
+```
+
+Each imported `EvalCase` has:
+- `input` — extracted from `run.inputs` (auto-detected or set via `input_key=`)
+- `agent_trace` — populated from child runs (tool calls, LLM steps)
+- `metadata["_output"]` — original run output (used by `as_model_fn`)
+- `metadata["_run_id"]` — LangSmith run ID
+- `metadata["_project"]` — project name
+- `metadata["_error"]` — error string if the run failed
+
+## How tracers wire into EvalSuite
+
+```python
+report = suite.run(model_fn, tracer=tracer)
+```
+
+The suite calls `tracer.reset()` before each case, runs the (instrumented) model function, then calls `tracer.get_trace()` and attaches the result to the case. The trace is then available to all agent evaluators.
+
+**Tracers require `workers=1`** (the default). Tracers are stateful — running cases in parallel would mix up traces.
+
+```python
+# This raises ValueError:
+suite.run(model_fn, tracer=tracer, workers=4)
+```
+
+## Building a custom tracer
+
+Extend `AgentTracer` to integrate with any framework:
+
+```python
+from multivon_eval.integrations import AgentTracer
+from multivon_eval import AgentStep, ToolCall
+
+class MyFrameworkTracer(AgentTracer):
+    def instrument(self, fn):
+        tracer = self
+
+        def wrapped(input_text: str) -> str:
+            tracer.reset()
+            output = fn(input_text)
+            # populate tracer._steps from your framework's execution record
+            return output
+
+        return wrapped
+
+    def get_trace(self) -> list[AgentStep]:
+        return list(self._steps)
+```
+
+For callback-style frameworks, extend `CallbackTracer` instead — it implements `instrument()` for you:
+
+```python
+from multivon_eval.integrations import CallbackTracer
+
+class MyCallbackTracer(CallbackTracer):
+    def _build_handler(self):
+        # return a framework-specific callback object
+        # instrument() will inject it as kwargs["callbacks"]
+        return MyFrameworkCallbackHandler(self._steps)
+```
+
+## Building a custom importer
+
+Extend `CaseImporter` to pull runs from any observability platform:
+
+```python
+from multivon_eval.integrations import CaseImporter
+from multivon_eval import EvalCase
+
+class MyPlatformImporter(CaseImporter):
+    def __init__(self, project: str, api_key: str):
+        self._project = project
+        self._client = MyPlatformClient(api_key)
+
+    def load(self, *, limit: int = 100, **kwargs) -> list[EvalCase]:
+        runs = self._client.list_runs(project=self._project, limit=limit)
+        return [
+            EvalCase(
+                input=run.input_text,
+                metadata={
+                    "_output": run.output_text,
+                    "_run_id": run.id,
+                },
+            )
+            for run in runs
+        ]
+```
+
+`as_model_fn()` is provided by the base class — no need to implement it.

@@ -51,14 +51,16 @@ jobs:
       - name: Run evals
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: python eval.py
+        run: multivon-eval run eval.py --html eval_results.html --json eval_results.json
 
       - name: Upload results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: eval-results
-          path: eval_results.json
+          path: |
+            eval_results.json
+            eval_results.html
 ```
 
 ## Speed up CI with parallel workers
@@ -87,6 +89,13 @@ report = asyncio.run(
 ```python
 report.save_json("results.json")
 report.save_csv("results.csv")
+report.save_html("results.html")   # self-contained HTML report
+```
+
+Or get the HTML as a string (useful in notebooks or custom pipelines):
+
+```python
+html = report.to_html()
 ```
 
 View a saved report from the CLI:
@@ -95,11 +104,23 @@ View a saved report from the CLI:
 multivon-eval report results.json
 ```
 
+Convert a saved JSON report to HTML:
+
+```bash
+multivon-eval report results.json --html results.html
+```
+
 ## Run a specific eval file
 
 ```bash
 multivon-eval run eval.py
+
+# Save reports automatically
+multivon-eval run eval.py --html results.html
+multivon-eval run eval.py --html results.html --json results.json
 ```
+
+`--html` and `--json` inject environment variables that the suite picks up automatically — no changes to your eval script needed.
 
 ## Tips
 

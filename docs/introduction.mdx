@@ -36,6 +36,10 @@ pip install multivon-eval
 
 **Experiment tracking** — Record every run to `~/.multivon/experiments/`. Compare two runs side-by-side and get a pass rate delta with p-values. Catch regressions before they ship.
 
+**Framework integrations** — Capture agent traces from LangChain, LangSmith, or any custom agent. Import existing LangSmith runs as eval cases without re-running the agent.
+
+**Shareable HTML reports** — `report.save_html("report.html")` produces a self-contained HTML file with per-case breakdowns, evaluator scores, and flakiness indicators. No server required.
+
 **CI/CD first** — One line exits with code 1 if your pass rate drops below a threshold. Evals that don't run in CI catch nothing.
 
 ## Install
