@@ -42,7 +42,8 @@
               "evaluators/llm-judge",
               "evaluators/agent",
               "evaluators/compliance",
-              "evaluators/conversation"
+              "evaluators/conversation",
+              "evaluators/consistency"
             ]
           },
           {

@@ -9,13 +9,40 @@ LLM judge evaluators use a secondary model to assess output quality. multivon-ev
 
 ## Configuration
 
-Set your judge model via environment variables:
+### JudgeConfig
+
+The judge model is fully decoupled from your pipeline model. Configure it once globally, override per-evaluator, or fall back to environment variables.
+
+```python
+from multivon_eval import configure, JudgeConfig
+
+# Set globally at startup — all evaluators use this unless overridden
+configure(JudgeConfig(provider="openai", model="gpt-4o-mini"))
+
+# Override for a specific evaluator
+Faithfulness(judge=JudgeConfig(provider="anthropic", model="claude-opus-4-7"))
+```
+
+Resolution order (highest to lowest):
+1. Per-evaluator `judge=` kwarg
+2. `configure()` global
+3. `JUDGE_PROVIDER` / `JUDGE_MODEL` environment variables
+4. Built-in default: `anthropic` / `claude-haiku-4-5`
 
 ```bash
+# Environment variable fallback
 export ANTHROPIC_API_KEY=sk-ant-...
-export JUDGE_MODEL=claude-sonnet-4-6       # default
-export JUDGE_PROVIDER=anthropic            # anthropic or openai
+export JUDGE_PROVIDER=anthropic
+export JUDGE_MODEL=claude-haiku-4-5
 ```
+
+| JudgeConfig field | Default | Description |
+|-------------------|---------|-------------|
+| `provider` | `"anthropic"` | `"anthropic"` or `"openai"` |
+| `model` | `"claude-haiku-4-5"` | Model name for the chosen provider |
+| `temperature` | `0.0` | Sampling temperature (0 = deterministic) |
+| `max_tokens` | `1024` | Token budget for judge responses |
+| `timeout` | `30` | Request timeout in seconds |
 
 The model under test and the judge model can be different providers.
 
@@ -279,6 +306,8 @@ GEval(
 |-----------|------|---------|-------------|
 | `criteria` | `str` | required | Free-text description of what to evaluate |
 | `name` | `str` | `"g_eval"` | Display name for this evaluator in reports |
+| `runs` | `int` | `2` | Number of judge runs to average — reduces position and framing bias |
+| `judge` | `JudgeConfig` | `None` | Override the judge model for this evaluator |
 | `threshold` | `float` | `0.7` | Minimum score to pass |
 
 GEval is the only evaluator that uses a numeric score directly from the judge rather than QAG aggregation.

@@ -1,0 +1,89 @@
+---
+title: Consistency Evaluators
+description: Zero-resource hallucination detection via repeated sampling.
+---
+
+## SelfConsistency
+
+Detects hallucinations by checking whether stochastic samples of the same prompt agree with each other. If a model truly knows something, its outputs converge. If it hallucinated, the samples contradict.
+
+Based on [SelfCheckGPT (Manakul et al., EMNLP 2023)](https://arxiv.org/abs/2303.08896) with production improvements: adaptive sample count, free-sample reuse, and a local NLI backend.
+
+**When to use:** Any generation task where you have no reference document to check against — knowledge QA, open-ended explanation, conversational responses. Pair with `Faithfulness` when a reference is available.
+
+**Key limitation:** Consistency is not factuality. A model that consistently hallucinates the same popular misconception will score as consistent. This evaluator catches *inconsistent* hallucinations — fabrications that vary across samples.
+
+```python
+from multivon_eval import SelfConsistency
+
+SelfConsistency(model_fn=my_pipeline)
+SelfConsistency(model_fn=my_pipeline, n=10, backend="nli")
+SelfConsistency(model_fn=my_pipeline, threshold=0.8)
+```
+
+### Backends
+
+| Backend | How it works | Cost | Requirements |
+|---------|-------------|------|-------------|
+| `"nli"` | Local DeBERTa cross-encoder measures contradiction probability per sentence | Free, ~150ms/check | `pip install transformers torch` |
+| `"llm"` | LLM judge answers "Consistent or Contradicts?" per sentence-sample pair | API quota | Any configured judge |
+| `"auto"` | Uses `nli` if transformers is installed, else falls back to `llm` | — | — |
+
+### Adaptive N
+
+With `adaptive=True` (default), the evaluator starts at `n` samples. If the score is borderline (0.3–0.7), it escalates up to `max_n` samples automatically. Most clear cases resolve at n=5. Ambiguous cases get up to n=20.
+
+### Free-sample integration
+
+Pass `samples=` to reuse outputs you've already generated — no extra API calls:
+
+```python
+# Generate samples yourself and reuse at zero cost
+samples = [my_pipeline(case.input) for _ in range(5)]
+evaluator.evaluate(case, output, samples=samples)
+```
+
+This is the recommended approach when running multiple evaluators on the same cases.
+
+### Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `model_fn` | `Callable[[str], str]` | `None` | The same callable used in `suite.run()`. Required unless passing `samples=` directly |
+| `n` | `int` | `5` | Starting sample count |
+| `max_n` | `int` | `20` | Sample ceiling when `adaptive=True` |
+| `adaptive` | `bool` | `True` | Escalate sample count when score is borderline |
+| `backend` | `str` | `"auto"` | `"nli"`, `"llm"`, or `"auto"` |
+| `nli_model` | `str` | `"cross-encoder/nli-deberta-v3-small"` | HuggingFace model for the NLI backend |
+| `judge` | `JudgeConfig` | `None` | Override judge for the LLM backend |
+| `threshold` | `float` | `0.7` | Minimum score to pass |
+
+### Example
+
+```python
+from multivon_eval import EvalSuite, EvalCase, SelfConsistency
+
+def my_pipeline(prompt: str) -> str:
+    ...
+
+suite = EvalSuite("Knowledge QA")
+suite.add_cases([
+    EvalCase(input="What causes the northern lights?"),
+    EvalCase(input="How does mRNA vaccine technology work?"),
+])
+suite.add_evaluators(
+    SelfConsistency(model_fn=my_pipeline, n=5, backend="auto"),
+)
+report = suite.run(my_pipeline)
+```
+
+With the NLI backend, no API calls are made for consistency scoring. With `backend="llm"`, each evaluation makes up to 30 judge calls (6 sentences × 5 samples).
+
+### Score interpretation
+
+| Score | Meaning |
+|-------|---------|
+| 1.0 | All samples consistent — high confidence the output is factual |
+| 0.7–1.0 | Mostly consistent — passes default threshold |
+| 0.3–0.7 | Borderline — adaptive mode generates more samples |
+| 0.0–0.3 | High contradiction — model likely hallucinating |
