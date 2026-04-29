@@ -231,6 +231,79 @@ class EvalSuite:
 
         return report
 
+    def run_with_openai(
+        self,
+        model: str = "gpt-4o",
+        *,
+        system_prompt: str = "",
+        temperature: float = 0.0,
+        max_tokens: int = 1024,
+        client: "Any | None" = None,
+        **run_kwargs: "Any",
+    ) -> EvalReport:
+        """
+        Run evals against an OpenAI model.
+
+        Convenience wrapper around suite.run(OpenAIAdapter(...)). For custom
+        behavior — retry logic, prompt templating, structured outputs — subclass
+        OpenAIAdapter and pass an instance to suite.run() directly.
+
+        Args:
+            model:         OpenAI model ID (default "gpt-4o").
+            system_prompt: System message prepended to every call.
+            temperature:   Sampling temperature (default 0.0).
+            max_tokens:    Max output tokens (default 1024).
+            client:        openai.OpenAI instance. Created from OPENAI_API_KEY if None.
+            **run_kwargs:  Forwarded to suite.run() (verbose, workers, runs, etc.).
+        """
+        from .adapters import OpenAIAdapter
+        return self.run(
+            OpenAIAdapter(
+                model,
+                system_prompt=system_prompt,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                client=client,
+            ),
+            **run_kwargs,
+        )
+
+    def run_with_anthropic(
+        self,
+        model: str = "claude-haiku-4-5-20251001",
+        *,
+        system_prompt: str = "",
+        temperature: float = 0.0,
+        max_tokens: int = 1024,
+        client: "Any | None" = None,
+        **run_kwargs: "Any",
+    ) -> EvalReport:
+        """
+        Run evals against an Anthropic model.
+
+        Convenience wrapper around suite.run(AnthropicAdapter(...)). For custom
+        behavior subclass AnthropicAdapter and pass an instance to suite.run().
+
+        Args:
+            model:         Anthropic model ID (default "claude-haiku-4-5-20251001").
+            system_prompt: System message.
+            temperature:   Sampling temperature (default 0.0).
+            max_tokens:    Max output tokens (default 1024).
+            client:        anthropic.Anthropic instance. Created from ANTHROPIC_API_KEY if None.
+            **run_kwargs:  Forwarded to suite.run() (verbose, workers, runs, etc.).
+        """
+        from .adapters import AnthropicAdapter
+        return self.run(
+            AnthropicAdapter(
+                model,
+                system_prompt=system_prompt,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                client=client,
+            ),
+            **run_kwargs,
+        )
+
     def run_on_cases(
         self,
         traced_outputs: list[tuple[EvalCase, str]],

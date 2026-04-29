@@ -113,6 +113,32 @@ class EvalReport:
             return self.case_results[0].runs
         return 1
 
+    @property
+    def failed_cases(self) -> list["CaseResult"]:
+        """Cases where at least one evaluator failed."""
+        return [cr for cr in self.case_results if not cr.passed]
+
+    @property
+    def passed_cases(self) -> list["CaseResult"]:
+        """Cases where all evaluators passed."""
+        return [cr for cr in self.case_results if cr.passed]
+
+    def filter_by_evaluator(self, name: str) -> list["CaseResult"]:
+        """Cases where the named evaluator failed. Useful for drilling into a specific check."""
+        return [
+            cr for cr in self.case_results
+            if any(r.evaluator == name and not r.passed for r in cr.results)
+        ]
+
+    def sample(self, n: int, *, failed_only: bool = False) -> list["CaseResult"]:
+        """
+        Random sample of n cases. Pass failed_only=True to sample from failures only.
+        Useful for spot-checking a large eval run without reading every result.
+        """
+        import random
+        pool = self.failed_cases if failed_only else self.case_results
+        return random.sample(pool, min(n, len(pool)))
+
     def scores_by_tag(self) -> dict[str, float]:
         """Average score per tag across all tagged cases."""
         totals: dict[str, list[float]] = {}
