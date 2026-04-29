@@ -24,6 +24,9 @@ Don't know which evaluator to use? Write what you want in English:
 ```python
 from multivon_eval import EvalSuite, EvalCase
 
+def my_model(input: str) -> str:
+    return call_my_llm(input)
+
 suite = EvalSuite("return policy eval")
 suite.add_check("Response should mention the return policy")
 suite.add_check("Tone should be professional and not defensive")
