@@ -49,10 +49,20 @@ report = suite.run(my_model_fn)
 
 Every team building AI products hits the same problem: **how do you know if your model is getting better or worse?**
 
-Existing tools have real limitations:
-- **DeepEval** — strong metric library, but every metric requires an external LLM call and the best features are tied to the Confident AI platform
-- **RAGAS** — excellent RAG-specific metrics; thinner coverage outside retrieval pipelines
-- **Promptfoo** — YAML-driven, feels rigid for Python teams
+| Feature | multivon-eval | DeepEval | RAGAS | Promptfoo |
+|---|:---:|:---:|:---:|:---:|
+| Multi-run + flakiness detection | ✓ | — | — | — |
+| Wilson CI + power analysis | ✓ | — | — | — |
+| Statistical significance in comparisons | ✓ | — | — | — |
+| QAG scoring (binary questions, not 1-10) | ✓ | — | — | — |
+| Agent-native evaluators (8 metrics) | ✓ | ✓ | partial | — |
+| LangChain / LangSmith integration | ✓ | ✓ | ✓ | partial |
+| Compliance audit trail (EU AI Act / NIST) | ✓ | — | — | — |
+| Local PII detection (zero API calls) | ✓ | partial | — | — |
+| HTML reports (self-contained, shareable) | ✓ | — | — | — |
+| Local-first, no account needed | ✓ | ✓ | ✓ | ✓ |
+| Synthetic data generation | ✓ | ✓ | ✓ | — |
+| Open source (Apache 2.0) | ✓ | ✓ | ✓ | ✓ |
 
 `multivon-eval` is different:
 
@@ -561,9 +571,12 @@ pytest tests/ -v
 - [x] Wilson score confidence intervals on pass rates
 - [x] Minimum test cases calculator (`runs_needed`)
 - [x] Parallel + async runners
-- [x] CLI (`multivon-eval run`, `multivon-eval report`)
-- [ ] HTML report export
+- [x] CLI (`multivon-eval run`, `multivon-eval report`, `--html`, `--json`)
+- [x] HTML report export (self-contained, shareable)
+- [x] Framework integrations (LangChain, LangSmith, ManualTracer)
+- [ ] LlamaIndex / CrewAI integrations
 - [ ] Pytest plugin (`@eval_case` decorator)
+- [ ] Effect size (Cohen's h) + min-detectable-effect in experiment comparison
 - [ ] Tiered eval cost optimizer (heuristic → local model → frontier)
 - [ ] Agent simulation / adversarial user testing
 
