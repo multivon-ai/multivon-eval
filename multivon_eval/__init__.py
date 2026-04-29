@@ -49,6 +49,7 @@ from .evaluators import (
     Faithfulness, Hallucination, Relevance, Coherence,
     Toxicity, Bias, Summarization, AnswerAccuracy,
     ContextPrecision, ContextRecall, CustomRubric, GEval,
+    CheckEvaluator,
     # Agent
     ToolCallAccuracy, ToolArgumentAccuracy,
     PlanQuality, TaskCompletion, StepFaithfulness,
@@ -85,7 +86,7 @@ __all__ = [
     # LLM-as-judge
     "Faithfulness", "Hallucination", "Relevance", "Coherence",
     "Toxicity", "Bias", "Summarization", "AnswerAccuracy",
-    "ContextPrecision", "ContextRecall", "CustomRubric", "GEval",
+    "ContextPrecision", "ContextRecall", "CustomRubric", "GEval", "CheckEvaluator",
     # Agent
     "ToolCallAccuracy", "ToolArgumentAccuracy",
     "PlanQuality", "TaskCompletion", "StepFaithfulness",

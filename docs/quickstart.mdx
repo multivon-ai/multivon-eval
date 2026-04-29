@@ -17,6 +17,24 @@ export ANTHROPIC_API_KEY=sk-ant-...
 export OPENAI_API_KEY=sk-...
 ```
 
+## The fastest start: plain-English checks
+
+Don't know which evaluator to use? Write what you want in English:
+
+```python
+from multivon_eval import EvalSuite, EvalCase
+
+suite = EvalSuite("return policy eval")
+suite.add_check("Response should mention the return policy")
+suite.add_check("Tone should be professional and not defensive")
+suite.add_cases([EvalCase(input="What is your return policy?")])
+report = suite.run(my_model)
+```
+
+`add_check` auto-generates yes/no questions from your criterion and scores with QAG. Graduate to `CustomRubric` when you want to pin the exact questions.
+
+---
+
 ## Option A — Generate cases from your docs
 
 No labeled data? Point `generate_from_file()` at any text file and get eval cases immediately.

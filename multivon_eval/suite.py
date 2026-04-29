@@ -3,7 +3,7 @@ import asyncio
 import dataclasses
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import TYPE_CHECKING, Callable, Awaitable
+from typing import TYPE_CHECKING, Any, Callable, Awaitable
 
 from .case import EvalCase
 from .result import CaseResult, EvalReport, EvalResult
@@ -52,6 +52,49 @@ class EvalSuite:
 
     def add_evaluators(self, *evaluators: Evaluator) -> "EvalSuite":
         self._evaluators.extend(evaluators)
+        return self
+
+    def add_check(
+        self,
+        criterion: str,
+        threshold: float = 0.7,
+        num_questions: int = 3,
+        questions: "list[str] | None" = None,
+        name: str = "",
+        judge: "Any | None" = None,
+    ) -> "EvalSuite":
+        """
+        Add a natural-language quality check.
+
+        The judge auto-generates yes/no questions from the criterion before the
+        evaluation loop runs. Questions are cached and reused across all cases.
+        Pass ``questions=`` to bypass generation for reproducible/CI evals.
+
+        Args:
+            criterion:     Plain-English description of what to check.
+            threshold:     Minimum score to pass (default 0.7).
+            num_questions: Number of questions to generate (1–10, default 3).
+            questions:     Skip generation; provide explicit yes/no questions.
+            name:          Override the evaluator name shown in reports.
+            judge:         Override the judge model for this check only.
+
+        Returns self for chaining::
+
+            (suite
+                .add_check("Response mentions the return policy")
+                .add_check("Tone is professional", threshold=0.8)
+                .add_case(EvalCase(input="What is your return policy?"))
+            )
+        """
+        from .evaluators.llm_judge import CheckEvaluator
+        self._evaluators.append(CheckEvaluator(
+            criterion=criterion,
+            threshold=threshold,
+            num_questions=num_questions,
+            questions=questions,
+            name=name,
+            judge=judge,
+        ))
         return self
 
     def _run_case_once(
@@ -142,6 +185,13 @@ class EvalSuite:
                 "tracer and workers > 1 are incompatible — tracers are stateful. "
                 "Run with workers=1 (the default) when using a tracer."
             )
+
+        # Warmup: prepare evaluators that need pre-run setup (e.g. CheckEvaluator
+        # generates yes/no questions here so errors surface before the eval loop
+        # and no individual case pays the generation latency cost).
+        for ev in self._evaluators:
+            if hasattr(ev, "prepare"):
+                ev.prepare()
 
         if tracer is not None:
             instrumented_fn = tracer.instrument(model_fn)
@@ -593,6 +643,10 @@ class EvalSuite:
             concurrency: Max concurrent model calls (default 5).
             runs:        Times to run each case (default 1).
         """
+        for ev in self._evaluators:
+            if hasattr(ev, "prepare"):
+                ev.prepare()
+
         sem = asyncio.Semaphore(concurrency)
 
         async def _run_one_async(case: EvalCase) -> CaseResult:

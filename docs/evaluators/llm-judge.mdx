@@ -311,3 +311,70 @@ GEval(
 | `threshold` | `float` | `0.7` | Minimum score to pass |
 
 GEval is the only evaluator that uses a numeric score directly from the judge rather than QAG aggregation.
+
+## CheckEvaluator
+
+The fastest way to add a quality check. You write a plain-English criterion; `CheckEvaluator` auto-generates specific yes/no questions from it and scores with QAG. No need to pick an evaluator class or write questions manually.
+
+```python
+from multivon_eval import EvalSuite, EvalCase
+
+suite = EvalSuite("return policy eval")
+suite.add_check("Response should mention the return policy")
+suite.add_check("Tone should be professional and not defensive", threshold=0.8)
+suite.add_cases([EvalCase(input="What is your return policy?")])
+report = suite.run(my_model)
+```
+
+Questions are generated once at the start of `suite.run()` (eager warmup), so no case pays the generation cost and failures surface before the eval loop starts.
+
+### Escape hatch: pin questions for CI
+
+Generated questions vary per run and per model. For reproducible CI runs, pin them explicitly:
+
+```python
+suite.add_check(
+    "Response should mention the return policy",
+    questions=[
+        "Does the response mention a return window?",
+        "Does the response name the return policy by name?",
+        "Does the response provide a link or next step?",
+    ],
+)
+```
+
+When `questions=` is set, no LLM call is made during `prepare()`.
+
+### Inspect generated questions
+
+```python
+import logging
+logging.basicConfig(level=logging.INFO)  # prints generated questions to stdout
+
+ev = suite._evaluators[0]
+suite.run(my_model)
+print(ev.resolved_questions)  # ['Does the response...', ...]
+```
+
+### Discrete scores for N questions
+
+With the default `num_questions=3`, the only possible scores are `0.0`, `0.33`, `0.67`, and `1.0`. The default threshold of `0.7` therefore requires **3/3 questions to pass**. Lower the threshold or use `num_questions=5` if you want more granularity.
+
+| `num_questions` | Possible scores | Threshold 0.7 requires |
+|----------------|-----------------|------------------------|
+| 3 | 0.0, 0.33, 0.67, 1.0 | 3/3 |
+| 5 | 0.0, 0.2, 0.4, 0.6, 0.8, 1.0 | 4/5 |
+| 10 | 0.0, 0.1, …, 1.0 | 7/10 |
+
+### Fallback behavior
+
+If question generation fails after two attempts, `CheckEvaluator` issues a `warnings.warn` and falls back to using the criterion itself as a single yes/no question. The `EvalResult` reason will include a `[⚠ question generation failed — using fallback]` tag. Check `ev._used_fallback` programmatically.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `criterion` | `str` | required | Plain-English quality criterion (max 300 chars) |
+| `threshold` | `float` | `0.7` | Fraction of questions that must pass |
+| `num_questions` | `int` | `3` | Number of yes/no questions to generate (clamped 1–10) |
+| `questions` | `list[str]` | `None` | Pin specific questions — skips generation entirely |
+| `name` | `str` | derived | Evaluator name in reports (auto-derived from criterion if omitted) |
+| `judge` | `JudgeConfig` | `None` | Override the judge model for this evaluator |

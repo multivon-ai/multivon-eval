@@ -14,7 +14,11 @@ Or per-evaluator:
 """
 from __future__ import annotations
 import json
+import logging
 import re
+import warnings
+
+_logger = logging.getLogger("multivon_eval.check")
 
 from .base import Evaluator
 from ..case import EvalCase
@@ -444,3 +448,191 @@ class GEval(Evaluator):
                 reasons.append(f"Eval error: {e}")
         score = sum(scores) / len(scores)
         return self._result(score, reasons[0] if reasons else "")
+
+
+# ---------------------------------------------------------------------------
+# CheckEvaluator — natural-language quality checks
+# ---------------------------------------------------------------------------
+
+def _truncate_words(text: str, max_chars: int) -> str:
+    if len(text) <= max_chars:
+        return text
+    truncated = text[:max_chars]
+    last_space = truncated.rfind(" ")
+    return truncated[:last_space] if last_space > 0 else truncated
+
+
+def _slugify(text: str, max_len: int = 50) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")
+    # Truncate at a word boundary (underscore) when possible
+    if len(slug) > max_len:
+        cut = slug[:max_len].rsplit("_", 1)[0] or slug[:max_len]
+        return cut
+    return slug
+
+
+def _build_question_gen_prompt(criterion: str, n: int) -> str:
+    return (
+        f"You are a QA evaluator. Given a quality criterion for an AI-generated response,\n"
+        f"generate exactly {n} short, specific, measurable yes/no questions that together\n"
+        f"test whether the criterion is satisfied.\n\n"
+        f"Rules:\n"
+        f"- Each question must be answerable with 'Yes' or 'No' by reading only the response.\n"
+        f"- Questions must be specific and concrete — avoid vague words like 'good' or 'appropriate'.\n"
+        f"- Keep each question under 20 words.\n"
+        f"- Do NOT number the questions.\n"
+        f"- Return ONLY a JSON array of strings. No markdown, no explanation.\n\n"
+        f"Criterion: {criterion}\n\n"
+        f"JSON array:"
+    )
+
+
+class CheckEvaluator(Evaluator):
+    """
+    Natural-language quality check. Auto-generates yes/no questions from a
+    plain-English criterion and scores with QAG.
+
+    Questions are generated once (during suite.run() warmup via prepare()) and
+    cached for all subsequent cases. Provide ``questions=`` directly for
+    reproducible or CI usage where non-determinism is unacceptable.
+
+    Args:
+        criterion:      Plain-English description of what to check.
+                        Must be non-empty. Capped at 300 chars.
+        threshold:      Minimum score to pass (default 0.7).
+                        For num_questions=3 the discrete scores are
+                        0, 0.33, 0.67, 1.0 — threshold 0.7 requires 3/3.
+        num_questions:  Number of yes/no questions to generate (1–10, default 3).
+                        Ignored when ``questions=`` is provided.
+        questions:      Skip LLM generation and use these exact questions.
+                        Recommended for CI and benchmark runs.
+        name:           Display name in reports. Defaults to a slug of criterion.
+        judge:          Per-evaluator judge override.
+
+    Example::
+
+        suite.add_check("Response mentions the return policy")
+        suite.add_check("Tone is professional", threshold=0.8, num_questions=4)
+
+        # Pin questions for reproducibility
+        suite.add_check(
+            "Policy coverage",
+            questions=["Does it cover returns?", "Is the timeline mentioned?"],
+        )
+    """
+
+    def __init__(
+        self,
+        criterion: str,
+        threshold: float = 0.7,
+        num_questions: int = 3,
+        questions: list[str] | None = None,
+        name: str = "",
+        judge: "JudgeConfig | None" = None,
+    ) -> None:
+        criterion = criterion.strip()
+        if not criterion:
+            raise ValueError("CheckEvaluator: criterion must be a non-empty string.")
+        super().__init__(threshold)
+        # Truncate at a word boundary to avoid cutting mid-word in prompts
+        self._criterion = _truncate_words(criterion, 300)
+        self._num_questions = max(1, min(10, num_questions))
+        self._judge_cfg = judge
+        self.name = name or _slugify(criterion, max_len=50)
+        self._used_fallback: bool = False
+
+        if questions is not None:
+            if not questions:
+                raise ValueError("CheckEvaluator: questions list must not be empty.")
+            filtered = [(q.strip(), True) for q in questions if q.strip()]
+            dropped = len(questions) - len(filtered)
+            if dropped:
+                _logger.warning(
+                    "CheckEvaluator: %d blank question(s) ignored for criterion %r",
+                    dropped, self._criterion,
+                )
+            self._questions: list[tuple[str, bool]] | None = filtered
+        else:
+            self._questions = None  # populated by prepare()
+
+    def prepare(self, judge: "JudgeConfig | None" = None) -> None:
+        """Generate and cache questions. Called automatically by EvalSuite.run()."""
+        if self._questions is not None:
+            return
+        resolved = resolve_judge(judge or self._judge_cfg)
+        pairs, used_fallback = self._generate_questions(resolved)
+        self._questions = pairs
+        self._used_fallback = used_fallback
+
+    @property
+    def resolved_questions(self) -> list[str] | None:
+        """Questions used for scoring, or None if prepare() hasn't been called yet."""
+        if self._questions is None:
+            return None
+        return [q for q, _ in self._questions]
+
+    def _generate_questions(
+        self, judge: "JudgeConfig"
+    ) -> tuple[list[tuple[str, bool]], bool]:
+        """Return (questions, used_fallback). Pure — no mutation of self."""
+        prompt = _build_question_gen_prompt(self._criterion, self._num_questions)
+        # Scale token budget with requested question count
+        max_tokens = max(300, self._num_questions * 60)
+        last_exc: Exception | None = None
+
+        for attempt in range(2):
+            try:
+                raw = _call(prompt, judge, max_tokens=max_tokens)
+                # Greedy match to capture the full outermost array, including
+                # any brackets that appear inside individual question strings.
+                match = re.search(r"\[.*\]", raw, re.DOTALL)
+                if not match:
+                    raise ValueError("No JSON array found in LLM response")
+                parsed = json.loads(match.group())
+                if not isinstance(parsed, list) or not parsed:
+                    raise ValueError("Parsed JSON is not a non-empty list")
+                qs = [str(q).strip() for q in parsed if str(q).strip()]
+                if not qs:
+                    raise ValueError("All questions were empty after stripping")
+                qs = qs[:self._num_questions]
+                pairs = [(q, True) for q in qs]
+                _logger.info(
+                    "Generated %d question(s) for criterion %r:\n%s",
+                    len(pairs),
+                    self._criterion,
+                    "\n".join(f"  {i+1}. {q}" for i, (q, _) in enumerate(pairs)),
+                )
+                return pairs, False
+            except Exception as exc:
+                last_exc = exc
+                if attempt == 0:
+                    _logger.debug(
+                        "Question generation attempt 1 failed (%s), retrying...", exc
+                    )
+
+        warnings.warn(
+            f"CheckEvaluator ({self._criterion!r}): question generation failed after "
+            f"2 attempts ({last_exc}). Using fallback: criterion as a single yes/no "
+            f"question. Pass questions= explicitly for reproducible evals.",
+            stacklevel=2,
+        )
+        return [(self._criterion, True)], True
+
+    def evaluate(self, case: "EvalCase", output: str) -> "EvalResult":
+        if self._questions is None:
+            # Called directly without suite.run() — prepare on demand
+            self.prepare()
+
+        ctx = f"Input: {case.input}\nResponse: {output}"
+        if case.context:
+            ctx = f"Context:\n{case.context_str()}\n\n{ctx}"
+
+        score, reasons = _qag_eval(self._questions, ctx, resolve_judge(self._judge_cfg))
+        header = f"Criterion: {self._criterion}"
+        if self._used_fallback:
+            header += " [⚠ question generation failed — using fallback]"
+        return self._result(
+            score,
+            header + "\n" + "\n".join(reasons),
+            used_fallback=self._used_fallback,
+        )
