@@ -37,7 +37,8 @@ from .result import EvalReport
 
 __all__ = [
     "Experiment", "list_experiments", "compare_experiments",
-    "wilson_interval", "runs_needed",
+    "wilson_interval", "bootstrap_interval", "runs_needed",
+    "min_detectable_effect", "cohens_h",
 ]
 
 
@@ -298,6 +299,115 @@ def runs_needed(
     return math.ceil(n)
 
 
+def min_detectable_effect(
+    n: int,
+    alpha: float = 0.05,
+    power: float = 0.80,
+    baseline: float = 0.70,
+) -> float:
+    """
+    Minimum effect size detectable with n test cases at the given power.
+
+    The inverse of runs_needed(): given your current dataset size, returns
+    the smallest pass-rate improvement you can reliably detect.
+
+    Args:
+        n:        Number of test cases (same for both groups).
+        alpha:    Significance level (default 0.05).
+        power:    Desired power (default 0.80).
+        baseline: Expected baseline pass rate (default 0.70).
+
+    Returns:
+        Minimum detectable delta as a fraction (e.g., 0.08 = 8pp).
+
+    Example:
+        min_detectable_effect(50)   # → ~0.19 (need 19pp shift to see it)
+        min_detectable_effect(200)  # → ~0.10
+        min_detectable_effect(500)  # → ~0.06
+    """
+    if n <= 0:
+        return 1.0
+    z_alpha = _norm_ppf(1 - alpha / 2)
+    z_beta = _norm_ppf(power)
+    # Solve: n = (z_a + z_b)^2 * (p1*(1-p1) + p2*(1-p2)) / delta^2
+    # Approximate p2 ≈ p1 for the variance term → p*(1-p)*2
+    p = baseline
+    var = p * (1 - p) * 2
+    delta = math.sqrt((z_alpha + z_beta) ** 2 * var / n)
+    return round(min(delta, 1.0), 4)
+
+
+def cohens_h(p1: float, p2: float) -> float:
+    """
+    Cohen's h effect size for two proportions.
+
+    |h| < 0.2  → small effect
+    |h| < 0.5  → medium effect
+    |h| >= 0.5 → large effect
+
+    Args:
+        p1: Baseline pass rate.
+        p2: New pass rate.
+
+    Returns:
+        Cohen's h (signed, positive means improvement).
+    """
+    phi1 = 2 * math.asin(math.sqrt(max(0.0, min(1.0, p1))))
+    phi2 = 2 * math.asin(math.sqrt(max(0.0, min(1.0, p2))))
+    return round(phi2 - phi1, 4)
+
+
+def _cohens_h_label(h: float) -> str:
+    ah = abs(h)
+    if ah < 0.2:
+        return "small"
+    if ah < 0.5:
+        return "medium"
+    return "large"
+
+
+def bootstrap_interval(
+    scores: list[float],
+    confidence: float = 0.95,
+    n_samples: int = 2000,
+    seed: int = 42,
+) -> tuple[float, float]:
+    """
+    Bootstrap confidence interval for the mean of a list of scores.
+
+    Preferred over Wilson for continuous scores or when N < 30.
+    Uses the percentile method.
+
+    Args:
+        scores:     List of float scores (0.0–1.0).
+        confidence: Confidence level (default 0.95 → 95% CI).
+        n_samples:  Bootstrap resamples (default 2000, enough for most uses).
+        seed:       Random seed for reproducibility.
+
+    Returns:
+        (lower_bound, upper_bound).
+
+    Example:
+        lo, hi = bootstrap_interval([0.8, 0.6, 0.9, 0.7, 0.85])
+        print(f"95% CI: [{lo:.2f}, {hi:.2f}]")
+    """
+    import random
+    if not scores:
+        return (0.0, 1.0)
+    if len(scores) == 1:
+        return (scores[0], scores[0])
+    rng = random.Random(seed)
+    n = len(scores)
+    means = []
+    for _ in range(n_samples):
+        sample = [rng.choice(scores) for _ in range(n)]
+        means.append(sum(sample) / n)
+    means.sort()
+    lo_idx = int((1 - confidence) / 2 * n_samples)
+    hi_idx = int((1 + confidence) / 2 * n_samples) - 1
+    return (round(means[lo_idx], 4), round(means[hi_idx], 4))
+
+
 def _two_proportion_z_test(p1: float, n1: int, p2: float, n2: int) -> float:
     """Two-proportion z-test. Returns p-value (two-tailed)."""
     if n1 == 0 or n2 == 0:
@@ -374,12 +484,21 @@ def _print_comparison(a: RunRecord, b: RunRecord) -> None:
     print(f"\n  95% CI (before): [{ci_a[0]:.1%}, {ci_a[1]:.1%}]")
     print(f"  95% CI (after):  [{ci_b[0]:.1%}, {ci_b[1]:.1%}]")
 
-    # Statistical significance
+    # Statistical significance + effect size
+    delta_pass = b.pass_rate - a.pass_rate
     p_value = _two_proportion_z_test(a.pass_rate, a.total, b.pass_rate, b.total)
+    h = cohens_h(a.pass_rate, b.pass_rate)
     print(f"  Statistical significance: {_significance_label(p_value)}")
+    if abs(delta_pass) >= 0.001:
+        print(f"  Effect size (Cohen's h):  {h:+.3f} ({_cohens_h_label(h)})")
+
+    # Min-detectable-effect warning when dataset is small
+    mde = min_detectable_effect(max(a.total, b.total), baseline=min(a.pass_rate, b.pass_rate))
+    if mde > 0.05:
+        print(f"  Min detectable effect at n={max(a.total, b.total)}: ~{mde:.0%}  "
+              f"(changes smaller than this are not reliably detectable)")
 
     # Power hint: if not significant, suggest how many more cases are needed
-    delta_pass = b.pass_rate - a.pass_rate
     if p_value >= 0.05 and abs(delta_pass) >= 0.01:
         needed = runs_needed(abs(delta_pass), baseline=min(a.pass_rate, b.pass_rate))
         if needed > max(a.total, b.total):

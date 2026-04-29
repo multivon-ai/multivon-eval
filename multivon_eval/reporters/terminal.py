@@ -88,6 +88,23 @@ def print_report(report: EvalReport) -> None:
             ev_table.add_row(name, f"[{score_color}]{score:.2f}[/]", f"{pass_rate:.0%}")
         console.print(ev_table)
 
+    # Per-tag breakdown (only when tags are present)
+    tag_scores = report.scores_by_tag()
+    tag_pass = report.passed_by_tag()
+    tag_count = report.count_by_tag()
+    if tag_scores:
+        tag_table = Table(box=box.SIMPLE_HEAD, show_footer=False, padding=(0, 1), title="By Tag")
+        tag_table.add_column("Tag")
+        tag_table.add_column("Cases", justify="right")
+        tag_table.add_column("Avg Score", justify="right")
+        tag_table.add_column("Pass Rate", justify="right")
+        for tag, score in sorted(tag_scores.items()):
+            pass_rate = tag_pass.get(tag, 0.0)
+            n = tag_count.get(tag, 0)
+            score_color = "green" if score >= 0.7 else "yellow" if score >= 0.5 else "red"
+            tag_table.add_row(tag, str(n), f"[{score_color}]{score:.2f}[/]", f"{pass_rate:.0%}")
+        console.print(tag_table)
+
     # Summary panel
     rate_color = "green" if report.pass_rate >= 0.8 else "yellow" if report.pass_rate >= 0.5 else "red"
     summary = (

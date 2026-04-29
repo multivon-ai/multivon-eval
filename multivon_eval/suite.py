@@ -97,11 +97,18 @@ class EvalSuite:
         model_fn: Callable[[str], str],
         runs: int = 1,
         tracer: "AgentTracer | None" = None,
+        early_stop: bool = False,
     ) -> CaseResult:
         if runs == 1:
             return self._run_case_once(case, model_fn, tracer=tracer)
 
-        single_runs = [self._run_case_once(case, model_fn, tracer=tracer) for _ in range(runs)]
+        single_runs: list[CaseResult] = []
+        for i in range(runs):
+            single_runs.append(self._run_case_once(case, model_fn, tracer=tracer))
+            if early_stop and i >= 1:
+                if _sprt_stop(single_runs):
+                    break
+
         return _aggregate_runs(case, single_runs)
 
     def run(
@@ -112,6 +119,7 @@ class EvalSuite:
         workers: int = 1,
         runs: int = 1,
         tracer: "AgentTracer | None" = None,
+        early_stop: bool = False,
     ) -> EvalReport:
         """
         Run all evaluators over all cases.
@@ -125,6 +133,9 @@ class EvalSuite:
                              detect flaky cases and get score confidence intervals.
             tracer:          AgentTracer instance. Tracers are stateful, so
                              workers > 1 is not allowed when a tracer is provided.
+            early_stop:      Stop each case early once the result is statistically
+                             clear (SPRT). Only applies when runs > 1. Reduces LLM
+                             spend on easy cases without sacrificing accuracy.
         """
         if tracer is not None and workers > 1:
             raise ValueError(
@@ -141,7 +152,7 @@ class EvalSuite:
             case_results = self._run_parallel(instrumented_fn, workers, runs)
         else:
             case_results = [
-                self._run_case(case, instrumented_fn, runs, tracer=tracer)
+                self._run_case(case, instrumented_fn, runs, tracer=tracer, early_stop=early_stop)
                 for case in self._cases
             ]
 
@@ -668,3 +679,42 @@ def _aggregate_runs(case: EvalCase, single_runs: list[CaseResult]) -> CaseResult
         all_scores=all_scores,
         pass_count=pass_count,
     )
+
+
+def _sprt_stop(runs_so_far: list[CaseResult], alpha: float = 0.05, beta: float = 0.20) -> bool:
+    """
+    Wald's Sequential Probability Ratio Test.
+
+    Returns True when there is enough evidence to stop early — either the
+    case is clearly passing (LR for H1_pass exceeds threshold) or clearly
+    failing (LR for H1_fail exceeds threshold).
+
+    Runs two one-sided SPRTs:
+      Test 1: H0=p≤0.5  vs H1=p≥0.8  (clearly passing)
+      Test 2: H0=p≥0.5  vs H1=p≤0.2  (clearly failing)
+    Stop when either LR >= (1-beta)/alpha.
+
+    alpha: false-positive rate (default 0.05)
+    beta:  false-negative rate (default 0.20 → 80% power)
+    """
+    import math as _math
+    passes = sum(1 for cr in runs_so_far if all(r.passed for r in cr.results))
+    n = len(runs_so_far)
+    if n < 2:
+        return False
+
+    fails = n - passes
+    p0, p1_pass, p1_fail = 0.5, 0.8, 0.2
+    threshold = (1 - beta) / alpha  # e.g. 16.0 at default settings
+
+    # LR for "clearly passing": how much more likely is p=0.8 vs p=0.5?
+    lr_pass = (p1_pass / p0) ** passes * ((1 - p1_pass) / (1 - p0)) ** fails
+    if lr_pass >= threshold:
+        return True
+
+    # LR for "clearly failing": how much more likely is p=0.2 vs p=0.5?
+    lr_fail = (p1_fail / p0) ** passes * ((1 - p1_fail) / (1 - p0)) ** fails
+    if lr_fail >= threshold:
+        return True
+
+    return False

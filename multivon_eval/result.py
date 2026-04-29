@@ -113,6 +113,30 @@ class EvalReport:
             return self.case_results[0].runs
         return 1
 
+    def scores_by_tag(self) -> dict[str, float]:
+        """Average score per tag across all tagged cases."""
+        totals: dict[str, list[float]] = {}
+        for cr in self.case_results:
+            for tag in cr.tags:
+                totals.setdefault(tag, []).append(cr.score)
+        return {k: round(sum(v) / len(v), 4) for k, v in totals.items()}
+
+    def passed_by_tag(self) -> dict[str, float]:
+        """Pass rate per tag across all tagged cases."""
+        totals: dict[str, list[bool]] = {}
+        for cr in self.case_results:
+            for tag in cr.tags:
+                totals.setdefault(tag, []).append(cr.passed)
+        return {k: round(sum(v) / len(v), 4) for k, v in totals.items()}
+
+    def count_by_tag(self) -> dict[str, int]:
+        """Number of cases per tag."""
+        counts: dict[str, int] = {}
+        for cr in self.case_results:
+            for tag in cr.tags:
+                counts[tag] = counts.get(tag, 0) + 1
+        return counts
+
     def scores_by_evaluator(self) -> dict[str, float]:
         totals: dict[str, list[float]] = {}
         for cr in self.case_results:
