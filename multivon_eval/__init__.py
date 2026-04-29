@@ -28,6 +28,11 @@ __version__ = "0.3.0"
 from .suite import EvalSuite
 from .case import EvalCase, AgentStep, ToolCall
 from .judge import JudgeConfig, configure
+from .integrations import (
+    AgentTracer, CaseImporter,
+    ManualTracer, LangChainTracer,
+    LangSmithTracer, LangSmithImporter,
+)
 from .dataset import load, load_jsonl, load_csv
 from .generate import generate_from_text, generate_from_file, generate_hallucination_pairs
 from .experiments import Experiment, list_experiments, wilson_interval, runs_needed
@@ -58,6 +63,10 @@ __all__ = [
     "__version__",
     "EvalSuite", "EvalCase", "AgentStep", "ToolCall",
     "JudgeConfig", "configure",
+    # Integrations
+    "AgentTracer", "CaseImporter",
+    "ManualTracer", "LangChainTracer",
+    "LangSmithTracer", "LangSmithImporter",
     "load", "load_jsonl", "load_csv",
     # Generation
     "generate_from_text", "generate_from_file", "generate_hallucination_pairs",
