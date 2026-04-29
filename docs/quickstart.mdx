@@ -151,11 +151,11 @@ exp.compare(old_run_id, run_id)
 ## Next steps
 
 <CardGroup cols={2}>
-  <Card title="Synthetic generation" icon="wand-magic-sparkles" href="/guides/generate">
-    Generate eval cases from your docs
+  <Card title="Plain-English checks" icon="comment" href="/evaluators/llm-judge#checkevaluator">
+    Write criteria in English — SDK generates the questions
   </Card>
-  <Card title="Experiment tracking" icon="chart-line" href="/guides/experiments">
-    Compare runs, catch regressions
+  <Card title="Synthetic dataset generation" icon="wand-magic-sparkles" href="/guides/generate">
+    Generate eval cases from your docs — no labels required
   </Card>
   <Card title="LLM judge evaluators" href="/evaluators/llm-judge">
     Faithfulness, hallucination, relevance, and more
@@ -163,11 +163,8 @@ exp.compare(old_run_id, run_id)
   <Card title="Agent evaluation" href="/evaluators/agent">
     Tool call accuracy and plan quality
   </Card>
-  <Card title="Synthetic dataset generation" href="/guides/synthetic-data">
-    Generate eval cases from your docs — no labels required
-  </Card>
-  <Card title="Experiment tracking" href="/guides/experiments">
-    Record runs and compare across versions
+  <Card title="Experiment tracking" icon="chart-line" href="/guides/experiments">
+    Compare runs, catch regressions
   </Card>
   <Card title="CI/CD integration" href="/guides/ci-cd">
     Run evals as a quality gate
