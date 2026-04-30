@@ -123,6 +123,14 @@ class DeployedAPITarget:
         retries: int = 2,
         rate_limit: float | None = None,
     ):
+        try:
+            import requests as _requests
+            self._requests = _requests
+        except ImportError:
+            raise ImportError(
+                "requests is required for DeployedAPITarget: "
+                "pip install 'multivon-eval[requests]'"
+            )
         self.url = url
         self.method = method.upper()
         self.auth = auth
@@ -142,11 +150,6 @@ class DeployedAPITarget:
 
         Retries on 429 (rate limit) and 5xx errors with exponential backoff.
         """
-        try:
-            import requests
-        except ImportError:
-            raise ImportError("requests package required: pip install requests")
-
         self._rate_wait()
 
         headers = dict(self.extra_headers)
@@ -158,13 +161,16 @@ class DeployedAPITarget:
         last_error: Exception | None = None
         for attempt in range(self.retries + 1):
             try:
-                resp = requests.request(
+                resp = self._requests.request(
                     self.method, self.url,
                     json=body, headers=headers, timeout=self.timeout,
                 )
                 if resp.status_code == 429 or resp.status_code >= 500:
-                    wait = (2 ** attempt) * 0.5
-                    time.sleep(wait)
+                    last_error = RuntimeError(
+                        f"HTTP {resp.status_code} after {attempt + 1} attempt(s)"
+                    )
+                    if attempt < self.retries:
+                        time.sleep((2 ** attempt) * 0.5)
                     continue
                 resp.raise_for_status()
                 data = resp.json()
@@ -172,9 +178,11 @@ class DeployedAPITarget:
             except Exception as e:
                 last_error = e
                 if attempt < self.retries:
-                    time.sleep(2 ** attempt * 0.5)
+                    time.sleep((2 ** attempt) * 0.5)
 
-        raise RuntimeError(f"DeployedAPITarget failed after {self.retries + 1} attempts: {last_error}")
+        raise RuntimeError(
+            f"DeployedAPITarget failed after {self.retries + 1} attempt(s): {last_error}"
+        )
 
     def _rate_wait(self) -> None:
         if self._min_interval == 0:
@@ -308,13 +316,26 @@ class MultiTurnAPITarget:
         return resp
 
 
-# ── BrowserTarget (stub — requires pip install multivon-eval[browser]) ────────
+# ── BrowserTarget (EXPERIMENTAL — requires pip install 'multivon-eval[browser]') ──
 
 class BrowserTarget:
     """
+    EXPERIMENTAL — not production-ready. API and behavior may change.
+
+    Known limitations:
+    - No page state reset between eval cases. The page stays open across calls;
+      a chat UI that accumulates history will work, but anything with per-session
+      state will not.
+    - Login flow uses hard-coded selectors (input[type='email'], input[type='password']).
+      Does not handle OAuth, SSO, or CAPTCHA.
+    - wait_for_load_state("networkidle") is unreliable for SPAs with long-polling
+      or WebSocket connections. Use wait_for= with a specific response selector instead.
+    - No context manager support. Call close() explicitly or wrap in try/finally to
+      avoid leaking browser processes on failure.
+
     Playwright-based eval target for browser-rendered AI applications.
 
-    Requires: pip install multivon-eval[browser]
+    Requires: pip install 'multivon-eval[browser]'
 
     Opens a real browser, logs in, submits input via a CSS selector,
     waits for the response, and extracts the response text.
@@ -324,11 +345,12 @@ class BrowserTarget:
         input_selector:    CSS selector for the input field.
         submit_selector:   CSS selector for the submit button.
         response_selector: CSS selector for the response element.
-        wait_for:          Optional CSS selector to wait for (e.g. loading indicator gone).
+        wait_for:          CSS selector to wait for after submit (recommended over
+                           the default networkidle strategy for SPAs).
         login:             Optional {"email": ..., "password": ...} for login flow.
         headless:          Run browser headlessly (default True).
         timeout:           Page load / response wait timeout in ms (default 30000).
-        screenshot_on_fail: Save a screenshot when a case fails (default True).
+        screenshot_on_fail: Save a screenshot on failure (default True).
     """
 
     def __init__(
