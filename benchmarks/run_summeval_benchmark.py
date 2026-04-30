@@ -2,31 +2,30 @@
 SummEval benchmark — Spearman correlation between multivon-eval scores and
 expert human annotations on machine-generated summaries.
 
-Dataset: SummEval (Fabbri et al., 2021). 1,600 CNN/DailyMail summaries from 16
-models, each rated by 3 expert annotators on coherence, consistency, fluency,
-relevance (1-5 scale).
+Dataset: SummEval via mteb/summeval on HuggingFace (Fabbri et al., 2021).
+100 CNN/DailyMail articles × 16 machine-generated summaries each = 1,600
+evaluation units. Human expert annotations (averaged across 3 annotators)
+for coherence, consistency, fluency, relevance on a 1-5 scale.
 
 Evaluator mapping:
-  coherence  → Coherence  (structural quality; no source article needed)
-  relevance  → Relevance  (machine summary vs. human reference as context proxy)
+  coherence    → Coherence    (structural quality)
+  relevance    → Relevance    (summary vs. source article)
+  consistency  → Faithfulness (factual alignment with source)
 
-Consistency/faithfulness requires the original CNN/DailyMail source articles,
-which are not bundled in the SummEval annotation file. That dimension is skipped.
-
-RAGAS comparison note:
-  RAGAS published on WikiEval (their own dataset) using gpt-3.5-turbo-16k.
-  That dataset is not public. SummEval is an independent third-party benchmark —
-  the only public neutral ground for this kind of comparison.
+Fluency has no direct evaluator and is omitted.
 
 Usage:
-  pip install multivon-eval python-dotenv
-  export ANTHROPIC_API_KEY=sk-ant-...          # or OPENAI_API_KEY for --judge openai/...
+  pip install multivon-eval datasets python-dotenv
+  export ANTHROPIC_API_KEY=sk-ant-...
+  export OPENAI_API_KEY=sk-...
   python benchmarks/run_summeval_benchmark.py
   python benchmarks/run_summeval_benchmark.py --n 100 --judge openai/gpt-3.5-turbo
-  python benchmarks/run_summeval_benchmark.py --output benchmarks/results/summeval.json
+  python benchmarks/run_summeval_benchmark.py --output benchmarks/results/summeval_sonnet.json
 
-Estimated cost (default 200 samples, Haiku):
-  ~400 API calls × ~$0.001 each ≈ $0.40
+Estimated cost (default 100 samples, 3 evaluators):
+  Haiku:   ~300 calls × ~$0.001  ≈ $0.30
+  Sonnet:  ~300 calls × ~$0.003  ≈ $0.90
+  gpt-4o-mini: ~300 calls × ~$0.0002 ≈ $0.06
 """
 from __future__ import annotations
 
@@ -36,7 +35,6 @@ import math
 import os
 import sys
 import time
-import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
@@ -46,52 +44,35 @@ load_dotenv()
 
 # ── dataset ──────────────────────────────────────────────────────────────────
 
-_DATA_URLS = [
-    "https://storage.googleapis.com/sfr-summarization-repo-research/model_annotations.aligned.paired.jsonl",
-    "https://raw.githubusercontent.com/Yale-LILY/SummEval/master/data/model_annotations.aligned.paired.jsonl",
-]
-_CACHE = Path.home() / ".cache" / "multivon-bench" / "summeval.jsonl"
+def _load_hf(n: int, seed: int = 42) -> list[dict]:
+    """
+    Load SummEval from HuggingFace and flatten to (article, summary, scores) rows.
+    Each article has 16 machine summaries; we flatten then sample n.
+    """
+    try:
+        from datasets import load_dataset
+    except ImportError:
+        print("datasets package required: pip install datasets", file=sys.stderr)
+        sys.exit(1)
 
+    ds = load_dataset("mteb/summeval", split="test")
 
-def _ensure_data(verbose: bool) -> None:
-    if _CACHE.exists():
-        if verbose:
-            print(f"  Using cached dataset ({_CACHE.stat().st_size / 1e6:.1f} MB): {_CACHE}")
-        return
-    _CACHE.parent.mkdir(parents=True, exist_ok=True)
-    for url in _DATA_URLS:
-        try:
-            if verbose:
-                print(f"  Downloading SummEval from {url} ...", end=" ", flush=True)
-            urllib.request.urlretrieve(url, _CACHE)
-            if verbose:
-                print(f"done ({_CACHE.stat().st_size / 1e6:.1f} MB)")
-            return
-        except Exception as exc:
-            if verbose:
-                print(f"failed ({exc})")
-            _CACHE.unlink(missing_ok=True)
-    print("ERROR: could not download SummEval. Check your internet connection.", file=sys.stderr)
-    sys.exit(1)
-
-
-def _load(n: int, seed: int = 42) -> list[dict]:
     rows = []
-    with open(_CACHE) as f:
-        for line in f:
-            line = line.strip()
-            if line:
-                rows.append(json.loads(line))
+    for article in ds:
+        text = article["text"]
+        for i, summary in enumerate(article["machine_summaries"]):
+            rows.append({
+                "text": text,
+                "summary": summary,
+                "coherence":    article["coherence"][i],
+                "relevance":    article["relevance"][i],
+                "consistency":  article["consistency"][i],
+            })
+
     import random
     rng = random.Random(seed)
     rng.shuffle(rows)
     return rows[:n]
-
-
-def _avg_expert(row: dict, dim: str) -> float | None:
-    annotations = row.get("expert_annotations", [])
-    vals = [a[dim] for a in annotations if dim in a]
-    return sum(vals) / len(vals) if vals else None
 
 
 # ── statistics ────────────────────────────────────────────────────────────────
@@ -117,7 +98,7 @@ def _norm_cdf(z: float) -> float:
 
 
 def spearman(x: list[float], y: list[float]) -> tuple[float, float]:
-    """Returns (rho, p_value). p_value uses t→normal approx; accurate for n≥30."""
+    """Spearman rho + two-tailed p (t→normal approx, accurate for n≥30)."""
     n = len(x)
     rx, ry = _rank(x), _rank(y)
     mx, my = sum(rx) / n, sum(ry) / n
@@ -138,75 +119,61 @@ def spearman(x: list[float], y: list[float]) -> tuple[float, float]:
 _INPUT_PROMPT = "Summarize the following document."
 
 
-def _eval_row(
-    row: dict,
-    coh_ev,
-    rel_ev,
-    EvalCase,
-) -> dict | None:
-    summary = row.get("decoded", "").strip()
-    refs = row.get("references", [])
-    context = refs[0].strip() if refs else ""
+def _eval_row(row: dict, coh_ev, rel_ev, faith_ev) -> dict:
+    from multivon_eval import EvalCase
 
-    if not summary:
-        return None
+    case = EvalCase(input=_INPUT_PROMPT, context=row["text"])
+    result = {
+        "coh_human": row["coherence"],
+        "rel_human": row["relevance"],
+        "faith_human": row["consistency"],
+    }
 
-    h_coh = _avg_expert(row, "coherence")
-    h_rel = _avg_expert(row, "relevance")
+    try:
+        result["coh_model"] = coh_ev.evaluate(case, row["summary"]).score
+    except Exception as e:
+        result["coh_error"] = str(e)
 
-    from multivon_eval.case import EvalCase as _EC
+    try:
+        result["rel_model"] = rel_ev.evaluate(case, row["summary"]).score
+    except Exception as e:
+        result["rel_error"] = str(e)
 
-    case = _EC(input=_INPUT_PROMPT, context=context or None)
+    try:
+        result["faith_model"] = faith_ev.evaluate(case, row["summary"]).score
+    except Exception as e:
+        result["faith_error"] = str(e)
 
-    result: dict = {}
-
-    if h_coh is not None:
-        try:
-            r = coh_ev.evaluate(case, summary)
-            result["coh_model"] = r.score
-            result["coh_human"] = h_coh
-        except Exception as exc:
-            result["coh_error"] = str(exc)
-
-    if h_rel is not None and context:
-        try:
-            r = rel_ev.evaluate(case, summary)
-            result["rel_model"] = r.score
-            result["rel_human"] = h_rel
-        except Exception as exc:
-            result["rel_error"] = str(exc)
-
-    return result if result else None
+    return result
 
 
 def run_benchmark(n: int, provider: str, model: str, workers: int, verbose: bool) -> dict:
     try:
-        from multivon_eval import configure, JudgeConfig, Coherence, Relevance
+        from multivon_eval import configure, JudgeConfig, Coherence, Relevance, Faithfulness
     except ImportError:
         print("multivon-eval not installed. Run: pip install multivon-eval", file=sys.stderr)
         sys.exit(1)
 
     configure(JudgeConfig(provider=provider, model=model))
-    coh_ev = Coherence()
-    rel_ev = Relevance()
-
-    _ensure_data(verbose)
-    rows = _load(n)
+    coh_ev   = Coherence()
+    rel_ev   = Relevance()
+    faith_ev = Faithfulness()
 
     if verbose:
-        print(f"\n  Running {len(rows)} samples × 2 evaluators (workers={workers})...\n")
+        print(f"  Loading SummEval from HuggingFace...", end=" ", flush=True)
+    rows = _load_hf(n)
+    if verbose:
+        print(f"done ({len(rows)} samples)")
+        print(f"  Running {len(rows)} samples × 3 evaluators (workers={workers})...\n")
 
-    coh_model, coh_human = [], []
-    rel_model, rel_human = [], []
+    scores = {k: [] for k in ("coh", "rel", "faith")}
+    human  = {k: [] for k in ("coh", "rel", "faith")}
     errors = 0
-    done = 0
-
-    # Rate-limit single-threaded mode; parallel mode relies on API-side throttling.
-    from multivon_eval.case import EvalCase
+    done   = 0
 
     with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = {
-            pool.submit(_eval_row, row, coh_ev, rel_ev, EvalCase): i
+            pool.submit(_eval_row, row, coh_ev, rel_ev, faith_ev): i
             for i, row in enumerate(rows)
         }
         for fut in as_completed(futures):
@@ -219,33 +186,30 @@ def run_benchmark(n: int, provider: str, model: str, workers: int, verbose: bool
                     print(f"\r  [{done:4d}/{n}] error: {exc}", end="", flush=True)
                 continue
 
-            if res is None:
-                continue
-
-            if "coh_model" in res:
-                coh_model.append(res["coh_model"])
-                coh_human.append(res["coh_human"])
-            else:
-                errors += 1
-
-            if "rel_model" in res:
-                rel_model.append(res["rel_model"])
-                rel_human.append(res["rel_human"])
+            for dim, key in [("coh", "coh"), ("rel", "rel"), ("faith", "faith")]:
+                if f"{key}_model" in res:
+                    scores[dim].append(res[f"{key}_model"])
+                    human[dim].append(res[f"{key}_human"])
+                else:
+                    errors += 1
 
             if verbose:
-                print(f"\r  [{done:4d}/{n}] coherence n={len(coh_model)}  relevance n={len(rel_model)}", end="", flush=True)
+                ns = {k: len(v) for k, v in scores.items()}
+                print(f"\r  [{done:4d}/{n}] coh={ns['coh']} rel={ns['rel']} faith={ns['faith']}", end="", flush=True)
 
     if verbose:
         print()
 
+    dim_labels = {"coh": "coherence", "rel": "relevance", "faith": "faithfulness"}
     results = {}
-    for name, xs, ys in [("coherence", coh_model, coh_human), ("relevance", rel_model, rel_human)]:
+    for key, label in dim_labels.items():
+        xs, ys = scores[key], human[key]
         if len(xs) < 20:
             if verbose:
-                print(f"  [SKIP] {name}: only {len(xs)} valid samples", file=sys.stderr)
+                print(f"  [SKIP] {label}: only {len(xs)} valid samples", file=sys.stderr)
             continue
         rho, p = spearman(xs, ys)
-        results[name] = {"rho": rho, "p": p, "n": len(xs)}
+        results[label] = {"rho": rho, "p": p, "n": len(xs)}
 
     return {"results": results, "errors": errors, "n_requested": n}
 
@@ -268,74 +232,73 @@ def print_table(data: dict, judge: str) -> None:
         version = ""
 
     results = data["results"]
-    n_req = data["n_requested"]
-    errors = data["errors"]
+    n_req   = data["n_requested"]
+    errors  = data["errors"]
 
-    print(f"\n{'─' * 62}")
+    print(f"\n{'─' * 66}")
     print(f"  SummEval Benchmark — multivon-eval {version}")
     print(f"  Judge: {judge}")
-    print(f"  Dataset: SummEval (Fabbri et al., 2021) — expert annotations")
-    print(f"{'─' * 62}")
-    print(f"  {'Dimension':<14}  {'Spearman ρ':>10}  {'p-value':>8}  {'n':>5}  {'':>10}")
-    print(f"  {'─'*14}  {'─'*10}  {'─'*8}  {'─'*5}  {'─'*10}")
+    print(f"  Dataset: SummEval (Fabbri et al., 2021) — expert human annotations, 1–5 scale")
+    print(f"{'─' * 66}")
+    print(f"  {'Dimension':<14}  {'Spearman ρ':>10}  {'p-value':>8}  {'n':>5}  {'':>12}")
+    print(f"  {'─'*14}  {'─'*10}  {'─'*8}  {'─'*5}  {'─'*12}")
     for dim, r in results.items():
-        p_str = "<0.001" if r["p"] < 0.001 else f"{r['p']:.3f}"
+        p_str  = "<0.001" if r["p"] < 0.001 else f"{r['p']:.3f}"
         interp = _interp(r["rho"])
-        print(f"  {dim:<14}  {r['rho']:>10.4f}  {p_str:>8}  {r['n']:>5}  {interp:>10}")
-    print(f"{'─' * 62}")
+        print(f"  {dim:<14}  {r['rho']:>10.4f}  {p_str:>8}  {r['n']:>5}  {interp:>12}")
+    print(f"{'─' * 66}")
     if errors:
-        print(f"  Errors: {errors} / {n_req} samples failed")
+        print(f"  Errors: {errors} / {n_req * 3} eval calls failed")
     print()
-    print("  Dimension notes:")
-    print("  coherence  — structural quality of summary text (no source needed)")
-    print("  relevance  — machine summary vs. first human reference (context proxy)")
-    print("  consistency/faithfulness — skipped: requires CNN/DailyMail source articles")
+    print("  Notes:")
+    print("  coherence     — structural quality of the summary text")
+    print("  relevance     — does the summary capture key info from the source article")
+    print("  faithfulness  — factual consistency with the source article")
     print()
     print("  RAGAS comparison (different dataset — directional only):")
     print("  RAGAS WikiEval (gpt-3.5-turbo-16k, Sept 2023):")
-    print("    Faithfulness=95%, AnswerRelevance=78%, ContextRelevance=70%")
-    print("  Note: those are agreement %, not Spearman ρ, on a proprietary dataset.")
-    print(f"{'─' * 62}\n")
+    print("    Faithfulness≈95%, AnswerRelevance≈78%, ContextRelevance≈70%")
+    print("  Note: those are agreement % on a proprietary dataset, not Spearman ρ.")
+    print(f"{'─' * 66}\n")
 
 
 # ── main ─────────────────────────────────────────────────────────────────────
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="SummEval Spearman benchmark for multivon-eval")
-    ap.add_argument("--n", type=int, default=200, help="Samples to evaluate (default 200; max ~1600)")
-    ap.add_argument("--judge", default="anthropic/claude-haiku-4-5-20251001",
+    ap.add_argument("--n",       type=int, default=100,
+                    help="Samples to evaluate (default 100; max 1600)")
+    ap.add_argument("--judge",   default="anthropic/claude-haiku-4-5-20251001",
                     help="provider/model (default: anthropic/claude-haiku-4-5-20251001)")
-    ap.add_argument("--workers", type=int, default=4, help="Parallel workers (default 4)")
-    ap.add_argument("--output", help="Save raw results as JSON")
-    ap.add_argument("--quiet", action="store_true")
+    ap.add_argument("--workers", type=int, default=4,
+                    help="Parallel eval workers (default 4)")
+    ap.add_argument("--output",  help="Save raw results as JSON")
+    ap.add_argument("--quiet",   action="store_true")
     args = ap.parse_args()
 
     if "/" not in args.judge:
-        print("--judge must be provider/model, e.g. anthropic/claude-haiku-4-5-20251001", file=sys.stderr)
+        print("--judge must be provider/model, e.g. anthropic/claude-sonnet-4-6", file=sys.stderr)
         sys.exit(1)
     provider, model = args.judge.split("/", 1)
 
     verbose = not args.quiet
     if verbose:
-        cost = args.n * 2 * 0.001
-        print(f"\n  SummEval benchmark: {args.n} samples × 2 evaluators")
+        costs = {"claude-haiku-4-5-20251001": 0.001, "claude-sonnet-4-6": 0.003,
+                 "gpt-4o-mini": 0.0002, "gpt-3.5-turbo": 0.0005, "gpt-4o": 0.005}
+        cpp = costs.get(model, 0.002)
+        print(f"\n  SummEval: {args.n} samples × 3 evaluators = {args.n * 3} API calls")
         print(f"  Judge: {args.judge}")
-        print(f"  Estimated cost: ~${cost:.2f}")
+        print(f"  Estimated cost: ~${args.n * 3 * cpp:.2f}")
 
     data = run_benchmark(args.n, provider, model, args.workers, verbose)
     print_table(data, args.judge)
 
     if args.output:
-        out_path = Path(args.output)
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        payload = {
-            "judge": args.judge,
-            "n_requested": args.n,
-            **data,
-        }
-        out_path.write_text(json.dumps(payload, indent=2))
+        out = Path(args.output)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps({"judge": args.judge, "n_requested": args.n, **data}, indent=2))
         if verbose:
-            print(f"  Results saved to {args.output}")
+            print(f"  Results saved → {args.output}")
 
 
 if __name__ == "__main__":

@@ -22,10 +22,11 @@ python benchmarks/run_all_benchmarks.py
 | Faithfulness (summarization) | F1 0.480 | F1 0.448 | F1 0.667 | F1 0.627 |
 | Coherence detection | see run | — | see run | — |
 | Answer accuracy | see run | — | see run | see run |
-| SummEval coherence (Spearman ρ) | TBD | — | TBD | — |
-| SummEval relevance (Spearman ρ) | TBD | — | TBD | — |
+| SummEval coherence (Spearman ρ) | **0.455** (Sonnet) | 0.431 (gpt-4o-mini) | — | — |
+| SummEval relevance (Spearman ρ) | 0.283 (Sonnet) | **0.380** (gpt-4o-mini) | — | — |
+| SummEval faithfulness (Spearman ρ) | 0.319 (Sonnet) | **0.443** (gpt-4o-mini) | — | — |
 
-Judge models: multivon-eval uses `claude-haiku-4-5-20251001`; DeepEval uses `gpt-4o-mini`. Same judge disclosed per run.
+Judge models: multivon-eval uses `claude-haiku-4-5-20251001` for benchmarks 1–4; benchmarks 1–4 DeepEval uses `gpt-4o-mini`. SummEval benchmark (5) runs three judges. Judge always disclosed per run.
 
 ---
 
@@ -161,6 +162,36 @@ Comparing evaluators against each other tells you which one scores higher, not w
 - The answer relevance golden set is self-curated. It has not been externally reviewed.
 - All LLM judges are non-deterministic — individual runs may vary slightly. Numbers reported are single-run results, not averages across seeds.
 - DeepEval results depend on the gpt-4o-mini API response at time of evaluation. We cannot guarantee reproducibility on a different date.
+
+---
+
+---
+
+## Benchmark 5 — SummEval Spearman Correlation
+
+**Dataset:** [SummEval](https://github.com/Yale-LILY/SummEval) via HuggingFace (`mteb/summeval`) — 100 CNN/DailyMail articles × 16 machine-generated summaries = 1,600 evaluation units. Expert human annotations (averaged across 3 annotators) for coherence, consistency, fluency, relevance on a 1–5 scale.
+
+**Task:** Compute Spearman correlation between evaluator scores and human expert ratings. Higher ρ = the evaluator tracks human judgment more closely. All results are statistically significant at α=0.05 unless noted.
+
+**100 samples, 3 judges:**
+
+| Dimension | Claude Sonnet 4.6 | GPT-4o-mini | GPT-3.5-turbo |
+|-----------|:-----------------:|:-----------:|:-------------:|
+| Coherence    | **0.455** (p<0.001) | 0.431 (p<0.001) | 0.205 (p=0.038) |
+| Relevance    | 0.283 (p=0.004)     | **0.380** (p<0.001) | 0.053 (p=0.602) ⚠ |
+| Faithfulness | 0.319 (p=0.001)     | **0.443** (p<0.001) | 0.240 (p=0.014) |
+
+⚠ = not statistically significant
+
+**Key findings:**
+
+- **GPT-4o-mini is the strongest judge overall.** It leads on relevance (ρ=0.380) and faithfulness (ρ=0.443). Likely because smaller models like Haiku and gpt-3.5-turbo don't reason precisely enough to decompose source vs. summary claims.
+- **Claude Sonnet leads on coherence** (ρ=0.455 vs 0.431). Coherence is a structural quality judgment where Claude's language modeling tends to be strong.
+- **GPT-3.5-turbo relevance is not statistically significant (p=0.602).** This is the same model RAGAS used for their published numbers (gpt-3.5-turbo-16k, Sept 2023). Their claim of 78% agreement on AnswerRelevance is on their own WikiEval dataset — not a neutral benchmark — and this result suggests the judge choice is load-bearing for relevance tasks. Their faithfulness number (95%) may hold since factual entailment is an easier task for weaker models.
+- **All three dimensions have meaningful correlation with capable models.** ρ=0.283–0.455 across Sonnet, ρ=0.380–0.443 across GPT-4o-mini. These are moderate-to-strong correlations for an automated evaluator, consistent with published G-Eval results (~0.514 Spearman on SummEval coherence with GPT-4).
+- **Zero errors across 900 API calls** (100 samples × 3 evaluators × 3 judges).
+
+**Recommendation:** Run multivon-eval with `claude-sonnet-4-6` or `gpt-4o-mini` as judge. Both produce statistically reliable results across all three dimensions. Avoid `gpt-3.5-turbo` for relevance evaluation.
 
 ---
 

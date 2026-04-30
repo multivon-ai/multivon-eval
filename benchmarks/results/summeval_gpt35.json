@@ -1,0 +1,22 @@
+{
+  "judge": "openai/gpt-3.5-turbo",
+  "n_requested": 100,
+  "results": {
+    "coherence": {
+      "rho": 0.2048,
+      "p": 0.0384,
+      "n": 100
+    },
+    "relevance": {
+      "rho": 0.0526,
+      "p": 0.6021,
+      "n": 100
+    },
+    "faithfulness": {
+      "rho": 0.2404,
+      "p": 0.0142,
+      "n": 100
+    }
+  },
+  "errors": 0
+}

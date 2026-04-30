@@ -1,0 +1,22 @@
+{
+  "judge": "anthropic/claude-sonnet-4-6",
+  "n_requested": 100,
+  "results": {
+    "coherence": {
+      "rho": 0.4549,
+      "p": 0.0,
+      "n": 100
+    },
+    "relevance": {
+      "rho": 0.2826,
+      "p": 0.0035,
+      "n": 100
+    },
+    "faithfulness": {
+      "rho": 0.3192,
+      "p": 0.0009,
+      "n": 100
+    }
+  },
+  "errors": 0
+}

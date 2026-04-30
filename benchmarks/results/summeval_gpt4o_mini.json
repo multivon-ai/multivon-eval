@@ -1,0 +1,22 @@
+{
+  "judge": "openai/gpt-4o-mini",
+  "n_requested": 100,
+  "results": {
+    "coherence": {
+      "rho": 0.4308,
+      "p": 0.0,
+      "n": 100
+    },
+    "relevance": {
+      "rho": 0.3801,
+      "p": 0.0,
+      "n": 100
+    },
+    "faithfulness": {
+      "rho": 0.4432,
+      "p": 0.0,
+      "n": 100
+    }
+  },
+  "errors": 0
+}
