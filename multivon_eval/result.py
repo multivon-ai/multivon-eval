@@ -92,6 +92,69 @@ class CalibrationResult:
 
 
 @dataclass
+class PairwiseResult:
+    """Pairwise judge verdict for one case."""
+    case_input: str
+    output_a: str
+    output_b: str
+    winner: str   # "A", "B", or "Tie"
+    reason: str = ""
+
+
+@dataclass
+class PairwiseReport:
+    """Aggregated results from suite.run_pairwise()."""
+    suite_name: str
+    model_a_id: str
+    model_b_id: str
+    results: "list[PairwiseResult]"
+
+    @property
+    def wins_a(self) -> int:
+        return sum(1 for r in self.results if r.winner == "A")
+
+    @property
+    def wins_b(self) -> int:
+        return sum(1 for r in self.results if r.winner == "B")
+
+    @property
+    def ties(self) -> int:
+        return sum(1 for r in self.results if r.winner == "Tie")
+
+    @property
+    def total(self) -> int:
+        return len(self.results)
+
+    def p_value(self) -> float:
+        """Sign test p-value (H0: wins_a == wins_b, ties excluded)."""
+        import math as _math
+        n = self.wins_a + self.wins_b
+        if n == 0:
+            return 1.0
+        stat = (abs(self.wins_a - self.wins_b) - 1) ** 2 / n
+        from .experiments import _norm_cdf
+        return 2 * (1 - _norm_cdf(_math.sqrt(stat)))
+
+    def __str__(self) -> str:
+        p = self.p_value()
+        sig = "significant" if p < 0.05 else "not significant"
+        label_a = self.model_a_id or "Model A"
+        label_b = self.model_b_id or "Model B"
+        if self.wins_a > self.wins_b:
+            verdict = label_a
+        elif self.wins_b > self.wins_a:
+            verdict = label_b
+        else:
+            verdict = "Tie"
+        return (
+            f"Pairwise: {label_a} vs {label_b}  ({self.total} cases)\n"
+            f"  {label_a} wins: {self.wins_a}  "
+            f"{label_b} wins: {self.wins_b}  Ties: {self.ties}\n"
+            f"  Verdict: {verdict}  (p={p:.3f}, {sig})"
+        )
+
+
+@dataclass
 class EvalReport:
     """Aggregated results for an entire eval suite run."""
     suite_name: str

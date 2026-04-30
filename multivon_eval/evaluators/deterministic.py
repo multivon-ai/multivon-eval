@@ -250,3 +250,63 @@ class MaxLatency(Evaluator):
             1.0 if passed else max(0.0, 1.0 - (latency_ms - self.max_ms) / self.max_ms),
             f"{latency_ms:.0f}ms {'<=' if passed else '>'} {self.max_ms:.0f}ms",
         )
+
+
+class BERTScore(Evaluator):
+    """
+    BERTScore — contextual semantic similarity using BERT embeddings.
+
+    Computes token-level F1 between output and expected_output using contextual
+    BERT embeddings. More robust than BLEU/ROUGE for paraphrase and semantically
+    equivalent outputs: two sentences that mean the same thing but share no words
+    still score high.
+
+    Requires: pip install 'multivon-eval[bertscore]'
+
+    Args:
+        model_type: BERT model to use. "distilbert-base-uncased" (default) is
+                    fast and accurate. "roberta-large" gives best accuracy at
+                    higher compute and memory cost.
+        lang:       Language code for baseline rescaling (default "en").
+        threshold:  Minimum F1 to pass (default 0.85).
+
+    Example:
+        BERTScore()
+        BERTScore(model_type="roberta-large", threshold=0.90)
+    """
+    name = "bertscore"
+
+    def __init__(
+        self,
+        model_type: str = "distilbert-base-uncased",
+        lang: str = "en",
+        threshold: float = 0.85,
+    ) -> None:
+        super().__init__(threshold)
+        self._model_type = model_type
+        self._lang = lang
+
+    def evaluate(self, case: EvalCase, output: str) -> EvalResult:
+        if case.expected_output is None:
+            return self._result(0.0, "No expected_output provided")
+        try:
+            from bert_score import score as _bert_score
+        except ImportError:
+            raise ImportError(
+                "bert-score is required for BERTScore: "
+                "pip install 'multivon-eval[bertscore]'"
+            )
+        P, R, F1 = _bert_score(
+            [output],
+            [case.expected_output],
+            model_type=self._model_type,
+            lang=self._lang,
+            verbose=False,
+        )
+        f1 = float(F1[0])
+        precision = float(P[0])
+        recall = float(R[0])
+        return self._result(
+            round(f1, 4),
+            f"BERTScore F1={f1:.4f} (P={precision:.3f}, R={recall:.3f})",
+        )

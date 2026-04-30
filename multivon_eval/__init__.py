@@ -39,14 +39,15 @@ from .generate import generate_from_text, generate_from_file, generate_hallucina
 from .experiments import (
     Experiment, list_experiments, wilson_interval, bootstrap_interval,
     runs_needed, min_detectable_effect, cohens_h, benjamini_hochberg,
+    mcnemar_test, bayesian_interval,
 )
 from .compliance import ComplianceReporter
-from .result import CalibrationResult
+from .result import CalibrationResult, PairwiseReport, PairwiseResult
 from .evaluators import (
     # Deterministic
     NotEmpty, ExactMatch, Contains, RegexMatch,
     JSONSchemaEval, WordCount, Latency, MaxLatency,
-    BLEU, ROUGE, StartsWith,
+    BLEU, ROUGE, StartsWith, BERTScore,
     # LLM-as-judge (QAG)
     Faithfulness, Hallucination, Relevance, Coherence,
     Toxicity, Bias, Summarization, AnswerAccuracy,
@@ -80,14 +81,17 @@ __all__ = [
     # Experiments + statistics
     "Experiment", "list_experiments", "wilson_interval", "bootstrap_interval",
     "runs_needed", "min_detectable_effect", "cohens_h", "benjamini_hochberg",
+    "mcnemar_test", "bayesian_interval",
     # Calibration
     "CalibrationResult",
+    # Pairwise
+    "PairwiseReport", "PairwiseResult",
     # Compliance
     "ComplianceReporter",
     # Deterministic
     "NotEmpty", "ExactMatch", "Contains", "RegexMatch",
     "JSONSchemaEval", "WordCount", "Latency", "MaxLatency",
-    "BLEU", "ROUGE", "StartsWith",
+    "BLEU", "ROUGE", "StartsWith", "BERTScore",
     # LLM-as-judge
     "Faithfulness", "Hallucination", "Relevance", "Coherence",
     "Toxicity", "Bias", "Summarization", "AnswerAccuracy",

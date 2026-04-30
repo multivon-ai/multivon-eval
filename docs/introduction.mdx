@@ -28,13 +28,13 @@ pip install multivon-eval
 
 ## Key features
 
-**QAG scoring** — Instead of asking a judge "rate this 1-10", we generate binary yes/no questions about the output and score by fraction answered correctly. [Benchmarked at 65% fewer false positives](https://github.com/multivon-ai/multivon-eval/tree/main/benchmarks) than numeric scoring with the same judge model.
+**QAG scoring** — Instead of asking a judge "rate this 1-10", we generate binary yes/no questions about the output and score by fraction answered correctly. Binary questions eliminate scale ambiguity, are easier for LLMs to answer consistently, and make every score fully auditable — you can see exactly which questions passed or failed.
 
 **Plain-English checks** — `suite.add_check("Response should mention the return policy")` is all you need to write your first eval. The SDK generates yes/no questions from your criterion automatically. No need to pick an evaluator class or craft QAG questions manually.
 
 **No cold start** — Point `generate_from_file()` at your docs and get eval cases in seconds. No labeled dataset required to get started.
 
-**Reliability & flakiness detection** — Run each case N times with `suite.run(runs=5)`. Flaky cases (inconsistent pass/fail) are flagged automatically. Experiment comparison shows statistical significance so you know whether a regression is real or sampling noise. Methodology backed by [NAACL 2025](https://arxiv.org/abs/2502.01775): single-run eval scores are unreliable.
+**Reliability & flakiness detection** — Run each case N times with `suite.run(runs=5)`. Flaky cases (inconsistent pass/fail) are flagged automatically. Experiment comparison shows statistical significance so you know whether a regression is real or sampling noise. NAACL 2025 research confirms single-run eval scores are unreliable — variance alone can reverse model rankings.
 
 **Experiment tracking** — Record every run to `~/.multivon/experiments/`. Compare two runs side-by-side and get a pass rate delta with p-values. Catch regressions before they ship.
 

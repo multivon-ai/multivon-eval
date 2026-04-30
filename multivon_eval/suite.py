@@ -372,6 +372,101 @@ class EvalSuite:
             **suite_kwargs,
         )
 
+    def run_pairwise(
+        self,
+        model_a: "Callable[[str], str]",
+        model_b: "Callable[[str], str]",
+        *,
+        model_a_id: str = "Model A",
+        model_b_id: str = "Model B",
+        judge: "Any | None" = None,
+        verbose: bool = True,
+    ) -> "Any":
+        """
+        Head-to-head comparison: run both models on every case, ask an LLM
+        judge which response is better, return win/loss/tie counts with a
+        sign-test p-value.
+
+        Unlike pass/fail evals, pairwise comparison produces a preference
+        signal even when neither model clearly passes or fails.
+
+        Args:
+            model_a:     First model callable (str → str).
+            model_b:     Second model callable (str → str).
+            model_a_id:  Label for model A in the report.
+            model_b_id:  Label for model B in the report.
+            judge:       JudgeConfig override. Uses global judge if None.
+            verbose:     Print summary (default True).
+
+        Returns:
+            PairwiseReport with per-case winners and aggregate statistics.
+
+        Example:
+            report = suite.run_pairwise(
+                gpt4o_fn, claude_fn,
+                model_a_id="GPT-4o", model_b_id="Claude Haiku",
+            )
+            print(report)
+        """
+        from .result import PairwiseReport, PairwiseResult
+        from .judge import resolve_judge
+        from .evaluators.llm_judge import _call
+
+        resolved = resolve_judge(judge)
+        results: list[PairwiseResult] = []
+
+        for case in self._cases:
+            try:
+                out_a = model_a(case.input)
+            except Exception as e:
+                out_a = f"[ERROR: {e}]"
+            try:
+                out_b = model_b(case.input)
+            except Exception as e:
+                out_b = f"[ERROR: {e}]"
+
+            prompt = (
+                "You are an impartial judge evaluating two AI responses to the same input.\n\n"
+                f"Input: {case.input}\n\n"
+                f"Response A:\n{out_a}\n\n"
+                f"Response B:\n{out_b}\n\n"
+                "Which response is better? Reply with ONLY 'A', 'B', or 'Tie' on the "
+                "first line, then a brief explanation on the next line."
+            )
+            try:
+                raw = _call(prompt, resolved, max_tokens=200)
+                first_line = raw.strip().split("\n")[0].strip().upper()
+                if first_line.startswith("A"):
+                    winner = "A"
+                elif first_line.startswith("B"):
+                    winner = "B"
+                else:
+                    winner = "Tie"
+                reason = raw.strip()
+            except Exception as e:
+                winner = "Tie"
+                reason = f"[Judge error: {e}]"
+
+            results.append(PairwiseResult(
+                case_input=case.input,
+                output_a=out_a,
+                output_b=out_b,
+                winner=winner,
+                reason=reason,
+            ))
+
+        report = PairwiseReport(
+            suite_name=self.name,
+            model_a_id=model_a_id,
+            model_b_id=model_b_id,
+            results=results,
+        )
+
+        if verbose:
+            print(report)
+
+        return report
+
     def run_on_cases(
         self,
         traced_outputs: list[tuple[EvalCase, str]],

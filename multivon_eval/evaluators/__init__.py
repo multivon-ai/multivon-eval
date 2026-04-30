@@ -1,7 +1,7 @@
 from .deterministic import (
     NotEmpty, ExactMatch, Contains, RegexMatch,
     JSONSchemaEval, WordCount, Latency, MaxLatency,
-    BLEU, ROUGE, StartsWith,
+    BLEU, ROUGE, StartsWith, BERTScore,
 )
 from .llm_judge import (
     Faithfulness, Hallucination, Relevance, Coherence,
@@ -27,7 +27,7 @@ __all__ = [
     # Deterministic
     "NotEmpty", "ExactMatch", "Contains", "RegexMatch",
     "JSONSchemaEval", "WordCount", "Latency", "MaxLatency",
-    "BLEU", "ROUGE", "StartsWith",
+    "BLEU", "ROUGE", "StartsWith", "BERTScore",
     # LLM-as-judge
     "Faithfulness", "Hallucination", "Relevance", "Coherence",
     "Toxicity", "Bias", "Summarization", "AnswerAccuracy",

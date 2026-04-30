@@ -39,6 +39,7 @@ __all__ = [
     "Experiment", "list_experiments", "compare_experiments",
     "wilson_interval", "bootstrap_interval", "runs_needed",
     "min_detectable_effect", "cohens_h", "benjamini_hochberg",
+    "mcnemar_test", "bayesian_interval",
 ]
 
 
@@ -447,6 +448,105 @@ def benjamini_hochberg(p_values: list[float], alpha: float = 0.05) -> list[float
         adjusted[orig_idx] = adj
         prev = adj
     return adjusted
+
+
+def mcnemar_test(results_a: list[bool], results_b: list[bool]) -> float:
+    """
+    McNemar's test for paired binary model comparison.
+
+    More powerful than two-proportion z-test when comparing two models on the
+    same test cases — it only uses discordant pairs (cases where A and B
+    disagree), which is all the statistical information in a paired comparison.
+
+    Uses Edwards' continuity correction for small samples.
+
+    Args:
+        results_a: List of bool pass/fail for model A (one per case).
+        results_b: List of bool pass/fail for model B (same cases, same order).
+
+    Returns:
+        Two-tailed p-value. p < 0.05 means the models differ significantly.
+        p ≥ 0.05 means you cannot distinguish them on this dataset.
+
+    Example:
+        from multivon_eval import mcnemar_test
+        p = mcnemar_test(
+            [r.passed for cr in report_a.case_results for r in cr.results],
+            [r.passed for cr in report_b.case_results for r in cr.results],
+        )
+    """
+    if len(results_a) != len(results_b):
+        raise ValueError("results_a and results_b must have the same length")
+    b = sum(1 for a, r in zip(results_a, results_b) if a and not r)      # A-pass, B-fail
+    c = sum(1 for a, r in zip(results_a, results_b) if not a and r)      # A-fail, B-pass
+    if b + c == 0:
+        return 1.0
+    stat = (abs(b - c) - 1) ** 2 / (b + c)  # Edwards' continuity correction
+    return 2 * (1 - _norm_cdf(math.sqrt(stat)))
+
+
+def bayesian_interval(
+    pass_count: int,
+    n: int,
+    confidence: float = 0.95,
+    n_samples: int = 10000,
+    seed: int = 42,
+) -> tuple[float, float]:
+    """
+    Bayesian credible interval for a pass rate.
+
+    Uses a uniform Beta(1, 1) prior (Bayes-Laplace). The posterior is
+    Beta(pass_count + 1, n - pass_count + 1). Returns the central credible
+    interval at the given confidence level.
+
+    For n > 100 uses a normal approximation to the Beta posterior.
+    For n ≤ 100 uses exact Gamma-ratio sampling (no scipy required).
+
+    Bayesian CIs have a direct interpretation: "there is a 95% probability the
+    true pass rate is in [lo, hi]", conditional on the data and prior. Use
+    alongside wilson_interval() when you want both perspectives.
+
+    Args:
+        pass_count: Number of passing cases.
+        n:          Total cases.
+        confidence: Credible interval width (default 0.95 → 95% CI).
+        n_samples:  Gamma samples for exact path (n ≤ 100, default 10 000).
+        seed:       Random seed for reproducibility (exact path only).
+
+    Returns:
+        (lower, upper) credible interval bounds in [0, 1].
+
+    Example:
+        lo, hi = bayesian_interval(80, 100)   # → approximately (0.71, 0.87)
+        lo, hi = bayesian_interval(8, 10)     # → approximately (0.52, 0.97)
+    """
+    import random as _random
+    if n == 0:
+        return (0.0, 1.0)
+    a = pass_count + 1              # posterior alpha (uniform prior)
+    b_param = n - pass_count + 1   # posterior beta
+    half = (1 - confidence) / 2
+
+    if n > 100:
+        # Normal approximation to Beta(a, b_param)
+        mean = a / (a + b_param)
+        var = a * b_param / ((a + b_param) ** 2 * (a + b_param + 1))
+        z = _norm_ppf(1 - half)
+        sd = math.sqrt(var)
+        return (max(0.0, round(mean - z * sd, 4)), min(1.0, round(mean + z * sd, 4)))
+
+    # Exact: Beta(a, b) = Gamma(a) / (Gamma(a) + Gamma(b))
+    # Gamma(k, 1) = -sum_{i=1}^{k} log(U_i) for k iid Uniform samples
+    rng = _random.Random(seed)
+    samples: list[float] = []
+    for _ in range(n_samples):
+        g_a = -sum(math.log(rng.random() or 1e-300) for _ in range(a))
+        g_b = -sum(math.log(rng.random() or 1e-300) for _ in range(b_param))
+        samples.append(g_a / (g_a + g_b))
+    samples.sort()
+    lo_idx = int(half * n_samples)
+    hi_idx = min(int((1 - half) * n_samples), n_samples - 1)
+    return (round(samples[lo_idx], 4), round(samples[hi_idx], 4))
 
 
 def _two_proportion_z_test(p1: float, n1: int, p2: float, n2: int) -> float:

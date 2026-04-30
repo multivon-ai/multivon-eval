@@ -72,7 +72,7 @@ Every team building AI products hits the same problem: **how do you know if your
 
 `multivon-eval` is different:
 
-**QAG scoring** — Instead of asking a judge "rate this 1-10", we generate yes/no questions about the output and score by the fraction answered correctly. Binary questions are easier for LLMs to get right, fully auditable, and cheaper. [Benchmarked at 65% fewer false positives](https://github.com/multivon-ai/multivon-eval/tree/main/benchmarks) than numeric scoring.
+**QAG scoring** — Instead of asking a judge "rate this 1-10", we generate yes/no questions about the output and score by the fraction answered correctly. Binary questions eliminate scale ambiguity, are easier for LLMs to answer consistently, and are fully auditable — every score is explained by which questions passed or failed.
 
 **Agent-native** — Built-in evaluators for tool call accuracy, plan quality, step faithfulness, and task completion. Covers agent traces from any framework (LangChain, LlamaIndex, custom).
 
@@ -371,7 +371,7 @@ Produces append-only NDJSON audit records, SHA-256 hashed. Each evaluator result
 
 ## Statistical rigor
 
-Backed by [NAACL 2025](https://arxiv.org/abs/2502.01775): single-run benchmark scores are unreliable — variance is large enough to reverse model rankings.
+Backed by NAACL 2025 research: single-run benchmark scores are unreliable — variance is large enough to reverse model rankings.
 
 ### CIs shown by default
 

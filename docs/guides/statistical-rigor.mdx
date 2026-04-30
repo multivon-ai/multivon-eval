@@ -3,7 +3,7 @@ title: Statistical Rigor
 description: Confidence intervals, power analysis, multiple comparison correction, and judge calibration.
 ---
 
-Single-run benchmark scores are unreliable. [NAACL 2025](https://arxiv.org/abs/2502.01775) showed that variance between runs is large enough to reverse model rankings — a model that looks 5% better in one run may simply be lucky.
+Single-run benchmark scores are unreliable. NAACL 2025 research showed that variance between runs is large enough to reverse model rankings — a model that looks 5% better in one run may simply be lucky.
 
 multivon-eval operationalizes this: CIs on every report by default, power warnings, multiple comparison correction, and judge calibration against human ground truth.
 
@@ -32,7 +32,7 @@ The percentiles reveal what `avg_score` hides. A model that scores 0.95 or 0.40 
 
 ## Why single-run scores lie
 
-LLMs are non-deterministic. Even with `temperature=0`, hosted APIs introduce variance through hardware parallelism and batching ([ACL 2025](https://arxiv.org/abs/2503.04483)). A 91% pass rate on 50 cases could be anywhere from 80% to 97% if you ran the same cases again.
+LLMs are non-deterministic. Even with `temperature=0`, hosted APIs introduce variance through hardware parallelism and batching. A 91% pass rate on 50 cases could be anywhere from 80% to 97% if you ran the same cases again.
 
 **The fix:** run more cases, run each case multiple times, and use confidence intervals to understand what your score actually means.
 
