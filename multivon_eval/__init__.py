@@ -38,9 +38,10 @@ from .dataset import load, load_jsonl, load_csv
 from .generate import generate_from_text, generate_from_file, generate_hallucination_pairs
 from .experiments import (
     Experiment, list_experiments, wilson_interval, bootstrap_interval,
-    runs_needed, min_detectable_effect, cohens_h,
+    runs_needed, min_detectable_effect, cohens_h, benjamini_hochberg,
 )
 from .compliance import ComplianceReporter
+from .result import CalibrationResult
 from .evaluators import (
     # Deterministic
     NotEmpty, ExactMatch, Contains, RegexMatch,
@@ -76,9 +77,11 @@ __all__ = [
     "load", "load_jsonl", "load_csv",
     # Generation
     "generate_from_text", "generate_from_file", "generate_hallucination_pairs",
-    # Experiments
+    # Experiments + statistics
     "Experiment", "list_experiments", "wilson_interval", "bootstrap_interval",
-    "runs_needed", "min_detectable_effect", "cohens_h",
+    "runs_needed", "min_detectable_effect", "cohens_h", "benjamini_hochberg",
+    # Calibration
+    "CalibrationResult",
     # Compliance
     "ComplianceReporter",
     # Deterministic

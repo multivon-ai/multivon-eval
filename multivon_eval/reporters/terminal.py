@@ -107,12 +107,16 @@ def print_report(report: EvalReport) -> None:
 
     # Summary panel
     rate_color = "green" if report.pass_rate >= 0.8 else "yellow" if report.pass_rate >= 0.5 else "red"
+    ci_lo, ci_hi = report.pass_rate_ci()
+    score_lo, score_hi = report.avg_score_ci()
     summary = (
         f"[bold]Total:[/] {report.total}   "
         f"[green]Passed:[/] {report.passed}   "
         f"[red]Failed:[/] {report.failed}   "
-        f"[bold]Pass Rate:[/] [{rate_color}]{report.pass_rate:.1%}[/]   "
-        f"[bold]Avg Score:[/] {report.avg_score:.2f}"
+        f"[bold]Pass Rate:[/] [{rate_color}]{report.pass_rate:.1%}[/] "
+        f"[dim][{ci_lo:.0%}–{ci_hi:.0%} 95% CI][/]   "
+        f"[bold]Avg Score:[/] {report.avg_score:.2f} "
+        f"[dim][{score_lo:.2f}–{score_hi:.2f}][/]"
     )
     if multi_run:
         stab_color = "green" if report.stability_score >= 0.9 else "yellow" if report.stability_score >= 0.7 else "red"
@@ -120,5 +124,33 @@ def print_report(report: EvalReport) -> None:
             f"   [bold]Stability:[/] [{stab_color}]{report.stability_score:.0%}[/]"
             f"   [bold]Flaky:[/] {report.flaky_count}"
         )
+    # Score percentiles
+    pct = report.score_percentiles()
+    if pct and report.total > 2:
+        summary += (
+            f"\n[dim]Score distribution  p10:{pct.get('p10', 0):.2f}  "
+            f"p50:{pct.get('p50', 0):.2f}  p90:{pct.get('p90', 0):.2f}[/]"
+        )
     console.print(Panel(summary, title="Summary", border_style="dim"))
+
+    # Power warning: flag when dataset is too small to detect meaningful changes
+    if report.total > 0:
+        from ..experiments import min_detectable_effect, runs_needed
+        mde = min_detectable_effect(report.total)
+        if mde > 0.20:
+            needed = runs_needed(0.10)
+            console.print(
+                f"  [yellow]⚡ Power warning:[/] {report.total} case(s) — "
+                f"minimum detectable change at 80% power is [bold]~{mde:.0%}[/]. "
+                f"Add ≥{needed} cases to reliably detect a 10pp shift."
+            )
+
+    # Judge reliability
+    if report.judge_reliability is not None:
+        rel_color = "green" if report.judge_reliability >= 0.85 else "yellow" if report.judge_reliability >= 0.70 else "red"
+        console.print(
+            f"  [dim]Judge consistency:[/] [{rel_color}]{report.judge_reliability:.0%}[/] "
+            f"[dim]agreement across repeated calls (sampled {report.total} cases)[/]"
+        )
+
     console.print()

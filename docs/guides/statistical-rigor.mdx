@@ -1,11 +1,32 @@
 ---
 title: Statistical Rigor
-description: Confidence intervals, power analysis, and when to trust your eval scores.
+description: Confidence intervals, power analysis, multiple comparison correction, and judge calibration.
 ---
 
 Single-run benchmark scores are unreliable. [NAACL 2025](https://arxiv.org/abs/2502.01775) showed that variance between runs is large enough to reverse model rankings — a model that looks 5% better in one run may simply be lucky.
 
-multivon-eval is the only eval library that operationalizes this: confidence intervals on every comparison, a minimum-cases calculator, and power hints when your test suite is too small to trust the result.
+multivon-eval operationalizes this: CIs on every report by default, power warnings, multiple comparison correction, and judge calibration against human ground truth.
+
+---
+
+## CIs shown by default
+
+Every `suite.run()` report now includes confidence intervals without any extra code:
+
+```
+Pass Rate: 80% [69%–89% 95% CI]   Avg Score: 0.82 [0.74–0.90]
+Score distribution  p10:0.41  p50:0.88  p90:0.96
+```
+
+Access them programmatically:
+
+```python
+lo, hi = report.pass_rate_ci()        # Wilson 95% CI on pass rate
+lo, hi = report.avg_score_ci()        # bootstrap 95% CI on mean score
+pct    = report.score_percentiles()   # {"p10": 0.41, "p50": 0.88, "p90": 0.96}
+```
+
+The percentiles reveal what `avg_score` hides. A model that scores 0.95 or 0.40 (never in between) has the same `avg_score` as one that always scores 0.67 — but they behave very differently. A bimodal distribution usually means the evaluation criterion has a sharp decision boundary and your model is straddling it.
 
 ---
 
@@ -127,11 +148,79 @@ for cr in report.case_results:
 
 ---
 
+## Multiple comparison correction
+
+Running N evaluators and reporting N raw p-values inflates the false positive rate. At α=0.05 with 10 evaluators, you'd expect ~0.5 spurious "significant" results per run just by chance.
+
+`exp.compare()` applies Benjamini-Hochberg correction automatically when comparing evaluator scores, showing adjusted p-values with `*` for those that survive correction:
+
+```
+  Evaluator scores         Before           After    BH-adj p
+  ────────────────────────────────────────────────────────────
+  faithfulness             0.7800  →   0.6800  ↓   0.023 *
+  context_precision        0.9200  →   0.7900  ↓   0.034 *
+  relevance                0.8800  →   0.8600        0.412
+
+  (* significant after Benjamini-Hochberg correction, FDR 5%)
+```
+
+For standalone use:
+
+```python
+from multivon_eval import benjamini_hochberg
+
+# p-values from 5 simultaneous tests
+raw = [0.001, 0.040, 0.030, 0.200, 0.800]
+adj = benjamini_hochberg(raw)
+# → [0.005, 0.067, 0.067, 0.250, 0.800]
+# Only the first test survives at FDR 5%
+```
+
+BH is less conservative than Bonferroni — it controls the *rate* of false discoveries rather than the probability of *any* false discovery.
+
+---
+
+## Judge calibration
+
+A passing eval score only means something if your judge actually agrees with human judgment. `suite.calibrate()` measures this directly.
+
+```python
+result = suite.calibrate([
+    (EvalCase(input="How do I cancel?"), "Please contact billing.", False),
+    (EvalCase(input="Reset password?"),  "Click Forgot Password.",  True),
+    # ... more (case, output, human_pass) tuples
+])
+print(result)
+```
+
+```
+Judge Calibration — 50 labeled cases
+  Agreement:  88.0%
+  Precision:  84.0%
+  Recall:     91.0%
+  F1 Score:   87.4%
+  By evaluator:
+    faithfulness: agreement=90.0%  F1=89.0%
+    relevance:    agreement=82.0%  F1=80.0%
+```
+
+**Interpreting the results:**
+
+- **Agreement ≥ 85%**: judge is reliable for CI gating
+- **Agreement 70–85%**: usable for iteration but don't gate deploys on it alone
+- **Agreement < 70%**: judge and humans disagree too often — reconsider your evaluator or threshold
+
+Low precision means the judge passes cases humans would reject (over-permissive). Low recall means the judge rejects cases humans would pass (over-strict). Both affect CI reliability differently.
+
+---
+
 ## Interpretation checklist
 
 Before trusting an eval result, ask:
 
 1. **Is the improvement statistically significant?** (`exp.compare()` shows p-value)
 2. **Are the confidence intervals non-overlapping?** If CI(before) and CI(after) overlap, the difference is inconclusive.
-3. **Do I have enough cases?** Use `runs_needed()` to check before running.
+3. **Do I have enough cases?** The power warning tells you automatically; use `runs_needed()` to plan ahead.
 4. **Are there flaky cases inflating the variance?** Check `report.flaky_count`.
+5. **Are multi-evaluator comparisons corrected?** `exp.compare()` applies BH correction automatically; watch the `*` markers.
+6. **Is my judge calibrated?** Run `suite.calibrate()` once on a labeled sample before using eval scores to gate deploys.

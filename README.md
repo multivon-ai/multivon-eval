@@ -14,16 +14,17 @@ Run structured evals over your AI outputs — from simple string checks to LLM-a
 ---
 
 ```python
-from multivon_eval import EvalSuite, EvalCase, Relevance, Faithfulness, NotEmpty
+from multivon_eval import EvalSuite, EvalCase
 
 suite = EvalSuite("Support Bot Eval")
+suite.add_check("Response explains how to resolve the issue")
+suite.add_check("Tone is professional and not defensive", threshold=0.8)
 suite.add_cases([
     EvalCase(
         input="How do I reset my password?",
         context="Users can reset their password by clicking 'Forgot Password' on the login page.",
     ),
 ])
-suite.add_evaluators(NotEmpty(), Relevance(), Faithfulness())
 report = suite.run(my_model_fn)
 ```
 
@@ -33,14 +34,16 @@ report = suite.run(my_model_fn)
   1  How do I reset my pas...   Click 'Forgot Passwor…   0.92   PASS      843ms
 
                            By Evaluator
-  Evaluator       Avg Score    Pass Rate
-  not_empty          1.00        100%
-  relevance          0.88         88%
-  faithfulness       0.87         87%
+  Evaluator           Avg Score    Pass Rate
+  response_explains      0.92        100%
+  tone_is_profess…       0.88         88%
 
-╭─────────────────────── Summary ───────────────────────╮
-│ Total: 1   Passed: 1   Failed: 0   Pass Rate: 100%   │
-╰────────────────────────────────────────────────────────╯
+╭────────────────────────────────── Summary ───────────────────────────────────╮
+│ Total: 1   Passed: 1   Failed: 0                                              │
+│ Pass Rate: 100% [20%–100% 95% CI]   Avg Score: 0.90 [0.82–0.96]             │
+╰──────────────────────────────────────────────────────────────────────────────╯
+  ⚡ Power warning: 1 case(s) — minimum detectable change at 80% power is ~100%.
+  Add ≥291 cases to reliably detect a 10pp shift.
 ```
 
 ---
@@ -51,9 +54,12 @@ Every team building AI products hits the same problem: **how do you know if your
 
 | Feature | multivon-eval | DeepEval | RAGAS | Promptfoo |
 |---|:---:|:---:|:---:|:---:|
+| Plain-English checks (`add_check`) | ✓ | — | — | — |
 | Multi-run + flakiness detection | ✓ | — | — | — |
-| Wilson CI + power analysis | ✓ | — | — | — |
-| Statistical significance in comparisons | ✓ | — | — | — |
+| CI on every report (Wilson + bootstrap) | ✓ | — | — | — |
+| Multiple-comparison correction (BH) | ✓ | — | — | — |
+| Power warning + dataset size guidance | ✓ | — | — | — |
+| Judge calibration against human labels | ✓ | — | — | — |
 | QAG scoring (binary questions, not 1-10) | ✓ | — | — | — |
 | Agent-native evaluators (8 metrics) | ✓ | ✓ | partial | — |
 | LangChain / LangSmith integration | ✓ | ✓ | ✓ | partial |
@@ -72,11 +78,13 @@ Every team building AI products hits the same problem: **how do you know if your
 
 **Four tiers** — Deterministic (free, instant), LLM-judge (QAG), agent-trace, and conversation evaluators. Mix and match; pay for LLM calls only where it matters.
 
+**Plain-English checks** — `suite.add_check("Response explains the return policy")` auto-generates yes/no QAG questions from your criterion. No evaluator class to pick, no prompt to craft. Pin the generated questions for reproducible CI runs.
+
 **No cold-start** — Generate eval cases from your docs with `generate_from_file()`. No labeled data required to get started.
 
 **Reliability & flakiness detection** — LLMs are non-deterministic. Run each case N times with `suite.run(runs=5)` to detect cases that pass sometimes and fail others. Statistical significance in experiment comparison tells you whether a regression is real or noise.
 
-**Statistical rigor built in** — Wilson score confidence intervals on pass rates. `runs_needed(delta=0.05)` tells you how many test cases you need before a 5% improvement is statistically detectable. Backed by NAACL 2025: single-run eval scores are unreliable.
+**Statistical rigor built in** — CIs shown by default on every report (Wilson for pass rate, bootstrap for avg score). Score percentiles (p10/p50/p90) expose bimodal distributions that avg_score hides. Power warning when your dataset is too small. Benjamini-Hochberg correction for multi-evaluator comparisons. Judge calibration against human labels. Backed by NAACL 2025: single-run eval scores are unreliable.
 
 **Agent trajectory evaluation** — Beyond "did the task complete?": evaluate whether tool calls were necessary, whether the agent took the optimal number of steps, and whether it recovered correctly from tool failures. Plus `AgentMemoryEval` for multi-session agents.
 
@@ -365,32 +373,82 @@ Produces append-only NDJSON audit records, SHA-256 hashed. Each evaluator result
 
 Backed by [NAACL 2025](https://arxiv.org/abs/2502.01775): single-run benchmark scores are unreliable — variance is large enough to reverse model rankings.
 
-### Confidence intervals on pass rates
+### CIs shown by default
 
-```python
-from multivon_eval import wilson_interval
+Every report now includes confidence intervals without any extra code:
 
-# 95% Wilson score CI for 80 passing out of 100 cases
-lo, hi = wilson_interval(80, 100)
-print(f"95% CI: [{lo:.1%}, {hi:.1%}]")   # → [71.1%, 86.7%]
-
-# experiment.compare() now shows CIs automatically:
-#   95% CI (before): [71.4%, 89.3%]
-#   95% CI (after):  [83.5%, 96.2%]
+```
+Pass Rate: 80% [69%–89% 95% CI]   Avg Score: 0.82 [0.74–0.90]
+Score distribution  p10:0.41  p50:0.88  p90:0.96
 ```
 
-### Minimum test cases calculator
+The p10/p50/p90 percentiles catch bimodal distributions — a model that scores 0.95 or 0.40 (never 0.67) has the same `avg_score` as one that always scores 0.67, but they behave very differently.
 
 ```python
-from multivon_eval import runs_needed
-
-# How many test cases do you need to detect a 10% improvement?
-n = runs_needed(delta=0.10)          # → 291
-n = runs_needed(delta=0.05)          # → 1248
-n = runs_needed(delta=0.10, power=0.90)  # higher power → more cases
+lo, hi = report.pass_rate_ci()       # Wilson 95% CI
+lo, hi = report.avg_score_ci()       # bootstrap 95% CI
+pct = report.score_percentiles()     # {"p10": 0.41, "p50": 0.88, "p90": 0.96}
 ```
 
-If `exp.compare()` finds a non-significant difference, it now automatically suggests the minimum number of test cases needed to confirm or rule out that effect.
+### Power warning
+
+When your test set is too small, the terminal tells you before you interpret the results:
+
+```
+⚡ Power warning: 12 case(s) — minimum detectable change at 80% power is ~45%.
+   Add ≥291 cases to reliably detect a 10pp shift.
+```
+
+```python
+from multivon_eval import runs_needed, min_detectable_effect
+
+runs_needed(delta=0.10)          # → 291 cases for 10pp detection
+min_detectable_effect(n=50)      # → ~19% — the smallest change 50 cases can detect
+```
+
+### Multiple comparison correction
+
+Running 10 evaluators and reporting raw p-values inflates false positives. `exp.compare()` now shows Benjamini-Hochberg adjusted p-values for each evaluator automatically, with `*` markers for those significant after correction.
+
+```python
+from multivon_eval import benjamini_hochberg
+
+# Standalone: correct a list of p-values from simultaneous tests
+raw = [0.001, 0.040, 0.030, 0.200, 0.800]
+adj = benjamini_hochberg(raw)   # → [0.005, 0.067, 0.067, 0.250, 0.800]
+```
+
+### Judge calibration
+
+Validate that your LLM judge actually agrees with human judgment before using it in CI:
+
+```python
+result = suite.calibrate([
+    (EvalCase(input="How do I cancel?"), "Please contact billing.", False),
+    (EvalCase(input="How do I reset my password?"), "Click Forgot Password.", True),
+    # ... more labeled pairs
+])
+print(result)
+# Judge Calibration — 50 labeled cases
+#   Agreement:  88.0%
+#   Precision:  84.0%   Recall: 91.0%   F1: 87.4%
+#   By evaluator:
+#     faithfulness: agreement=90.0%  F1=89.0%
+```
+
+### Judge reliability check
+
+Detect judge non-determinism — the eval equivalent of model flakiness:
+
+```python
+from multivon_eval import configure, JudgeConfig
+
+configure(JudgeConfig(reliability_check=True, reliability_sample=10))
+report = suite.run(model_fn)
+# report.judge_reliability → 0.91  (91% agreement across repeated judge calls)
+```
+
+If judge reliability is below 85%, your eval scores contain substantial noise from the judge itself, not just from your model.
 
 ---
 
@@ -568,15 +626,23 @@ pytest tests/ -v
 - [x] PII detection (local, zero API calls)
 - [x] Schema validation (Pydantic + JSON Schema)
 - [x] Compliance audit trail (EU AI Act / NIST AI RMF)
-- [x] Wilson score confidence intervals on pass rates
-- [x] Minimum test cases calculator (`runs_needed`)
+- [x] Wilson score confidence intervals on pass rates (shown by default in terminal)
+- [x] Bootstrap CI on avg score + score percentiles (p10/p50/p90)
+- [x] Power warning when dataset is too small
+- [x] Benjamini-Hochberg multiple comparison correction in `exp.compare()`
+- [x] Effect size (Cohen's h) + min-detectable-effect in experiment comparison
+- [x] Judge reliability check (`JudgeConfig(reliability_check=True)`)
+- [x] Judge calibration against human labels (`suite.calibrate()`)
+- [x] Plain-English checks (`suite.add_check()`)
+- [x] Built-in model adapters (`run_with_openai`, `run_with_anthropic`)
+- [x] Minimum test cases calculator (`runs_needed`, `min_detectable_effect`)
 - [x] Parallel + async runners
 - [x] CLI (`multivon-eval run`, `multivon-eval report`, `--html`, `--json`)
 - [x] HTML report export (self-contained, shareable)
 - [x] Framework integrations (LangChain, LangSmith, ManualTracer)
 - [ ] LlamaIndex / CrewAI integrations
 - [ ] Pytest plugin (`@eval_case` decorator)
-- [ ] Effect size (Cohen's h) + min-detectable-effect in experiment comparison
+- [ ] LiteLLM adapter (covers Azure, Bedrock, Vertex, 100+ providers)
 - [ ] Tiered eval cost optimizer (heuristic → local model → frontier)
 - [ ] Agent simulation / adversarial user testing
 

@@ -6,7 +6,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import TYPE_CHECKING, Any, Callable, Awaitable
 
 from .case import EvalCase
-from .result import CaseResult, EvalReport, EvalResult
+from .result import CalibrationResult, CaseResult, EvalReport, EvalResult
 from .evaluators.base import Evaluator
 from .evaluators.deterministic import Latency, MaxLatency
 from .reporters.terminal import print_report
@@ -206,10 +206,15 @@ class EvalSuite:
                 for case in self._cases
             ]
 
+        judge_reliability = _measure_judge_reliability(
+            self._evaluators, case_results, self._cases
+        )
+
         report = EvalReport(
             suite_name=self.name,
             case_results=case_results,
             model_id=self.model_id,
+            judge_reliability=judge_reliability,
         )
 
         if verbose:
@@ -354,6 +359,80 @@ class EvalSuite:
             )
 
         return report
+
+    def calibrate(
+        self,
+        labeled_pairs: "list[tuple[EvalCase, str, bool]]",
+    ) -> "CalibrationResult":
+        """
+        Measure judge accuracy against human-labeled ground truth.
+
+        Runs all evaluators on each (case, output) pair and compares pass/fail
+        decisions against your human labels. Reports agreement, precision, recall,
+        and F1 per evaluator — revealing which judges are calibrated and which drift.
+
+        Args:
+            labeled_pairs: List of (case, model_output, human_pass_label) tuples.
+                           human_pass_label=True means a human expert marked this
+                           case as passing.
+
+        Returns:
+            CalibrationResult with per-evaluator and overall accuracy metrics.
+
+        Example:
+            result = suite.calibrate([
+                (EvalCase(input="What is 2+2?"), "4", True),
+                (EvalCase(input="What is 2+2?"), "purple", False),
+            ])
+            print(result)
+        """
+        from .result import CalibrationResult
+
+        tp = fp = fn = tn = 0
+        by_ev: dict[str, dict[str, int]] = {}
+
+        for case, output, human_pass in labeled_pairs:
+            for ev in self._evaluators:
+                r = ev.evaluate(case, output)
+                ev_name = r.evaluator
+                counts = by_ev.setdefault(ev_name, {"tp": 0, "fp": 0, "fn": 0, "tn": 0})
+                if human_pass and r.passed:
+                    tp += 1; counts["tp"] += 1
+                elif not human_pass and r.passed:
+                    fp += 1; counts["fp"] += 1
+                elif human_pass and not r.passed:
+                    fn += 1; counts["fn"] += 1
+                else:
+                    tn += 1; counts["tn"] += 1
+
+        total = tp + fp + fn + tn
+        agreement = (tp + tn) / total if total > 0 else 0.0
+        precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+        recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+        f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
+
+        ev_stats: dict[str, dict[str, float]] = {}
+        for ev_name, c in by_ev.items():
+            _total = c["tp"] + c["fp"] + c["fn"] + c["tn"]
+            _agr = (c["tp"] + c["tn"]) / _total if _total > 0 else 0.0
+            _prec = c["tp"] / (c["tp"] + c["fp"]) if (c["tp"] + c["fp"]) > 0 else 0.0
+            _rec = c["tp"] / (c["tp"] + c["fn"]) if (c["tp"] + c["fn"]) > 0 else 0.0
+            _f1 = 2 * _prec * _rec / (_prec + _rec) if (_prec + _rec) > 0 else 0.0
+            ev_stats[ev_name] = {
+                "agreement": round(_agr, 4),
+                "precision": round(_prec, 4),
+                "recall": round(_rec, 4),
+                "f1": round(_f1, 4),
+            }
+
+        return CalibrationResult(
+            n=len(labeled_pairs),
+            agreement=round(agreement, 4),
+            precision=round(precision, 4),
+            recall=round(recall, 4),
+            f1=round(f1, 4),
+            by_evaluator=ev_stats,
+        )
 
     def _run_parallel(
         self, model_fn: Callable[[str], str], workers: int, runs: int
@@ -755,10 +834,15 @@ class EvalSuite:
 
         case_results = await asyncio.gather(*[_run_one_async(c) for c in self._cases])
 
+        judge_reliability = _measure_judge_reliability(
+            self._evaluators, list(case_results), self._cases
+        )
+
         report = EvalReport(
             suite_name=self.name,
             case_results=list(case_results),
             model_id=self.model_id,
+            judge_reliability=judge_reliability,
         )
 
         if verbose:
@@ -845,3 +929,48 @@ def _sprt_stop(runs_so_far: list[CaseResult], alpha: float = 0.05, beta: float =
         return True
 
     return False
+
+
+def _measure_judge_reliability(
+    evaluators: "list[Evaluator]",
+    case_results: "list[CaseResult]",
+    original_cases: "list[EvalCase]",
+) -> "float | None":
+    """
+    Re-run LLM evaluators on a sample of (case, output) pairs and measure
+    agreement between first and second judge calls. Returns None if reliability
+    check is disabled or there are no LLM evaluators to check.
+
+    Agreement is % of (case, evaluator) pairs where both calls return the same
+    pass/fail decision. High variance in the judge (< 80% agreement) means
+    your eval scores contain substantial noise from the judge itself.
+    """
+    from .judge import get_global_judge
+    judge_cfg = get_global_judge()
+    if not judge_cfg.reliability_check or not case_results:
+        return None
+
+    import random as _rand
+    sample_size = min(judge_cfg.reliability_sample, len(case_results))
+    sample_indices = _rand.sample(range(len(case_results)), sample_size)
+
+    agreements: list[bool] = []
+    for idx in sample_indices:
+        cr = case_results[idx]
+        orig_case = original_cases[idx] if idx < len(original_cases) else EvalCase(input=cr.case_input)
+        for ev in evaluators:
+            if not hasattr(ev, "evaluate"):
+                continue
+            ev_name = getattr(ev, "name", type(ev).__name__.lower())
+            first = next((r for r in cr.results if r.evaluator == ev_name), None)
+            if first is None:
+                continue
+            try:
+                second = ev.evaluate(orig_case, cr.actual_output)
+                agreements.append(first.passed == second.passed)
+            except Exception:
+                pass
+
+    if not agreements:
+        return None
+    return round(sum(agreements) / len(agreements), 4)

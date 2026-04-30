@@ -54,6 +54,8 @@ class JudgeConfig:
     temperature: float = 0.0
     max_tokens: int = 1024
     timeout: int = 30
+    reliability_check: bool = False
+    reliability_sample: int = 5
     # Reserved for future backends (prometheus, minichek, local hf model)
     extra: dict = field(default_factory=dict)
 
@@ -74,6 +76,8 @@ class JudgeConfig:
             temperature=self.temperature,
             max_tokens=self.max_tokens,
             timeout=self.timeout,
+            reliability_check=self.reliability_check,
+            reliability_sample=self.reliability_sample,
             extra=self.extra,
         )
 
@@ -108,6 +112,8 @@ def resolve_judge(per_evaluator: JudgeConfig | None) -> JudgeConfig:
         temperature=override.temperature if override.temperature != 0.0 else base.temperature,
         max_tokens=override.max_tokens if override.max_tokens != 1024 else base.max_tokens,
         timeout=override.timeout if override.timeout != 30 else base.timeout,
+        reliability_check=override.reliability_check or base.reliability_check,
+        reliability_sample=override.reliability_sample if override.reliability_sample != 5 else base.reliability_sample,
         extra={**base.extra, **override.extra},
     )
     return merged.resolve()

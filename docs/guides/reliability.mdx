@@ -120,3 +120,38 @@ For each case across N runs:
 - **Latency**: mean across runs
 
 Per-evaluator scores in the report also use mean + majority vote, so the evaluator breakdown remains interpretable.
+
+---
+
+## Judge reliability
+
+Model flakiness is about your model's variance. **Judge reliability** is about the evaluator's variance — whether the same judge call on the same output produces the same pass/fail decision twice.
+
+Enable it once in your config:
+
+```python
+from multivon_eval import configure, JudgeConfig
+
+configure(JudgeConfig(
+    reliability_check=True,
+    reliability_sample=10,   # cases to re-evaluate (default 5)
+))
+
+report = suite.run(model_fn)
+print(f"Judge consistency: {report.judge_reliability:.0%}")
+```
+
+The terminal output shows it automatically:
+
+```
+  Judge consistency: 91% agreement across repeated judge calls
+```
+
+**What it measures:** After the main eval, the SDK re-runs all evaluators on a random sample of (case, output) pairs and measures how often the judge gives the same pass/fail decision. Low agreement means your eval scores contain noise from the judge, not just from your model.
+
+**Thresholds:**
+- **≥ 85%**: reliable for CI gating
+- **70–85%**: usable for iteration; add more cases to average out judge variance
+- **< 70%**: judge is significantly non-deterministic — lower temperature, use a larger judge model, or pin `questions=` in `CheckEvaluator`
+
+**Note:** `reliability_check=True` makes additional LLM calls (one re-evaluation pass over `reliability_sample` cases). Keep `reliability_sample` low (5–10) for routine runs; increase for audits.

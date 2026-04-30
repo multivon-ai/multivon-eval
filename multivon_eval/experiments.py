@@ -38,7 +38,7 @@ from .result import EvalReport
 __all__ = [
     "Experiment", "list_experiments", "compare_experiments",
     "wilson_interval", "bootstrap_interval", "runs_needed",
-    "min_detectable_effect", "cohens_h",
+    "min_detectable_effect", "cohens_h", "benjamini_hochberg",
 ]
 
 
@@ -65,6 +65,7 @@ class RunRecord:
     runs_per_case: int = 1
     flaky_count: int = 0
     stability_score: float = 1.0
+    pass_by_evaluator: dict[str, float] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return {
@@ -78,6 +79,7 @@ class RunRecord:
             "passed": self.passed,
             "failed": self.failed,
             "scores_by_evaluator": self.scores_by_evaluator,
+            "pass_by_evaluator": self.pass_by_evaluator,
             "tags": self.tags,
             "runs_per_case": self.runs_per_case,
             "flaky_count": self.flaky_count,
@@ -97,6 +99,7 @@ class RunRecord:
             passed=d["passed"],
             failed=d["failed"],
             scores_by_evaluator=d.get("scores_by_evaluator", {}),
+            pass_by_evaluator=d.get("pass_by_evaluator", {}),
             tags=d.get("tags", {}),
             runs_per_case=d.get("runs_per_case", 1),
             flaky_count=d.get("flaky_count", 0),
@@ -145,6 +148,7 @@ class Experiment:
             passed=report.passed,
             failed=report.failed,
             scores_by_evaluator={k: round(v, 4) for k, v in report.scores_by_evaluator().items()},
+            pass_by_evaluator={k: round(v, 4) for k, v in report.passed_by_evaluator().items()},
             tags=tags or {},
             runs_per_case=report.runs_per_case,
             flaky_count=report.flaky_count,
@@ -408,6 +412,43 @@ def bootstrap_interval(
     return (round(means[lo_idx], 4), round(means[hi_idx], 4))
 
 
+def benjamini_hochberg(p_values: list[float], alpha: float = 0.05) -> list[float]:
+    """
+    Benjamini-Hochberg procedure for controlling the False Discovery Rate.
+
+    Use when testing multiple hypotheses simultaneously — e.g., comparing N
+    evaluators in an experiment. Raw p-values inflate the false positive rate:
+    with 10 evaluators at α=0.05 you expect ~0.5 spurious "significant" results.
+    BH corrects for this while being less conservative than Bonferroni.
+
+    Args:
+        p_values: Raw p-values from multiple simultaneous tests.
+        alpha:    FDR level (default 0.05 → 5% false discovery rate).
+
+    Returns:
+        BH-adjusted p-values in the same order as input. A result is
+        significant if its adjusted p-value < alpha.
+
+    Example:
+        raw = [0.001, 0.040, 0.030, 0.200, 0.800]
+        adj = benjamini_hochberg(raw)
+        # adj ≈ [0.005, 0.100, 0.075, 0.250, 0.800]
+    """
+    n = len(p_values)
+    if n == 0:
+        return []
+    indexed = sorted(enumerate(p_values), key=lambda x: x[1])
+    adjusted = [0.0] * n
+    prev = 1.0
+    for rank in range(n, 0, -1):
+        orig_idx, p = indexed[rank - 1]
+        adj = min(p * n / rank, 1.0)
+        adj = min(adj, prev)
+        adjusted[orig_idx] = adj
+        prev = adj
+    return adjusted
+
+
 def _two_proportion_z_test(p1: float, n1: int, p2: float, n2: int) -> float:
     """Two-proportion z-test. Returns p-value (two-tailed)."""
     if n1 == 0 or n2 == 0:
@@ -437,7 +478,7 @@ def _print_comparison(a: RunRecord, b: RunRecord) -> None:
     print(f"  Experiment comparison: {a.run_id} → {b.run_id}")
     print(f"  {'='*60}\n")
 
-    def _row(label: str, va: Any, vb: Any, fmt: str = "") -> None:
+    def _row(label: str, va: Any, vb: Any, fmt: str = "", suffix: str = "") -> None:
         if fmt == "%":
             sa, sb = f"{va:.1%}", f"{vb:.1%}"
             delta = _delta(va, vb)
@@ -448,7 +489,7 @@ def _print_comparison(a: RunRecord, b: RunRecord) -> None:
             sa, sb = str(va), str(vb)
             delta = ""
         change = "↑" if (isinstance(vb, float) and vb > va) else ("↓" if (isinstance(vb, float) and vb < va) else "")
-        print(f"  {label:<24} {sa:>12}  →  {sb:<12} {change} {delta}")
+        print(f"  {label:<24} {sa:>12}  →  {sb:<12} {change} {delta}{suffix}")
 
     print(f"  {'Metric':<24} {'Before':>12}     {'After':<12}")
     print(f"  {'-'*60}")
@@ -467,12 +508,32 @@ def _print_comparison(a: RunRecord, b: RunRecord) -> None:
 
     all_evals = sorted(set(a.scores_by_evaluator) | set(b.scores_by_evaluator))
     if all_evals:
-        print(f"\n  {'Evaluator scores':<24} {'Before':>12}     {'After':<12}")
+        # Compute per-evaluator p-values if pass rates are stored
+        ev_pvals: list[float] = []
+        has_pvals = bool(a.pass_by_evaluator and b.pass_by_evaluator)
+        if has_pvals:
+            for ev in all_evals:
+                pa = a.pass_by_evaluator.get(ev, 0.0)
+                pb = b.pass_by_evaluator.get(ev, 0.0)
+                ev_pvals.append(_two_proportion_z_test(pa, a.total, pb, b.total))
+            adj_pvals = benjamini_hochberg(ev_pvals) if len(ev_pvals) > 1 else ev_pvals
+
+        print(f"\n  {'Evaluator scores':<24} {'Before':>12}     {'After':<12}", end="")
+        if has_pvals:
+            print(f"  {'BH-adj p':>10}", end="")
+        print()
         print(f"  {'-'*60}")
-        for ev in all_evals:
+        for i, ev in enumerate(all_evals):
             va = a.scores_by_evaluator.get(ev, 0.0)
             vb = b.scores_by_evaluator.get(ev, 0.0)
-            _row(f"  {ev}"[:24], va, vb, "f")
+            if has_pvals:
+                ap = adj_pvals[i]
+                sig = " *" if ap < 0.05 else ""
+                _row(f"  {ev}"[:24], va, vb, "f", suffix=f"  {ap:.3f}{sig}")
+            else:
+                _row(f"  {ev}"[:24], va, vb, "f")
+        if has_pvals and len(all_evals) > 1:
+            print(f"  (* significant after Benjamini-Hochberg correction, FDR 5%)")
 
     if a.tags or b.tags:
         print(f"\n  Tags A: {a.tags}")

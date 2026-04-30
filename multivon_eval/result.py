@@ -67,11 +67,37 @@ class CaseResult:
 
 
 @dataclass
+class CalibrationResult:
+    """Judge accuracy against human-labeled ground truth."""
+    n: int
+    agreement: float
+    precision: float
+    recall: float
+    f1: float
+    by_evaluator: dict[str, dict[str, float]] = field(default_factory=dict)
+
+    def __str__(self) -> str:
+        lines = [
+            f"Judge Calibration — {self.n} labeled cases",
+            f"  Agreement:  {self.agreement:.1%}",
+            f"  Precision:  {self.precision:.1%}",
+            f"  Recall:     {self.recall:.1%}",
+            f"  F1 Score:   {self.f1:.1%}",
+        ]
+        if self.by_evaluator:
+            lines.append("  By evaluator:")
+            for ev, stats in self.by_evaluator.items():
+                lines.append(f"    {ev}: agreement={stats['agreement']:.1%}  F1={stats['f1']:.1%}")
+        return "\n".join(lines)
+
+
+@dataclass
 class EvalReport:
     """Aggregated results for an entire eval suite run."""
     suite_name: str
     case_results: list[CaseResult]
     model_id: str = ""
+    judge_reliability: float | None = None
 
     @property
     def total(self) -> int:
@@ -138,6 +164,45 @@ class EvalReport:
         import random
         pool = self.failed_cases if failed_only else self.case_results
         return random.sample(pool, min(n, len(pool)))
+
+    def pass_rate_ci(self, confidence: float = 0.95) -> tuple[float, float]:
+        """Wilson score 95% CI on the pass rate. More reliable than normal approx for small n."""
+        from .experiments import wilson_interval
+        return wilson_interval(self.passed, self.total, confidence)
+
+    def avg_score_ci(self, confidence: float = 0.95) -> tuple[float, float]:
+        """Bootstrap CI on the mean score. Use when n < 30 or score distribution is skewed."""
+        from .experiments import bootstrap_interval
+        scores = [cr.score for cr in self.case_results]
+        return bootstrap_interval(scores, confidence)
+
+    def score_percentiles(self, percentiles: list[int] | None = None) -> dict[str, float]:
+        """
+        Score distribution percentiles. Reveals bimodal patterns avg_score hides.
+
+        A model that scores 0.95 or 0.40 (never in between) has the same avg_score
+        as one that scores 0.67 consistently — but they behave very differently.
+
+        Args:
+            percentiles: Percentile ranks to compute (default [10, 50, 90]).
+
+        Returns:
+            Dict like {"p10": 0.41, "p50": 0.82, "p90": 0.96}.
+        """
+        if percentiles is None:
+            percentiles = [10, 50, 90]
+        scores = sorted(cr.score for cr in self.case_results)
+        if not scores:
+            return {}
+        n = len(scores)
+        result: dict[str, float] = {}
+        for p in percentiles:
+            idx = (p / 100) * (n - 1)
+            lo, hi = int(idx), min(int(idx) + 1, n - 1)
+            frac = idx - lo
+            val = scores[lo] * (1 - frac) + scores[hi] * frac
+            result[f"p{p}"] = round(val, 4)
+        return result
 
     def scores_by_tag(self) -> dict[str, float]:
         """Average score per tag across all tagged cases."""
@@ -234,10 +299,14 @@ class EvalReport:
                     "passed": self.passed,
                     "failed": self.failed,
                     "pass_rate": round(self.pass_rate, 4),
+                    "pass_rate_ci_95": list(self.pass_rate_ci()),
                     "avg_score": round(self.avg_score, 4),
+                    "avg_score_ci_95": list(self.avg_score_ci()),
+                    "score_percentiles": self.score_percentiles(),
                     "runs_per_case": self.runs_per_case,
                     "flaky_count": self.flaky_count,
                     "stability_score": round(self.stability_score, 4),
+                    "judge_reliability": self.judge_reliability,
                     "by_evaluator": {k: round(v, 4) for k, v in self.scores_by_evaluator().items()},
                 },
                 "cases": [
