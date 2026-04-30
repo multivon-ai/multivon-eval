@@ -175,7 +175,7 @@ class BLEU(Evaluator):
             if num == 0:
                 log_avg = float("-inf")
                 break
-            log_avg += math.log(num / denom) / self.n
+            log_avg += math.log(num / denom) / max_n
 
         score = bp * math.exp(log_avg) if log_avg != float("-inf") else 0.0
         score = max(0.0, min(1.0, score))
