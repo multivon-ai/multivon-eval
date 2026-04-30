@@ -34,7 +34,9 @@ dependencies = [
 [project.optional-dependencies]
 litellm = ["litellm>=1.0.0"]
 bertscore = ["bert-score>=0.3.0"]
-all = ["litellm>=1.0.0", "bert-score>=0.3.0"]
+requests = ["requests>=2.28.0"]
+browser = ["playwright>=1.40.0", "requests>=2.28.0"]
+all = ["litellm>=1.0.0", "bert-score>=0.3.0", "requests>=2.28.0", "playwright>=1.40.0"]
 dev = [
     "pytest>=7.0.0",
     "pytest-asyncio>=0.23.0",

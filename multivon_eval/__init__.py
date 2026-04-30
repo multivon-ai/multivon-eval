@@ -42,6 +42,11 @@ from .experiments import (
     mcnemar_test, bayesian_interval,
 )
 from .compliance import ComplianceReporter
+from .targets import (
+    BearerAuth, APIKeyAuth,
+    DeployedAPITarget, MultiTurnAPITarget, BrowserTarget,
+    simulate_users,
+)
 from .result import CalibrationResult, PairwiseReport, PairwiseResult
 from .evaluators import (
     # Deterministic
@@ -88,6 +93,10 @@ __all__ = [
     "PairwiseReport", "PairwiseResult",
     # Compliance
     "ComplianceReporter",
+    # Production targets
+    "BearerAuth", "APIKeyAuth",
+    "DeployedAPITarget", "MultiTurnAPITarget", "BrowserTarget",
+    "simulate_users",
     # Deterministic
     "NotEmpty", "ExactMatch", "Contains", "RegexMatch",
     "JSONSchemaEval", "WordCount", "Latency", "MaxLatency",
