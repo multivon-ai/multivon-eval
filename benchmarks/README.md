@@ -22,6 +22,8 @@ python benchmarks/run_all_benchmarks.py
 | Faithfulness (summarization) | F1 0.480 | F1 0.448 | F1 0.667 | F1 0.627 |
 | Coherence detection | see run | — | see run | — |
 | Answer accuracy | see run | — | see run | see run |
+| SummEval coherence (Spearman ρ) | TBD | — | TBD | — |
+| SummEval relevance (Spearman ρ) | TBD | — | TBD | — |
 
 Judge models: multivon-eval uses `claude-haiku-4-5-20251001`; DeepEval uses `gpt-4o-mini`. Same judge disclosed per run.
 
@@ -164,7 +166,7 @@ Comparing evaluators against each other tells you which one scores higher, not w
 
 ## Planned benchmarks
 
-- [ ] Faithfulness — calibrated for long-document summarization (SummEval dataset)
+- [x] SummEval Spearman correlation — coherence and relevance (`run_summeval_benchmark.py`, run to fill TBD above)
 - [ ] Agent tool call accuracy — custom golden set from real agent traces
 - [ ] RAGAS comparison — faithfulness and context precision on real RAG pipelines
 - [ ] Cost per evaluation — tokens used and cost vs. accuracy tradeoff table
@@ -184,6 +186,7 @@ cp .env.example .env  # add ANTHROPIC_API_KEY and OPENAI_API_KEY
 python benchmarks/run_hallucination_benchmark.py   # ~8 min, 400 API calls
 python benchmarks/run_faithfulness_benchmark.py    # ~6 min, 240 API calls
 python benchmarks/run_relevance_benchmark.py       # ~4 min, 120 API calls
+python benchmarks/run_summeval_benchmark.py        # ~15 min, ~400 API calls, downloads ~5 MB
 
 # Or run all at once
 python benchmarks/run_all_benchmarks.py
