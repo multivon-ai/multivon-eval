@@ -60,6 +60,7 @@
               "guides/synthetic-data",
               "guides/ci-cd",
               "guides/integrations",
+              "guides/production-targets",
               "guides/custom-evaluators"
             ]
           }

@@ -1,0 +1,221 @@
+---
+title: Production targets
+description: Run evals against deployed REST APIs, multi-turn sessions, and real browsers — not just local functions.
+---
+
+Production targets let you point an `EvalSuite` at a system that's actually serving users. Each target is just a callable that takes a string and returns a string, so you can pass it directly to `suite.run()` anywhere a `model_fn` is accepted.
+
+Install the extras you need:
+
+```bash
+pip install multivon-eval                  # core only
+pip install 'multivon-eval[requests]'      # DeployedAPITarget, MultiTurnAPITarget
+pip install 'multivon-eval[browser]'       # BrowserTarget (Playwright)
+pip install 'multivon-eval[all]'           # everything
+```
+
+After installing the `browser` extra, also run `playwright install chromium` once.
+
+## DeployedAPITarget
+
+Wraps a deployed REST endpoint as an eval target. Handles auth, retries, rate limiting, and response extraction from nested JSON.
+
+```python
+import os
+from multivon_eval import DeployedAPITarget, BearerAuth
+
+target = DeployedAPITarget(
+    url="https://api.yourapp.com/v1/chat",
+    auth=BearerAuth(os.getenv("API_KEY")),
+    output_path="choices.0.message.content",
+)
+report = suite.run(target, runs=3)
+```
+
+### Parameters
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `url` | `str` | — | Full endpoint URL. |
+| `method` | `str` | `"POST"` | HTTP method. |
+| `auth` | `BearerAuth \| APIKeyAuth \| None` | `None` | Auth helper attached to every request. |
+| `input_key` | `str` | `"message"` | Key in the request body that receives the input string. |
+| `output_path` | `str` | `"response"` | Dot-notation path to extract the response from the JSON body. List indices are supported, e.g. `"choices.0.message.content"`. |
+| `extra_body` | `dict[str, Any] \| None` | `None` | Additional fields merged into every request body. |
+| `headers` | `dict[str, str] \| None` | `None` | Additional HTTP headers. |
+| `timeout` | `int` | `30` | Per-request timeout in seconds. |
+| `retries` | `int` | `2` | Number of retry attempts on `429` and `5xx` responses. |
+| `rate_limit` | `float \| None` | `None` | Max requests per second. `None` disables limiting. |
+
+### Behavior
+
+- **Auth.** `BearerAuth(token)` sends `Authorization: Bearer <token>`. `APIKeyAuth(key, header="X-API-Key")` sends a custom header. Pass either one to the `auth` argument; their headers are merged with `headers`.
+- **Retries.** `429` and `5xx` responses are retried with exponential backoff using `(2 ** attempt) * 0.5` seconds between attempts. After all retries are exhausted, a `RuntimeError` is raised with the last status code and attempt count, e.g. `DeployedAPITarget failed after 3 attempt(s): HTTP 503 after 3 attempt(s)`.
+- **Missing dependency.** If the `requests` package isn't installed, the constructor raises `ImportError` immediately rather than failing on the first call.
+- **Response extraction.** `output_path` walks the JSON response. Each segment is treated as a list index when the current value is a list, otherwise as a dict key. Missing keys return an empty string.
+
+## MultiTurnAPITarget
+
+Session-aware target for evaluating multi-turn conversations. Initializes a session (optional), sends the running history on each turn, and supports `EvalCase.conversation`.
+
+```python
+from multivon_eval import MultiTurnAPITarget, BearerAuth
+
+target = MultiTurnAPITarget(
+    url="https://api.yourapp.com/v1/chat",
+    auth=BearerAuth(os.getenv("API_KEY")),
+    session_init_url="https://api.yourapp.com/v1/sessions",
+    session_id_path="session_id",
+    session_header="X-Session-ID",
+    output_path="response",
+)
+
+final, _ = target.run_conversation([
+    {"role": "user", "content": "Hi, I need to cancel my subscription."},
+    {"role": "assistant", "content": "Sure — what's your account email?"},
+    {"role": "user", "content": "alex@example.com"},
+])
+```
+
+### Parameters
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `url` | `str` | — | Per-turn endpoint URL. |
+| `auth` | `BearerAuth \| APIKeyAuth \| None` | `None` | Auth helper. |
+| `session_init_url` | `str \| None` | `None` | Optional URL to `POST` once at the start of a conversation to create a session. |
+| `session_id_path` | `str` | `"session_id"` | Dot-notation path to extract the session ID from the init response. |
+| `session_header` | `str` | `"X-Session-ID"` | Header name used to send the session ID on subsequent requests. |
+| `history_key` | `str` | `"messages"` | Key in the request body that carries the conversation history so far. |
+| `input_key` | `str` | `"message"` | Key in the request body for the current user message. |
+| `output_path` | `str` | `"response"` | Dot-notation path to extract the response from each turn's JSON body. |
+| `timeout` | `int` | `30` | Per-request timeout in seconds. |
+| `retries` | `int` | `2` | Retry attempts on errors. |
+
+### Behavior
+
+- Calling `target(input)` is a single-turn shortcut — it wraps `run_conversation` for `suite.run()` compatibility.
+- `run_conversation(turns, evaluators=None)` returns `(final_response, eval_results)`. Each `user` turn is sent with the running history; `assistant` turns in the input are appended directly without making a request.
+- On error after all retries, the turn's response is set to the literal string `"[API ERROR]"` and the conversation continues.
+
+## BrowserTarget
+
+<Warning>
+**Experimental.** API and behavior may change. Known limitations:
+
+- No page state reset between eval cases. The page stays open across calls; a chat UI that accumulates history will work, but anything with per-session state will not.
+- Login uses hard-coded selectors (`input[type='email']`, `input[type='password']`). OAuth, SSO, and CAPTCHA are not supported.
+- `wait_for_load_state("networkidle")` is unreliable for SPAs with long-polling or WebSocket connections. Pass a `wait_for=` selector to wait on a specific response element instead.
+- No context manager support. Call `close()` explicitly or wrap usage in `try`/`finally` to avoid leaking browser processes on failure.
+</Warning>
+
+Playwright-based target for browser-rendered AI applications. Opens a real browser, optionally logs in, submits input via a CSS selector, waits for the response, and extracts the response text.
+
+```python
+from multivon_eval import BrowserTarget
+
+target = BrowserTarget(
+    url="https://chat.yourapp.com",
+    input_selector="textarea[name='prompt']",
+    submit_selector="button[type='submit']",
+    response_selector=".message.assistant:last-child",
+    wait_for=".message.assistant:last-child",
+    login={"email": os.getenv("APP_USER"), "password": os.getenv("APP_PASS")},
+    headless=True,
+)
+try:
+    report = suite.run(target)
+finally:
+    target.close()
+```
+
+### Parameters
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `url` | `str` | — | URL of the web app. |
+| `input_selector` | `str` | `"textarea"` | CSS selector for the input field. |
+| `submit_selector` | `str` | `"button[type='submit']"` | CSS selector for the submit button. |
+| `response_selector` | `str` | `".response"` | CSS selector for the response element. |
+| `wait_for` | `str \| None` | `None` | CSS selector to wait for after submit. Recommended over the default `networkidle` strategy for SPAs. |
+| `login` | `dict[str, str] \| None` | `None` | Optional `{"email": ..., "password": ...}` for the login flow. |
+| `headless` | `bool` | `True` | Run the browser headlessly. |
+| `timeout` | `int` | `30000` | Page load and response wait timeout in ms. |
+| `screenshot_on_fail` | `bool` | `True` | Save a screenshot to `multivon-fail-<timestamp>.png` on failure. |
+
+When a call fails, the target returns the literal string `"[BROWSER ERROR: <message>]"` so that the eval continues. Always call `target.close()` when finished.
+
+## simulate_users
+
+Generate synthetic adversarial and edge-case user personas, run each one against any target, and evaluate the responses.
+
+```python
+from multivon_eval import simulate_users, DeployedAPITarget, BearerAuth
+from multivon_eval import Faithfulness, PIIEvaluator, TaskCompletion
+
+target = DeployedAPITarget(
+    url="https://api.yourapp.com/v1/chat",
+    auth=BearerAuth(os.getenv("API_KEY")),
+    output_path="response",
+)
+
+results = simulate_users(
+    target=target,
+    system_prompt="You are a customer support bot for a billing SaaS.",
+    n_personas=10,
+    evaluators=[Faithfulness(), PIIEvaluator(), TaskCompletion()],
+)
+```
+
+### Parameters
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `target` | `Callable[[str], str]` | — | Any callable target — a `DeployedAPITarget`, `BrowserTarget`, or your own function. |
+| `system_prompt` | `str` | — | Description of your AI system. Used to generate relevant personas. |
+| `n_personas` | `int` | `10` | Total number of personas to simulate. |
+| `evaluators` | `list \| None` | `[NotEmpty(), TaskCompletion()]` | Evaluators run on each persona response. |
+| `persona_types` | `list[str] \| None` | All five types | Persona categories to include. |
+| `verbose` | `bool` | `True` | Print per-persona progress and a final summary. |
+
+### Persona types
+
+| Type | Description |
+| --- | --- |
+| `confused_user` | Well-meaning but unclear about their problem; vague language. |
+| `power_user` | Knows what they want; precise questions; tests edge cases. |
+| `angry_user` | Frustrated; tests patience and de-escalation. |
+| `adversarial` | Tries to extract the system prompt, bypass restrictions, or cause unexpected behavior. |
+| `edge_case` | Off-topic or boundary-testing questions the system wasn't designed for. |
+
+### Return value
+
+A list of dicts, one per persona:
+
+```python
+{
+    "persona": "Frustrated Frank",
+    "type": "angry_user",
+    "description": "Long-time customer angry about a billing error.",
+    "input": "Your billing system charged me twice and nobody is helping.",
+    "output": "I'm sorry to hear that. Let me look into this for you...",
+    "scores": [
+        {"evaluator": "Faithfulness", "score": 0.92, "passed": True, "reason": "..."},
+        {"evaluator": "PIIEvaluator", "score": 1.0,  "passed": True, "reason": "..."},
+    ],
+    "passed": True,
+}
+```
+
+If target invocation raises, `output` is set to `"[TARGET ERROR: <message>]"` and evaluation continues.
+
+## Auth helpers
+
+Both targets accept the same auth helpers.
+
+| Class | Headers sent |
+| --- | --- |
+| `BearerAuth(token)` | `Authorization: Bearer <token>` |
+| `APIKeyAuth(key, header="X-API-Key")` | `<header>: <key>` |
+
+You can also implement your own — anything with a `headers() -> dict[str, str]` method works.
