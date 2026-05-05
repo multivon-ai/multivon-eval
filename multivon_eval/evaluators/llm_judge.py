@@ -24,6 +24,7 @@ from .base import Evaluator
 from ..case import EvalCase
 from ..result import EvalResult
 from ..judge import JudgeConfig, resolve_judge, make_judge_call
+from ..calibration import calibrated_threshold as _calibrated_threshold
 
 
 def _judge_call(prompt: str, max_tokens: int = 1024) -> str:
@@ -85,17 +86,27 @@ class Faithfulness(Evaluator):
     Measures whether the response is grounded in the provided context.
     Uses QAG: extracts claims, verifies each against context.
     Requires case.context.
+
+    The default threshold is calibrated per judge model. Pass threshold= explicitly
+    to override (e.g. threshold=0.8 for stricter gating).
     """
     name = "faithfulness"
 
-    def __init__(self, threshold: float = 0.7, judge: JudgeConfig | None = None):
-        super().__init__(threshold)
+    def __init__(self, threshold: float | None = None, judge: JudgeConfig | None = None):
+        self._explicit_threshold = threshold
         self._judge_cfg = judge
+        super().__init__(threshold if threshold is not None else 0.7)
+
+    def _resolve_threshold(self, judge: JudgeConfig) -> float:
+        if self._explicit_threshold is not None:
+            return self._explicit_threshold
+        return _calibrated_threshold(self.name, judge)
 
     def evaluate(self, case: EvalCase, output: str) -> EvalResult:
         if not case.context:
             return self._result(0.0, "No context provided — faithfulness requires case.context")
         judge = resolve_judge(self._judge_cfg)
+        self.threshold = self._resolve_threshold(judge)
         context = case.context_str()
 
         try:
@@ -136,17 +147,27 @@ class Hallucination(Evaluator):
     Detects fabricated information not present in context.
     Score 1.0 = no hallucination. Score 0.0 = significant hallucination.
     Requires case.context.
+
+    The default threshold is calibrated per judge model. Pass threshold= explicitly
+    to override.
     """
     name = "hallucination"
 
-    def __init__(self, threshold: float = 0.7, judge: JudgeConfig | None = None):
-        super().__init__(threshold)
+    def __init__(self, threshold: float | None = None, judge: JudgeConfig | None = None):
+        self._explicit_threshold = threshold
         self._judge_cfg = judge
+        super().__init__(threshold if threshold is not None else 0.7)
+
+    def _resolve_threshold(self, judge: JudgeConfig) -> float:
+        if self._explicit_threshold is not None:
+            return self._explicit_threshold
+        return _calibrated_threshold(self.name, judge)
 
     def evaluate(self, case: EvalCase, output: str) -> EvalResult:
         if not case.context:
             return self._result(0.0, "No context provided — hallucination requires case.context")
         judge = resolve_judge(self._judge_cfg)
+        self.threshold = self._resolve_threshold(judge)
         context = case.context_str()
         ctx = f"Context:\n{context}\n\nResponse:\n{output}"
         questions = [
@@ -163,12 +184,19 @@ class Relevance(Evaluator):
     """Measures whether the response directly addresses the input question."""
     name = "relevance"
 
-    def __init__(self, threshold: float = 0.7, judge: JudgeConfig | None = None):
-        super().__init__(threshold)
+    def __init__(self, threshold: float | None = None, judge: JudgeConfig | None = None):
+        self._explicit_threshold = threshold
         self._judge_cfg = judge
+        super().__init__(threshold if threshold is not None else 0.7)
+
+    def _resolve_threshold(self, judge: JudgeConfig) -> float:
+        if self._explicit_threshold is not None:
+            return self._explicit_threshold
+        return _calibrated_threshold(self.name, judge)
 
     def evaluate(self, case: EvalCase, output: str) -> EvalResult:
         judge = resolve_judge(self._judge_cfg)
+        self.threshold = self._resolve_threshold(judge)
         ctx = f"Question: {case.input}\n\nResponse: {output}"
         questions = [
             ("Does the response directly answer the question asked?", True),

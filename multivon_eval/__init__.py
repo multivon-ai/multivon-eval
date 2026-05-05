@@ -48,6 +48,7 @@ from .targets import (
     simulate_users,
 )
 from .result import CalibrationResult, EvalGateFailure, PairwiseReport, PairwiseResult
+from .calibration import calibrated_threshold, threshold_table
 from .evaluators import (
     # Deterministic
     NotEmpty, ExactMatch, Contains, RegexMatch,
@@ -89,6 +90,8 @@ __all__ = [
     "mcnemar_test", "bayesian_interval",
     # Exceptions
     "EvalGateFailure",
+    # Calibration
+    "calibrated_threshold", "threshold_table",
     # Calibration
     "CalibrationResult",
     # Pairwise
