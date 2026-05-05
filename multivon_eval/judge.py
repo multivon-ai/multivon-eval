@@ -120,24 +120,49 @@ def resolve_judge(per_evaluator: JudgeConfig | None) -> JudgeConfig:
 
 
 def make_judge_call(prompt: str, config: JudgeConfig) -> str:
-    """Execute a single judge call with the given resolved config."""
-    if config.provider == "anthropic":
-        import anthropic
-        client = anthropic.Anthropic()
-        response = client.messages.create(
-            model=config.model,
-            max_tokens=config.max_tokens,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        return response.content[0].text
-    elif config.provider == "openai":
-        import openai
-        client = openai.OpenAI()
-        response = client.chat.completions.create(
-            model=config.model,
-            max_completion_tokens=config.max_tokens,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        return response.choices[0].message.content or ""
-    else:
-        raise ValueError(f"Unsupported provider: '{config.provider}'")
+    """Execute a single judge call with the given resolved config.
+
+    Retries up to 3 times on rate-limit (429) and transient server errors (5xx)
+    with exponential backoff (1s, 2s, 4s). Other errors are raised immediately.
+    """
+    import time as _time
+
+    _RETRYABLE_HTTP = {429, 500, 502, 503, 504}
+    max_attempts = 3
+
+    for attempt in range(max_attempts):
+        try:
+            if config.provider == "anthropic":
+                import anthropic
+                client = anthropic.Anthropic()
+                response = client.messages.create(
+                    model=config.model,
+                    max_tokens=config.max_tokens,
+                    messages=[{"role": "user", "content": prompt}],
+                )
+                return response.content[0].text
+            elif config.provider == "openai":
+                import openai
+                client = openai.OpenAI()
+                response = client.chat.completions.create(
+                    model=config.model,
+                    max_completion_tokens=config.max_tokens,
+                    messages=[{"role": "user", "content": prompt}],
+                )
+                return response.choices[0].message.content or ""
+            else:
+                raise ValueError(f"Unsupported provider: '{config.provider}'")
+
+        except Exception as exc:
+            # Check for retryable HTTP status in the exception message or type name
+            exc_str = str(exc)
+            is_retryable = any(str(code) in exc_str for code in _RETRYABLE_HTTP)
+            # Also check for common rate-limit exception class names
+            is_retryable = is_retryable or type(exc).__name__ in (
+                "RateLimitError", "APIStatusError", "InternalServerError",
+                "ServiceUnavailableError", "APIConnectionError",
+            )
+            if is_retryable and attempt < max_attempts - 1:
+                _time.sleep(2 ** attempt)
+                continue
+            raise

@@ -6,7 +6,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import TYPE_CHECKING, Any, Callable, Awaitable
 
 from .case import EvalCase
-from .result import CalibrationResult, CaseResult, EvalReport, EvalResult
+from .result import CalibrationResult, CaseResult, EvalGateFailure, EvalReport, EvalResult
 from .evaluators.base import Evaluator
 from .evaluators.deterministic import Latency, MaxLatency
 from .reporters.terminal import print_report
@@ -107,9 +107,11 @@ class EvalSuite:
             tracer.reset()
 
         t0 = time.time()
+        model_error: str | None = None
         try:
             output = model_fn(case.input)
         except Exception as e:
+            model_error = str(e)
             output = f"[MODEL ERROR: {e}]"
         latency_ms = (time.time() - t0) * 1000
 
@@ -120,6 +122,14 @@ class EvalSuite:
 
         results = []
         for ev in self._evaluators:
+            if model_error is not None and not isinstance(ev, (Latency, MaxLatency)):
+                results.append(EvalResult(
+                    evaluator=getattr(ev, "name", type(ev).__name__),
+                    score=0.0,
+                    passed=False,
+                    reason=f"[skipped — model error: {model_error}]",
+                ))
+                continue
             if isinstance(ev, (Latency, MaxLatency)):
                 result = ev.evaluate(case, output, latency_ms=latency_ms)
             else:
@@ -129,6 +139,7 @@ class EvalSuite:
         return CaseResult(
             case_input=case.input,
             actual_output=output,
+            model_error=model_error,
             results=results,
             latency_ms=latency_ms,
             tags=case.tags,
@@ -230,8 +241,10 @@ class EvalSuite:
             print(f"  JSON report saved → {json_path}")
 
         if fail_threshold is not None and report.pass_rate < fail_threshold:
-            raise SystemExit(
-                f"\nEval failed: pass rate {report.pass_rate:.1%} < threshold {fail_threshold:.1%}"
+            raise EvalGateFailure(
+                f"\nEval failed: pass rate {report.pass_rate:.1%} < threshold {fail_threshold:.1%}",
+                pass_rate=report.pass_rate,
+                threshold=fail_threshold,
             )
 
         return report
@@ -512,8 +525,10 @@ class EvalSuite:
             print_report(report)
 
         if fail_threshold is not None and report.pass_rate < fail_threshold:
-            raise SystemExit(
-                f"\nEval failed: pass rate {report.pass_rate:.1%} < threshold {fail_threshold:.1%}"
+            raise EvalGateFailure(
+                f"\nEval failed: pass rate {report.pass_rate:.1%} < threshold {fail_threshold:.1%}",
+                pass_rate=report.pass_rate,
+                threshold=fail_threshold,
             )
 
         return report
@@ -964,14 +979,24 @@ class EvalSuite:
                 single_runs = []
                 for _ in range(runs):
                     t0 = time.time()
+                    async_model_error: str | None = None
                     try:
                         output = await model_fn(case.input)
                     except Exception as e:
+                        async_model_error = str(e)
                         output = f"[MODEL ERROR: {e}]"
                     latency_ms = (time.time() - t0) * 1000
 
                     ev_results = []
                     for ev in self._evaluators:
+                        if async_model_error is not None and not isinstance(ev, (Latency, MaxLatency)):
+                            ev_results.append(EvalResult(
+                                evaluator=getattr(ev, "name", type(ev).__name__),
+                                score=0.0,
+                                passed=False,
+                                reason=f"[skipped — model error: {async_model_error}]",
+                            ))
+                            continue
                         if isinstance(ev, (Latency, MaxLatency)):
                             result = ev.evaluate(case, output, latency_ms=latency_ms)
                         else:
@@ -981,6 +1006,7 @@ class EvalSuite:
                     single_runs.append(CaseResult(
                         case_input=case.input,
                         actual_output=output,
+                        model_error=async_model_error,
                         results=ev_results,
                         latency_ms=latency_ms,
                         tags=case.tags,
@@ -1007,8 +1033,10 @@ class EvalSuite:
             print_report(report)
 
         if fail_threshold is not None and report.pass_rate < fail_threshold:
-            raise SystemExit(
-                f"\nEval failed: pass rate {report.pass_rate:.1%} < threshold {fail_threshold:.1%}"
+            raise EvalGateFailure(
+                f"\nEval failed: pass rate {report.pass_rate:.1%} < threshold {fail_threshold:.1%}",
+                pass_rate=report.pass_rate,
+                threshold=fail_threshold,
             )
 
         return report

@@ -16,6 +16,19 @@ class EvalResult:
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
+class EvalGateFailure(SystemExit):
+    """
+    Raised by EvalSuite.run() when pass_rate < fail_threshold.
+
+    Subclasses SystemExit so CI scripts see exit code 1. Can be caught
+    explicitly by callers that want to inspect the report before exiting.
+    """
+    def __init__(self, message: str, pass_rate: float, threshold: float) -> None:
+        super().__init__(message)
+        self.pass_rate = pass_rate
+        self.threshold = threshold
+
+
 @dataclass
 class CaseResult:
     """All evaluator results for a single test case."""
@@ -24,6 +37,7 @@ class CaseResult:
     results: list[EvalResult]
     latency_ms: float = 0.0
     tags: list[str] = field(default_factory=list)
+    model_error: str | None = None  # set when the model call raised an exception
 
     # Multi-run fields — populated when suite.run(runs > 1)
     runs: int = 1
@@ -319,28 +333,27 @@ class EvalReport:
                 )
                 for e in c.get("evaluators", [])
             ]
+            runs = c.get("runs", 1)
+            all_scores = c.get("all_scores") or []
+            # Legacy round-trip: reconstruct if all_scores not stored (pre-fix JSON)
+            if runs > 1 and not all_scores:
+                score = c.get("score", 0.0)
+                std = c.get("score_std", 0.0)
+                all_scores = [score] * runs if std == 0 else [score + std, score - std] + [score] * max(0, runs - 2)
             cr = CaseResult(
                 case_input=c["input"],
                 actual_output=c["output"],
                 results=results,
                 latency_ms=c.get("latency_ms", 0.0),
                 tags=c.get("tags", []),
-                runs=c.get("runs", 1),
-                all_scores=[],
+                model_error=c.get("model_error"),
+                runs=runs,
+                all_scores=all_scores,
                 pass_count=-1,
             )
-            # Restore multi-run state from stored fields
-            runs = c.get("runs", 1)
             if runs > 1:
                 rpr = c.get("run_pass_rate", 1.0)
                 cr.pass_count = round(rpr * runs)
-                # Reconstruct all_scores from score and score_std if available
-                score = c.get("score", 0.0)
-                std = c.get("score_std", 0.0)
-                if std > 0:
-                    cr.all_scores = [score + std, score - std] + [score] * max(0, runs - 2)
-                else:
-                    cr.all_scores = [score] * runs
             case_results.append(cr)
         return cls(
             suite_name=data.get("suite", ""),
@@ -376,9 +389,11 @@ class EvalReport:
                     {
                         "input": cr.case_input,
                         "output": cr.actual_output,
+                        "model_error": cr.model_error,
                         "passed": cr.passed,
                         "score": round(cr.score, 4),
                         "score_std": round(cr.score_std, 4),
+                        "all_scores": cr.all_scores,
                         "run_pass_rate": round(cr.run_pass_rate, 4),
                         "is_flaky": cr.is_flaky,
                         "runs": cr.runs,

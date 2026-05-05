@@ -47,7 +47,7 @@ from .targets import (
     DeployedAPITarget, MultiTurnAPITarget, BrowserTarget,
     simulate_users,
 )
-from .result import CalibrationResult, PairwiseReport, PairwiseResult
+from .result import CalibrationResult, EvalGateFailure, PairwiseReport, PairwiseResult
 from .evaluators import (
     # Deterministic
     NotEmpty, ExactMatch, Contains, RegexMatch,
@@ -87,6 +87,8 @@ __all__ = [
     "Experiment", "list_experiments", "wilson_interval", "bootstrap_interval",
     "runs_needed", "min_detectable_effect", "cohens_h", "benjamini_hochberg",
     "mcnemar_test", "bayesian_interval",
+    # Exceptions
+    "EvalGateFailure",
     # Calibration
     "CalibrationResult",
     # Pairwise
