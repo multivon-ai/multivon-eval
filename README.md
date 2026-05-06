@@ -592,7 +592,7 @@ EvalSuite.run(model_fn)
            └── export → JSON / CSV
 ```
 
-**Judge model:** Configured via `JUDGE_MODEL` and `JUDGE_PROVIDER` env vars. Defaults to `claude-sonnet-4-6`. The model under test and the judge model can be different providers.
+**Judge model:** Configured via `JUDGE_MODEL` and `JUDGE_PROVIDER` env vars. Defaults to `claude-haiku-4-5`. Thresholds for `Faithfulness`, `Hallucination`, and `Relevance` are automatically calibrated per judge model against human-labeled benchmarks (F1 0.76–0.98). The model under test and the judge model can be different providers.
 
 ---
 

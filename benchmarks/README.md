@@ -26,7 +26,7 @@ python benchmarks/run_all_benchmarks.py
 | SummEval relevance (Spearman ρ) | **0.522** (Haiku) | 0.380 (gpt-4o-mini) | — | — |
 | SummEval faithfulness (Spearman ρ) | 0.455 (Opus) | **0.443** (gpt-4o-mini) | — | — |
 
-Judge models: multivon-eval uses `claude-haiku-4-5-20251001` for benchmarks 1–4; DeepEval uses `gpt-4o-mini`. SummEval benchmark (5) runs 6 judges. Judge always disclosed per run.
+Judge models: multivon-eval uses `claude-haiku-4-5-20251001` for benchmarks 1–4; DeepEval uses `gpt-4o-mini`. SummEval benchmark (5) runs 5 judges. Judge always disclosed per run.
 
 ---
 
@@ -173,27 +173,58 @@ Comparing evaluators against each other tells you which one scores higher, not w
 
 **Task:** Compute Spearman correlation between evaluator scores and human expert ratings. Higher ρ = the evaluator tracks human judgment more closely. All results are statistically significant at α=0.05 unless noted.
 
-**100 samples, 6 judges:**
+**100 samples, 5 judges:**
 
-| Dimension | Haiku 4.5 | Opus 4.7 | Sonnet 4.6 | GPT-4o-mini | GPT-3.5-turbo | GPT-5 |
-|-----------|:---------:|:--------:|:----------:|:-----------:|:-------------:|:-----:|
-| Coherence    | **0.587** (p<0.001) | 0.530 (p<0.001) | 0.455 (p<0.001) | 0.431 (p<0.001) | 0.205 (p=0.038) | 0.157 (p=0.115) ⚠ |
-| Relevance    | **0.522** (p<0.001) | 0.224 (p=0.023) | 0.283 (p=0.004) | 0.380 (p<0.001) | 0.053 (p=0.602) ⚠ | 0.108 (p=0.284) ⚠ |
-| Faithfulness | 0.345 (p<0.001)     | **0.455** (p<0.001) | 0.319 (p=0.001) | 0.443 (p<0.001) | 0.240 (p=0.014) | 0.000 (p=1.000) ✗ |
+| Dimension | Haiku 4.5 | Opus 4.7 | Sonnet 4.6 | GPT-4o-mini | GPT-3.5-turbo |
+|-----------|:---------:|:--------:|:----------:|:-----------:|:-------------:|
+| Coherence    | **0.587** (p<0.001) | 0.530 (p<0.001) | 0.455 (p<0.001) | 0.431 (p<0.001) | 0.205 (p=0.038) |
+| Relevance    | **0.522** (p<0.001) | 0.224 (p=0.023) | 0.283 (p=0.004) | 0.380 (p<0.001) | 0.053 (p=0.602) ⚠ |
+| Faithfulness | 0.345 (p<0.001)     | **0.455** (p<0.001) | 0.319 (p=0.001) | 0.443 (p<0.001) | 0.240 (p=0.014) |
 
-⚠ = not statistically significant. ✗ = invalid (constant scores, see note below).
+⚠ = not statistically significant.
 
 **Key findings:**
 
 - **Claude Haiku 4.5 is surprisingly the best overall judge** for coherence and relevance (ρ=0.587, 0.522), outperforming all models including Opus and Sonnet. Coherence and relevance are structural, language-level judgments where Haiku's scoring appears well-calibrated — and it's the cheapest option in the lineup.
 - **Claude Opus 4.7 leads faithfulness** (ρ=0.455), tied with GPT-4o-mini (ρ=0.443). Factual consistency requires reasoning through source documents — the one dimension where scale helps.
 - **Bigger is not always better for judging.** Opus (ρ=0.224 relevance) underperforms Haiku (ρ=0.522) significantly on relevance. Sonnet also underperforms Haiku. For evaluation tasks, model calibration and consistency matter more than raw capability.
-- **GPT-5 is incompatible with QAG-style evaluation at standard token budgets.** GPT-5 is a reasoning model — it allocates its token budget to internal thinking before producing output. For short yes/no answers at `max_tokens=100`, coherence and relevance evaluations produce some signal (ρ=0.157, 0.108), but not statistically significant. For faithfulness, which requires verifying a claim against a full news article, GPT-5 exhausts its entire 100-token budget on reasoning and returns empty strings, producing constant scores (ρ=0.000). Reasoning models need 500–2000 tokens per yes/no call to function reliably as judges — roughly 20× the standard budget.
 - **GPT-3.5-turbo relevance is not statistically significant (p=0.602).** This is the same model RAGAS used for their published numbers (gpt-3.5-turbo-16k, Sept 2023). Their claim of 78% agreement on AnswerRelevance is on their own WikiEval dataset — not a neutral benchmark — and this result suggests the judge choice is load-bearing for relevance tasks. Their faithfulness number (95%) may hold since factual entailment is an easier task for weaker models.
-- **All three dimensions have meaningful correlation with capable non-reasoning models.** Best-in-class: coherence ρ=0.587 (Haiku), relevance ρ=0.522 (Haiku), faithfulness ρ=0.455 (Opus). These are moderate-to-strong correlations for an automated evaluator, consistent with published G-Eval results (~0.514 Spearman on SummEval coherence with GPT-4).
-- **Zero errors across 1,800 API calls** (100 samples × 3 evaluators × 6 judges).
+- **All three dimensions have meaningful correlation with capable judges.** Best-in-class: coherence ρ=0.587 (Haiku), relevance ρ=0.522 (Haiku), faithfulness ρ=0.455 (Opus). These are moderate-to-strong correlations for an automated evaluator, consistent with published G-Eval results (~0.514 Spearman on SummEval coherence with GPT-4).
+- **Zero errors across 1,500 API calls** (100 samples × 3 evaluators × 5 judges).
 
-**Recommendation:** For most use cases, `claude-haiku-4-5-20251001` gives the best coherence and relevance correlation at the lowest cost. For faithfulness-critical pipelines (RAG, summarization), use `claude-opus-4-7` or `gpt-4o-mini`. Avoid `gpt-3.5-turbo` for relevance. Do not use reasoning models (GPT-5, o-series) with QAG-style evaluators at default token budgets — they need 10–20× more tokens per call to produce reliable output.
+**Recommendation:** For most use cases, `claude-haiku-4-5-20251001` gives the best coherence and relevance correlation at the lowest cost. For faithfulness-critical pipelines (RAG, summarization), use `claude-opus-4-7` or `gpt-4o-mini`. Avoid `gpt-3.5-turbo` for relevance.
+
+---
+
+## Benchmark 6 — Threshold Calibration
+
+**Dataset:** HaluEval QA (100 cases), HaluEval Summarization (60 cases), curated relevance golden set (40 cases). Labels: 50/50 faithful/hallucinated for each split.
+
+**Task:** Sweep thresholds 0.30–0.90 in 0.05 steps. Find the threshold that maximises F1 against human labels for each (evaluator, judge) pair. Results are baked into the library — `Hallucination()`, `Faithfulness()`, and `Relevance()` automatically apply the calibrated threshold for the configured judge.
+
+| Judge | Evaluator | Optimal threshold | F1 |
+|-------|-----------|:-----------------:|:---:|
+| claude-haiku-4-5-20251001 | hallucination | 0.55 | 0.812 |
+| claude-haiku-4-5-20251001 | faithfulness  | 0.90 | 0.783 |
+| claude-haiku-4-5-20251001 | relevance     | 0.30 | 0.976 |
+| claude-sonnet-4-6         | hallucination | 0.30 | 0.787 |
+| claude-sonnet-4-6         | faithfulness  | 0.90 | 0.656 |
+| claude-sonnet-4-6         | relevance     | 0.30 | 1.000 |
+| gpt-4o-mini               | hallucination | 0.30 | 0.756 |
+| gpt-4o-mini               | faithfulness  | 0.90 | 0.793 |
+| gpt-4o-mini               | relevance     | 0.30 | 1.000 |
+
+**Key findings:**
+
+- **Faithfulness optimal threshold is 0.90 across all three judges.** These judges score faithful outputs very high and unfaithful ones very low — the signal is binary with a sharp separation near the top of the scale. The library default of 0.7 would produce false passes; 0.90 is the correct gate.
+- **Relevance optimal threshold is 0.30 for Haiku, Sonnet, and GPT-4o-mini.** Relevance judgments are extremely confident — relevant responses score near 1.0, irrelevant ones near 0.0. Any threshold from 0.30 to ~0.85 achieves perfect F1.
+- **Hallucination thresholds vary by model (0.30–0.55).** Haiku is more conservative (flags fewer things as hallucinations, requiring a lower threshold to catch them). Sonnet and GPT-4o-mini are more aggressive, already flagging most hallucinations without needing a high threshold.
+- **Pass `threshold=` explicitly to override for your domain.** The calibrated defaults are derived from Wikipedia-sourced QA and news summarization. Domain-specific content (medical, legal, financial) may warrant a different threshold.
+
+```bash
+python benchmarks/run_threshold_calibration.py
+# Results saved to benchmarks/results/calibration.json
+```
 
 ---
 

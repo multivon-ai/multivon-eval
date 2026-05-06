@@ -1,0 +1,802 @@
+{
+  "calibration": {
+    "anthropic/claude-haiku-4-5-20251001": {
+      "hallucination": {
+        "optimal": {
+          "threshold": 0.55,
+          "f1": 0.8119,
+          "precision": 0.8039,
+          "recall": 0.82
+        },
+        "sweep": [
+          {
+            "threshold": 0.3,
+            "precision": 0.878,
+            "recall": 0.72,
+            "f1": 0.7912
+          },
+          {
+            "threshold": 0.35,
+            "precision": 0.878,
+            "recall": 0.72,
+            "f1": 0.7912
+          },
+          {
+            "threshold": 0.4,
+            "precision": 0.878,
+            "recall": 0.72,
+            "f1": 0.7912
+          },
+          {
+            "threshold": 0.45,
+            "precision": 0.878,
+            "recall": 0.72,
+            "f1": 0.7912
+          },
+          {
+            "threshold": 0.5,
+            "precision": 0.878,
+            "recall": 0.72,
+            "f1": 0.7912
+          },
+          {
+            "threshold": 0.55,
+            "precision": 0.8039,
+            "recall": 0.82,
+            "f1": 0.8119
+          },
+          {
+            "threshold": 0.6,
+            "precision": 0.8039,
+            "recall": 0.82,
+            "f1": 0.8119
+          },
+          {
+            "threshold": 0.65,
+            "precision": 0.8039,
+            "recall": 0.82,
+            "f1": 0.8119
+          },
+          {
+            "threshold": 0.7,
+            "precision": 0.8039,
+            "recall": 0.82,
+            "f1": 0.8119
+          },
+          {
+            "threshold": 0.75,
+            "precision": 0.8039,
+            "recall": 0.82,
+            "f1": 0.8119
+          },
+          {
+            "threshold": 0.8,
+            "precision": 0.6769,
+            "recall": 0.88,
+            "f1": 0.7652
+          },
+          {
+            "threshold": 0.85,
+            "precision": 0.6769,
+            "recall": 0.88,
+            "f1": 0.7652
+          },
+          {
+            "threshold": 0.9,
+            "precision": 0.6769,
+            "recall": 0.88,
+            "f1": 0.7652
+          }
+        ]
+      },
+      "faithfulness": {
+        "optimal": {
+          "threshold": 0.9,
+          "f1": 0.7826,
+          "precision": 0.6923,
+          "recall": 0.9
+        },
+        "sweep": [
+          {
+            "threshold": 0.3,
+            "precision": 0.8,
+            "recall": 0.1333,
+            "f1": 0.2286
+          },
+          {
+            "threshold": 0.35,
+            "precision": 0.8,
+            "recall": 0.1333,
+            "f1": 0.2286
+          },
+          {
+            "threshold": 0.4,
+            "precision": 0.8,
+            "recall": 0.1333,
+            "f1": 0.2286
+          },
+          {
+            "threshold": 0.45,
+            "precision": 0.8333,
+            "recall": 0.1667,
+            "f1": 0.2778
+          },
+          {
+            "threshold": 0.5,
+            "precision": 0.8333,
+            "recall": 0.1667,
+            "f1": 0.2778
+          },
+          {
+            "threshold": 0.55,
+            "precision": 0.6667,
+            "recall": 0.2667,
+            "f1": 0.381
+          },
+          {
+            "threshold": 0.6,
+            "precision": 0.6923,
+            "recall": 0.3,
+            "f1": 0.4186
+          },
+          {
+            "threshold": 0.65,
+            "precision": 0.625,
+            "recall": 0.3333,
+            "f1": 0.4348
+          },
+          {
+            "threshold": 0.7,
+            "precision": 0.5909,
+            "recall": 0.4333,
+            "f1": 0.5
+          },
+          {
+            "threshold": 0.75,
+            "precision": 0.5909,
+            "recall": 0.4333,
+            "f1": 0.5
+          },
+          {
+            "threshold": 0.8,
+            "precision": 0.6154,
+            "recall": 0.5333,
+            "f1": 0.5714
+          },
+          {
+            "threshold": 0.85,
+            "precision": 0.6757,
+            "recall": 0.8333,
+            "f1": 0.7463
+          },
+          {
+            "threshold": 0.9,
+            "precision": 0.6923,
+            "recall": 0.9,
+            "f1": 0.7826
+          }
+        ]
+      },
+      "relevance": {
+        "optimal": {
+          "threshold": 0.3,
+          "f1": 0.9756,
+          "precision": 0.9524,
+          "recall": 1.0
+        },
+        "sweep": [
+          {
+            "threshold": 0.3,
+            "precision": 0.9524,
+            "recall": 1.0,
+            "f1": 0.9756
+          },
+          {
+            "threshold": 0.35,
+            "precision": 0.9524,
+            "recall": 1.0,
+            "f1": 0.9756
+          },
+          {
+            "threshold": 0.4,
+            "precision": 0.9524,
+            "recall": 1.0,
+            "f1": 0.9756
+          },
+          {
+            "threshold": 0.45,
+            "precision": 0.9524,
+            "recall": 1.0,
+            "f1": 0.9756
+          },
+          {
+            "threshold": 0.5,
+            "precision": 0.9524,
+            "recall": 1.0,
+            "f1": 0.9756
+          },
+          {
+            "threshold": 0.55,
+            "precision": 0.9091,
+            "recall": 1.0,
+            "f1": 0.9524
+          },
+          {
+            "threshold": 0.6,
+            "precision": 0.9091,
+            "recall": 1.0,
+            "f1": 0.9524
+          },
+          {
+            "threshold": 0.65,
+            "precision": 0.9091,
+            "recall": 1.0,
+            "f1": 0.9524
+          },
+          {
+            "threshold": 0.7,
+            "precision": 0.9091,
+            "recall": 1.0,
+            "f1": 0.9524
+          },
+          {
+            "threshold": 0.75,
+            "precision": 0.9091,
+            "recall": 1.0,
+            "f1": 0.9524
+          },
+          {
+            "threshold": 0.8,
+            "precision": 0.5405,
+            "recall": 1.0,
+            "f1": 0.7018
+          },
+          {
+            "threshold": 0.85,
+            "precision": 0.5405,
+            "recall": 1.0,
+            "f1": 0.7018
+          },
+          {
+            "threshold": 0.9,
+            "precision": 0.5405,
+            "recall": 1.0,
+            "f1": 0.7018
+          }
+        ]
+      }
+    },
+    "anthropic/claude-sonnet-4-6": {
+      "hallucination": {
+        "optimal": {
+          "threshold": 0.3,
+          "f1": 0.7872,
+          "precision": 0.8409,
+          "recall": 0.74
+        },
+        "sweep": [
+          {
+            "threshold": 0.3,
+            "precision": 0.8409,
+            "recall": 0.74,
+            "f1": 0.7872
+          },
+          {
+            "threshold": 0.35,
+            "precision": 0.8409,
+            "recall": 0.74,
+            "f1": 0.7872
+          },
+          {
+            "threshold": 0.4,
+            "precision": 0.8409,
+            "recall": 0.74,
+            "f1": 0.7872
+          },
+          {
+            "threshold": 0.45,
+            "precision": 0.8409,
+            "recall": 0.74,
+            "f1": 0.7872
+          },
+          {
+            "threshold": 0.5,
+            "precision": 0.8409,
+            "recall": 0.74,
+            "f1": 0.7872
+          },
+          {
+            "threshold": 0.55,
+            "precision": 0.7692,
+            "recall": 0.8,
+            "f1": 0.7843
+          },
+          {
+            "threshold": 0.6,
+            "precision": 0.7692,
+            "recall": 0.8,
+            "f1": 0.7843
+          },
+          {
+            "threshold": 0.65,
+            "precision": 0.7692,
+            "recall": 0.8,
+            "f1": 0.7843
+          },
+          {
+            "threshold": 0.7,
+            "precision": 0.7692,
+            "recall": 0.8,
+            "f1": 0.7843
+          },
+          {
+            "threshold": 0.75,
+            "precision": 0.7692,
+            "recall": 0.8,
+            "f1": 0.7843
+          },
+          {
+            "threshold": 0.8,
+            "precision": 0.6721,
+            "recall": 0.82,
+            "f1": 0.7387
+          },
+          {
+            "threshold": 0.85,
+            "precision": 0.6721,
+            "recall": 0.82,
+            "f1": 0.7387
+          },
+          {
+            "threshold": 0.9,
+            "precision": 0.6721,
+            "recall": 0.82,
+            "f1": 0.7387
+          }
+        ]
+      },
+      "faithfulness": {
+        "optimal": {
+          "threshold": 0.9,
+          "f1": 0.6557,
+          "precision": 0.6452,
+          "recall": 0.6667
+        },
+        "sweep": [
+          {
+            "threshold": 0.3,
+            "precision": 1.0,
+            "recall": 0.0333,
+            "f1": 0.0645
+          },
+          {
+            "threshold": 0.35,
+            "precision": 1.0,
+            "recall": 0.0333,
+            "f1": 0.0645
+          },
+          {
+            "threshold": 0.4,
+            "precision": 0.6667,
+            "recall": 0.0667,
+            "f1": 0.1212
+          },
+          {
+            "threshold": 0.45,
+            "precision": 0.75,
+            "recall": 0.1,
+            "f1": 0.1765
+          },
+          {
+            "threshold": 0.5,
+            "precision": 0.75,
+            "recall": 0.1,
+            "f1": 0.1765
+          },
+          {
+            "threshold": 0.55,
+            "precision": 0.5714,
+            "recall": 0.1333,
+            "f1": 0.2162
+          },
+          {
+            "threshold": 0.6,
+            "precision": 0.5714,
+            "recall": 0.1333,
+            "f1": 0.2162
+          },
+          {
+            "threshold": 0.65,
+            "precision": 0.7273,
+            "recall": 0.2667,
+            "f1": 0.3902
+          },
+          {
+            "threshold": 0.7,
+            "precision": 0.6667,
+            "recall": 0.2667,
+            "f1": 0.381
+          },
+          {
+            "threshold": 0.75,
+            "precision": 0.6429,
+            "recall": 0.3,
+            "f1": 0.4091
+          },
+          {
+            "threshold": 0.8,
+            "precision": 0.5714,
+            "recall": 0.4,
+            "f1": 0.4706
+          },
+          {
+            "threshold": 0.85,
+            "precision": 0.5926,
+            "recall": 0.5333,
+            "f1": 0.5614
+          },
+          {
+            "threshold": 0.9,
+            "precision": 0.6452,
+            "recall": 0.6667,
+            "f1": 0.6557
+          }
+        ]
+      },
+      "relevance": {
+        "optimal": {
+          "threshold": 0.3,
+          "f1": 1.0,
+          "precision": 1.0,
+          "recall": 1.0
+        },
+        "sweep": [
+          {
+            "threshold": 0.3,
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0
+          },
+          {
+            "threshold": 0.35,
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0
+          },
+          {
+            "threshold": 0.4,
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0
+          },
+          {
+            "threshold": 0.45,
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0
+          },
+          {
+            "threshold": 0.5,
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0
+          },
+          {
+            "threshold": 0.55,
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0
+          },
+          {
+            "threshold": 0.6,
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0
+          },
+          {
+            "threshold": 0.65,
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0
+          },
+          {
+            "threshold": 0.7,
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0
+          },
+          {
+            "threshold": 0.75,
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0
+          },
+          {
+            "threshold": 0.8,
+            "precision": 0.6667,
+            "recall": 1.0,
+            "f1": 0.8
+          },
+          {
+            "threshold": 0.85,
+            "precision": 0.6667,
+            "recall": 1.0,
+            "f1": 0.8
+          },
+          {
+            "threshold": 0.9,
+            "precision": 0.6667,
+            "recall": 1.0,
+            "f1": 0.8
+          }
+        ]
+      }
+    },
+    "openai/gpt-4o-mini": {
+      "hallucination": {
+        "optimal": {
+          "threshold": 0.3,
+          "f1": 0.7556,
+          "precision": 0.85,
+          "recall": 0.68
+        },
+        "sweep": [
+          {
+            "threshold": 0.3,
+            "precision": 0.85,
+            "recall": 0.68,
+            "f1": 0.7556
+          },
+          {
+            "threshold": 0.35,
+            "precision": 0.85,
+            "recall": 0.68,
+            "f1": 0.7556
+          },
+          {
+            "threshold": 0.4,
+            "precision": 0.85,
+            "recall": 0.68,
+            "f1": 0.7556
+          },
+          {
+            "threshold": 0.45,
+            "precision": 0.85,
+            "recall": 0.68,
+            "f1": 0.7556
+          },
+          {
+            "threshold": 0.5,
+            "precision": 0.85,
+            "recall": 0.68,
+            "f1": 0.7556
+          },
+          {
+            "threshold": 0.55,
+            "precision": 0.6981,
+            "recall": 0.74,
+            "f1": 0.7184
+          },
+          {
+            "threshold": 0.6,
+            "precision": 0.6981,
+            "recall": 0.74,
+            "f1": 0.7184
+          },
+          {
+            "threshold": 0.65,
+            "precision": 0.6981,
+            "recall": 0.74,
+            "f1": 0.7184
+          },
+          {
+            "threshold": 0.7,
+            "precision": 0.6981,
+            "recall": 0.74,
+            "f1": 0.7184
+          },
+          {
+            "threshold": 0.75,
+            "precision": 0.6981,
+            "recall": 0.74,
+            "f1": 0.7184
+          },
+          {
+            "threshold": 0.8,
+            "precision": 0.5526,
+            "recall": 0.84,
+            "f1": 0.6667
+          },
+          {
+            "threshold": 0.85,
+            "precision": 0.5526,
+            "recall": 0.84,
+            "f1": 0.6667
+          },
+          {
+            "threshold": 0.9,
+            "precision": 0.5526,
+            "recall": 0.84,
+            "f1": 0.6667
+          }
+        ]
+      },
+      "faithfulness": {
+        "optimal": {
+          "threshold": 0.9,
+          "f1": 0.7931,
+          "precision": 0.8214,
+          "recall": 0.7667
+        },
+        "sweep": [
+          {
+            "threshold": 0.3,
+            "precision": 1.0,
+            "recall": 0.1667,
+            "f1": 0.2857
+          },
+          {
+            "threshold": 0.35,
+            "precision": 1.0,
+            "recall": 0.2333,
+            "f1": 0.3784
+          },
+          {
+            "threshold": 0.4,
+            "precision": 1.0,
+            "recall": 0.2333,
+            "f1": 0.3784
+          },
+          {
+            "threshold": 0.45,
+            "precision": 1.0,
+            "recall": 0.2667,
+            "f1": 0.4211
+          },
+          {
+            "threshold": 0.5,
+            "precision": 1.0,
+            "recall": 0.2667,
+            "f1": 0.4211
+          },
+          {
+            "threshold": 0.55,
+            "precision": 0.8889,
+            "recall": 0.2667,
+            "f1": 0.4103
+          },
+          {
+            "threshold": 0.6,
+            "precision": 0.9,
+            "recall": 0.3,
+            "f1": 0.45
+          },
+          {
+            "threshold": 0.65,
+            "precision": 0.9091,
+            "recall": 0.3333,
+            "f1": 0.4878
+          },
+          {
+            "threshold": 0.7,
+            "precision": 0.7647,
+            "recall": 0.4333,
+            "f1": 0.5532
+          },
+          {
+            "threshold": 0.75,
+            "precision": 0.7647,
+            "recall": 0.4333,
+            "f1": 0.5532
+          },
+          {
+            "threshold": 0.8,
+            "precision": 0.8,
+            "recall": 0.5333,
+            "f1": 0.64
+          },
+          {
+            "threshold": 0.85,
+            "precision": 0.8077,
+            "recall": 0.7,
+            "f1": 0.75
+          },
+          {
+            "threshold": 0.9,
+            "precision": 0.8214,
+            "recall": 0.7667,
+            "f1": 0.7931
+          }
+        ]
+      },
+      "relevance": {
+        "optimal": {
+          "threshold": 0.3,
+          "f1": 1.0,
+          "precision": 1.0,
+          "recall": 1.0
+        },
+        "sweep": [
+          {
+            "threshold": 0.3,
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0
+          },
+          {
+            "threshold": 0.35,
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0
+          },
+          {
+            "threshold": 0.4,
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0
+          },
+          {
+            "threshold": 0.45,
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0
+          },
+          {
+            "threshold": 0.5,
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0
+          },
+          {
+            "threshold": 0.55,
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0
+          },
+          {
+            "threshold": 0.6,
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0
+          },
+          {
+            "threshold": 0.65,
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0
+          },
+          {
+            "threshold": 0.7,
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0
+          },
+          {
+            "threshold": 0.75,
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0
+          },
+          {
+            "threshold": 0.8,
+            "precision": 0.6897,
+            "recall": 1.0,
+            "f1": 0.8163
+          },
+          {
+            "threshold": 0.85,
+            "precision": 0.6897,
+            "recall": 1.0,
+            "f1": 0.8163
+          },
+          {
+            "threshold": 0.9,
+            "precision": 0.6897,
+            "recall": 1.0,
+            "f1": 0.8163
+          }
+        ]
+      }
+    }
+  }
+}

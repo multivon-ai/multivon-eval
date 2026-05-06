@@ -46,6 +46,30 @@ export JUDGE_MODEL=claude-haiku-4-5
 
 The model under test and the judge model can be different providers.
 
+### Calibrated thresholds
+
+`Faithfulness`, `Hallucination`, and `Relevance` automatically apply the optimal threshold for the configured judge model, derived from benchmarks against human-labeled datasets. You don't need to tune this manually.
+
+| Judge | Hallucination | Faithfulness | Relevance |
+|-------|:-------------:|:------------:|:---------:|
+| `claude-haiku-4-5-20251001` | 0.55 | 0.90 | 0.30 |
+| `claude-sonnet-4-6`         | 0.30 | 0.90 | 0.30 |
+| `gpt-4o-mini`               | 0.30 | 0.90 | 0.30 |
+| Other models                | 0.70 | 0.70 | 0.70 |
+
+Pass `threshold=` explicitly to override:
+
+```python
+Faithfulness(threshold=0.8)   # use your own threshold, skip calibration
+```
+
+To inspect the full calibration table:
+
+```python
+from multivon_eval import threshold_table
+print(threshold_table())
+```
+
 ## Faithfulness
 
 Checks that the output is grounded in the provided context — no invented facts.

@@ -1,11 +1,16 @@
 """
 Per-judge threshold calibration for LLM-as-judge evaluators.
 
-Default thresholds in multivon-eval are calibrated against human-labeled
-datasets (HaluEval QA, HaluEval Summarization, curated relevance golden set)
+Default thresholds are calibrated against human-labeled datasets
+(HaluEval QA, HaluEval Summarization, curated relevance golden set)
 for each supported judge model. Using a calibrated threshold instead of the
 library-wide default of 0.7 closes the gap between "the score crossed the
 line" and "a human would agree the output is bad."
+
+Calibration benchmark results (F1 at optimal threshold):
+  claude-haiku-4-5-20251001: hallucination=0.812, faithfulness=0.783, relevance=0.976
+  claude-sonnet-4-6:         hallucination=0.787, faithfulness=0.656, relevance=1.000
+  gpt-4o-mini:               hallucination=0.756, faithfulness=0.793, relevance=1.000
 
 Usage:
     from multivon_eval.calibration import calibrated_threshold
@@ -30,27 +35,27 @@ if TYPE_CHECKING:
 # Models not in this table fall back to the evaluator's own default (0.7).
 _THRESHOLDS: dict[tuple[str, str], float] = {
     # Hallucination — HaluEval QA, 100 cases
-    ("hallucination", "claude-haiku-4-5-20251001"): 0.65,
-    ("hallucination", "claude-haiku-4-5"):           0.65,
-    ("hallucination", "claude-sonnet-4-6"):           0.70,
+    ("hallucination", "claude-haiku-4-5-20251001"): 0.55,
+    ("hallucination", "claude-haiku-4-5"):           0.55,
+    ("hallucination", "claude-sonnet-4-6"):           0.30,
     ("hallucination", "claude-opus-4-7"):             0.70,
-    ("hallucination", "gpt-4o-mini"):                 0.55,
+    ("hallucination", "gpt-4o-mini"):                 0.30,
     ("hallucination", "gpt-4o"):                      0.65,
 
     # Faithfulness — HaluEval Summarization, 60 cases
-    ("faithfulness", "claude-haiku-4-5-20251001"):   0.60,
-    ("faithfulness", "claude-haiku-4-5"):             0.60,
-    ("faithfulness", "claude-sonnet-4-6"):            0.65,
+    ("faithfulness", "claude-haiku-4-5-20251001"):   0.90,
+    ("faithfulness", "claude-haiku-4-5"):             0.90,
+    ("faithfulness", "claude-sonnet-4-6"):            0.90,
     ("faithfulness", "claude-opus-4-7"):              0.70,
-    ("faithfulness", "gpt-4o-mini"):                  0.55,
+    ("faithfulness", "gpt-4o-mini"):                  0.90,
     ("faithfulness", "gpt-4o"):                       0.65,
 
     # Relevance — curated golden set, 40 cases
-    ("relevance", "claude-haiku-4-5-20251001"):      0.70,
-    ("relevance", "claude-haiku-4-5"):                0.70,
-    ("relevance", "claude-sonnet-4-6"):               0.70,
+    ("relevance", "claude-haiku-4-5-20251001"):      0.30,
+    ("relevance", "claude-haiku-4-5"):                0.30,
+    ("relevance", "claude-sonnet-4-6"):               0.30,
     ("relevance", "claude-opus-4-7"):                 0.75,
-    ("relevance", "gpt-4o-mini"):                     0.65,
+    ("relevance", "gpt-4o-mini"):                     0.30,
     ("relevance", "gpt-4o"):                          0.70,
 }
 
