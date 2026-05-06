@@ -40,11 +40,41 @@ export JUDGE_MODEL=claude-haiku-4-5
 |-------------------|---------|-------------|
 | `provider` | `"anthropic"` | `"anthropic"` or `"openai"` |
 | `model` | `"claude-haiku-4-5"` | Model name for the chosen provider |
+| `base_url` | `""` | Custom endpoint for local/self-hosted servers (see below) |
 | `temperature` | `0.0` | Sampling temperature (0 = deterministic) |
 | `max_tokens` | `1024` | Token budget for judge responses |
 | `timeout` | `30` | Request timeout in seconds |
 
 The model under test and the judge model can be different providers.
+
+### Local and self-hosted models
+
+Any OpenAI-compatible server works as a judge — Ollama, LM Studio, vLLM, llama.cpp, or a self-hosted endpoint:
+
+```python
+# Ollama running locally
+configure(JudgeConfig(
+    provider="openai",
+    model="llama3",
+    base_url="http://localhost:11434/v1",
+))
+
+# LM Studio
+configure(JudgeConfig(
+    provider="openai",
+    model="local-model",
+    base_url="http://localhost:1234/v1",
+))
+
+# Self-hosted vLLM or any OpenAI-compatible endpoint
+configure(JudgeConfig(
+    provider="openai",
+    model="meta-llama/Meta-Llama-3-8B-Instruct",
+    base_url="https://my-inference-server.internal/v1",
+))
+```
+
+`base_url` is also read from the `OPENAI_BASE_URL` environment variable, so no code changes are needed to switch between cloud and local judges in CI.
 
 ### Calibrated thresholds
 

@@ -11,6 +11,12 @@
 
 Run structured evals over your AI outputs — from simple string checks to LLM-as-judge scoring to agent trace validation — with a clean Python API, beautiful terminal reports, and CI/CD integration out of the box.
 
+```bash
+pip install multivon-eval && python -m multivon_eval
+```
+
+Runs a self-contained demo eval. LLM-judge evaluators are added automatically if `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or a local server (Ollama on `:11434`, LM Studio on `:1234`, or `OPENAI_BASE_URL`) is detected.
+
 ---
 
 ```python
@@ -592,7 +598,7 @@ EvalSuite.run(model_fn)
            └── export → JSON / CSV
 ```
 
-**Judge model:** Configured via `JUDGE_MODEL` and `JUDGE_PROVIDER` env vars. Defaults to `claude-haiku-4-5`. Thresholds for `Faithfulness`, `Hallucination`, and `Relevance` are automatically calibrated per judge model against human-labeled benchmarks (F1 0.76–0.98). The model under test and the judge model can be different providers.
+**Judge model:** Configured via `JUDGE_MODEL` and `JUDGE_PROVIDER` env vars. Defaults to `claude-haiku-4-5`. Thresholds for `Faithfulness`, `Hallucination`, and `Relevance` are automatically calibrated per judge model against human-labeled benchmarks (F1 0.76–0.98). Local and self-hosted models work via `OPENAI_BASE_URL` or `JudgeConfig(base_url=...)` — Ollama, LM Studio, vLLM, and any OpenAI-compatible server are supported. The model under test and the judge model can be different providers.
 
 ---
 

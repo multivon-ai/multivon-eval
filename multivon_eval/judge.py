@@ -44,6 +44,10 @@ class JudgeConfig:
                      var, then "anthropic".
         model:       Model name. Defaults to JUDGE_MODEL env var, then the
                      provider's default (claude-haiku-4-5 / gpt-4o-mini).
+        base_url:    Custom API endpoint for OpenAI-compatible local servers.
+                     Examples: "http://localhost:11434/v1" (Ollama),
+                     "http://localhost:1234/v1" (LM Studio). Ignored for
+                     Anthropic. Also read from OPENAI_BASE_URL env var.
         temperature: Sampling temperature for the judge (default 0.0 for
                      determinism).
         max_tokens:  Token budget for judge responses (default 1024).
@@ -51,6 +55,7 @@ class JudgeConfig:
     """
     provider: str = ""
     model: str = ""
+    base_url: str = ""
     temperature: float = 0.0
     max_tokens: int = 1024
     timeout: int = 30
@@ -70,9 +75,11 @@ class JudgeConfig:
         """Return a fully resolved config, filling blanks from env + defaults."""
         provider = self.provider or os.getenv("JUDGE_PROVIDER", "anthropic").lower()
         model = self.model or os.getenv("JUDGE_MODEL", _DEFAULT_MODELS.get(provider, ""))
+        base_url = self.base_url or (os.getenv("OPENAI_BASE_URL", "") if provider == "openai" else "")
         return JudgeConfig(
             provider=provider,
             model=model,
+            base_url=base_url,
             temperature=self.temperature,
             max_tokens=self.max_tokens,
             timeout=self.timeout,
@@ -109,6 +116,7 @@ def resolve_judge(per_evaluator: JudgeConfig | None) -> JudgeConfig:
     merged = JudgeConfig(
         provider=override.provider or base.provider,
         model=override.model or base.model,
+        base_url=override.base_url or base.base_url,
         temperature=override.temperature if override.temperature != 0.0 else base.temperature,
         max_tokens=override.max_tokens if override.max_tokens != 1024 else base.max_tokens,
         timeout=override.timeout if override.timeout != 30 else base.timeout,
@@ -143,7 +151,10 @@ def make_judge_call(prompt: str, config: JudgeConfig) -> str:
                 return response.content[0].text
             elif config.provider == "openai":
                 import openai
-                client = openai.OpenAI()
+                client_kwargs: dict = {}
+                if config.base_url:
+                    client_kwargs["base_url"] = config.base_url
+                client = openai.OpenAI(**client_kwargs)
                 response = client.chat.completions.create(
                     model=config.model,
                     max_completion_tokens=config.max_tokens,
