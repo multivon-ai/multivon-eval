@@ -803,6 +803,60 @@ class EvalSuite:
         return suite
 
     @classmethod
+    def eu_ai_act_high_risk(
+        cls,
+        name: str = "EU AI Act High-Risk Eval",
+        *,
+        jurisdiction: str = "gdpr",
+        schema=None,
+    ) -> "EvalSuite":
+        """Auditor-ready evaluator set for high-risk AI systems under the EU AI Act.
+
+        Wires the standard measurable controls of the Act's high-risk obligations:
+
+            Art. 9(2)(b)    Foreseeable misuse              → Toxicity
+            Art. 10(2)(f-g) Bias examination & mitigation   → Bias
+            Art. 10(5)      Personal data processing        → PIIEvaluator
+            Art. 15(1)      Accuracy                        → Faithfulness, Hallucination, Relevance
+            Art. 15(2)      Robustness                      → NotEmpty, SchemaEvaluator (if schema),
+                                                              and (recommended) SelfConsistency via runs>1
+
+        Pair with ``ComplianceReporter`` to satisfy Art. 12 (record-keeping) and
+        to print a coverage report flagging any remaining gaps:
+
+            suite = EvalSuite.eu_ai_act_high_risk()
+            suite.add_cases(cases)
+            reporter = ComplianceReporter("./audit-logs", framework="eu-ai-act")
+            print(reporter.coverage(suite))
+            report = suite.run(model_fn, runs=5)
+            reporter.record(report, tags={"system": "triage-bot"})
+
+        Art. 13 (transparency), Art. 14 (human oversight), and Art. 15(4-5)
+        (cybersecurity) are process controls and require organizational
+        measures beyond model evaluation.
+        """
+        from .evaluators.compliance import PIIEvaluator, SchemaEvaluator
+        from .evaluators.deterministic import NotEmpty
+        from .evaluators.llm_judge import (
+            Bias, Faithfulness, Hallucination, Relevance, Toxicity,
+        )
+        suite = (
+            cls(name)
+            .add_evaluators(
+                NotEmpty(),
+                Faithfulness(),
+                Hallucination(),
+                Relevance(),
+                Toxicity(),
+                Bias(),
+                PIIEvaluator(jurisdiction=jurisdiction, redact=True),
+            )
+        )
+        if schema is not None:
+            suite.add_evaluator(SchemaEvaluator(schema, strict=True))
+        return suite
+
+    @classmethod
     def for_chatbot(cls, name: str = "Chatbot Eval") -> "EvalSuite":
         """Conversation relevance, knowledge retention, turn consistency, completeness.
 

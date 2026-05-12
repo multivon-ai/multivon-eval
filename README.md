@@ -94,7 +94,7 @@ Every team building AI products hits the same problem: **how do you know if your
 
 **Agent trajectory evaluation** — Beyond "did the task complete?": evaluate whether tool calls were necessary, whether the agent took the optimal number of steps, and whether it recovered correctly from tool failures. Plus `AgentMemoryEval` for multi-session agents.
 
-**Local-first compliance** — `PIIEvaluator` detects PII in outputs using local regex patterns (zero API calls). `SchemaEvaluator` validates structured outputs against Pydantic models or JSON Schema with per-field failure breakdowns. `ComplianceReporter` writes tamper-evident NDJSON audit trails mapped to EU AI Act Article 9 and NIST AI RMF controls.
+**Local-first compliance** — `PIIEvaluator` detects PII in outputs using local regex patterns (zero API calls). `SchemaEvaluator` validates structured outputs against Pydantic models or JSON Schema with per-field failure breakdowns. `ComplianceReporter` writes hash-chained, tamper-evident NDJSON audit trails with paragraph-accurate EU AI Act mappings (Art. 9(2)(b), 10, 15) and NIST AI RMF controls. Use `EvalSuite.eu_ai_act_high_risk()` for an auditor-ready suite and `reporter.coverage(suite)` to surface control gaps before you ship.
 
 **Experiment tracking** — Record every run, compare across model versions, catch regressions before they reach users. p-values, confidence intervals, and power hints included.
 
@@ -358,20 +358,33 @@ Per-field failures reported. Based on StructEval (2025): GPT-4 fails complex str
 ### Audit trail generation
 
 ```python
-from multivon_eval import ComplianceReporter
+from multivon_eval import EvalSuite, ComplianceReporter
+
+suite = EvalSuite.eu_ai_act_high_risk(jurisdiction="gdpr")
+suite.add_cases(cases)
 
 reporter = ComplianceReporter(
     output_dir="./audit-logs",
     framework="eu-ai-act",   # or "nist-ai-rmf" or "none"
 )
-report = suite.run(model_fn)
-record_id = reporter.record(report)
 
-# Verify integrity of the audit log
-reporter.verify("My Eval Suite")
+# Pre-flight: which Articles does this suite actually exercise?
+print(reporter.coverage(suite))
+#   [x] Art. 9(2)(b)   Foreseeable misuse        — covered by: toxicity
+#   [x] Art. 10(2)(f-g) Bias examination         — covered by: bias
+#   [x] Art. 10(5)     Personal data processing  — covered by: pii_detection
+#   [x] Art. 15(1)     Accuracy                  — covered by: faithfulness, hallucination, relevance
+#   [x] Art. 15(2)     Robustness                — covered by: not_empty
+#   Coverage: 5/5 measurable controls exercised.
+
+report = suite.run(model_fn, runs=5)
+reporter.record(report, tags={"system": "triage-bot", "version": "1.0"})
+
+# Verify the hash chain. Mid-log deletion or in-place edits are detected.
+reporter.verify(suite.name)
 ```
 
-Produces append-only NDJSON audit records, SHA-256 hashed. Each evaluator result is annotated with the relevant EU AI Act Article 9 / NIST AI RMF control category.
+Produces an append-only NDJSON log where each record links to the previous via `prev_hash`, forming a SHA-256 chain that's tamper-evident end-to-end. Each evaluator result is annotated with paragraph-accurate EU AI Act controls (Art. 9(2)(b) foreseeable misuse, Art. 10 data governance & bias, Art. 15 accuracy & robustness) or NIST AI RMF subcategories. Process controls (Art. 11/12/13/14/15(4-5)) are surfaced separately in the coverage report — they require organizational measures beyond evaluation.
 
 ---
 

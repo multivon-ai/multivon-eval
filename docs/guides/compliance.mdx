@@ -145,7 +145,7 @@ This is valid — the schema evaluator strips the fence before parsing.
 
 ## Compliance Audit Trail
 
-`ComplianceReporter` writes a tamper-evident NDJSON log of every eval run, with SHA-256 hashing and regulatory control annotations.
+`ComplianceReporter` writes a hash-chained, tamper-evident NDJSON log of every eval run, with paragraph-accurate regulatory control annotations on each evaluator result.
 
 ### Basic usage
 
@@ -164,38 +164,97 @@ record_id = reporter.record(report, tags={"version": "2.1", "env": "staging"})
 # [compliance] framework: eu-ai-act
 ```
 
+### EU AI Act high-risk factory
+
+For high-risk systems under Annex III, use the factory — it wires the standard
+measurable controls with calibrated thresholds:
+
+```python
+from multivon_eval import EvalSuite, ComplianceReporter
+
+suite = EvalSuite.eu_ai_act_high_risk(jurisdiction="gdpr")
+suite.add_cases(cases)
+
+reporter = ComplianceReporter("./audit-logs", framework="eu-ai-act")
+report = suite.run(model_fn, runs=5)
+reporter.record(report, tags={"system": "triage-bot"})
+```
+
+The factory wires: `NotEmpty`, `Faithfulness`, `Hallucination`, `Relevance`,
+`Toxicity`, `Bias`, `PIIEvaluator` (plus optional `SchemaEvaluator` if you pass
+`schema=`). Pair with `runs=5` to surface flakiness — Art. 15(2) robustness
+isn't a single-run claim.
+
+### Coverage report
+
+Before you run, check which Articles the suite actually exercises:
+
+```python
+print(reporter.coverage(suite))
+```
+
+```
+eu-ai-act coverage for suite 'EU AI Act High-Risk Eval'
+───────────────────────────────────────────────────────
+  [x] Art. 9(2)(b)   Foreseeable misuse risk identification
+      covered by: toxicity
+  [x] Art. 10(2)(f-g) Examination and mitigation of possible biases
+      covered by: bias
+  [x] Art. 10(5)     Processing of personal data
+      covered by: pii_detection
+  [x] Art. 15(1)     Accuracy
+      covered by: faithfulness, hallucination, relevance
+  [x] Art. 15(2)     Robustness
+      covered by: not_empty
+
+  Process controls (not satisfiable by evaluators alone):
+      Art. 11        Technical documentation
+      Art. 12        Record-keeping (satisfied by this reporter)
+      Art. 13        Transparency and information to deployers
+      Art. 14        Human oversight
+      Art. 15(4-5)   Cybersecurity and resilience
+
+  Coverage: 5/5 measurable controls exercised.
+```
+
+Process controls (Art. 11, 13, 14, 15(4-5)) require organizational measures
+outside of model evaluation; the reporter surfaces them so you don't mistake
+"high coverage" for "fully compliant."
+
 ### Framework mappings
 
 ```python
-# EU AI Act Article 9 annotations
-ComplianceReporter(framework="eu-ai-act")
-
-# NIST AI RMF annotations
-ComplianceReporter(framework="nist-ai-rmf")
-
-# No framework — raw scores only
-ComplianceReporter(framework="none")
+ComplianceReporter(framework="eu-ai-act")    # paragraph-accurate EU AI Act controls
+ComplianceReporter(framework="nist-ai-rmf")  # NIST AI RMF subcategories
+ComplianceReporter(framework="none")         # raw scores only
 ```
 
-**EU AI Act Article 9 mappings:**
+**EU AI Act mappings** (Regulation (EU) 2024/1689):
 
 | Evaluator | Control |
 |-----------|---------|
-| `faithfulness`, `hallucination` | Article 9(4)(a) — Accuracy & reliability |
-| `pii_detection` | Article 9(4)(b) — Privacy & data governance |
-| `schema_compliance`, `not_empty` | Article 9(4)(c) — Robustness & output consistency |
-| `toxicity`, `bias` | Article 9(6) — Bias & discrimination monitoring |
-| `task_completion`, `tool_call_accuracy` | Article 9(5) — Task performance logging |
+| `toxicity` | Art. 9(2)(b) — Foreseeable misuse risk identification |
+| `bias` | Art. 10(2)(f-g) — Examination & mitigation of possible biases |
+| `pii_detection` | Art. 10(5) — Processing of personal data |
+| `faithfulness`, `hallucination`, `relevance`, `answer_accuracy`, `context_precision`, `context_recall`, `summarization`, `coherence`, `task_completion`, `tool_call_accuracy`, `plan_quality`, `step_faithfulness`, … | Art. 15(1) — Accuracy |
+| `not_empty`, `schema_compliance`, `json_schema`, `self_consistency`, `turn_consistency`, `latency`, `max_latency`, `agent_memory`, … | Art. 15(2) — Robustness |
 
-### Verifying integrity
+**NIST AI RMF subcategories**: accuracy evaluators → MEASURE 2.3, robustness → MEASURE 2.5, toxicity → MEASURE 2.6, `pii_detection` → MEASURE 2.10, `bias` → MEASURE 2.11.
+
+### Verifying integrity (hash chain)
+
+Each record stores `prev_hash` pointing at the previous record's `record_hash`,
+forming a SHA-256 chain. `verify()` walks the chain end-to-end:
 
 ```python
-# Verify all records in the audit log are intact
 ok = reporter.verify("HR Bot Eval")
-#   OK  a3f9b2c1  2025-11-14T09:23:11
-#   OK  b7d1e4f2  2025-11-15T14:07:42
+#   OK  a3f9b2c1  2026-05-13T09:23:11
+#   OK  b7d1e4f2  2026-05-14T14:07:42
 #   Verification: PASS — all records intact
 ```
+
+If a record is edited in place: `TAMPERED`. If a middle record is deleted
+(undetectable under per-record hashing): `CHAIN BROKEN` on the next record.
 
 ### Audit record format
 
@@ -205,9 +264,11 @@ Each NDJSON line:
 {
   "record_id": "a3f9b2c1ef20",
   "suite_name": "HR Bot Eval",
-  "model_id": "claude-sonnet-4-5",
-  "timestamp": "2025-11-14T09:23:11.821Z",
+  "model_id": "claude-sonnet-4-6",
+  "timestamp": "2026-05-13T09:23:11.821Z",
   "framework": "eu-ai-act",
+  "chain_version": 1,
+  "prev_hash": "0000…0000",
   "summary": {
     "total": 50,
     "passed": 46,
@@ -219,12 +280,18 @@ Each NDJSON line:
       "evaluator": "faithfulness",
       "avg_score": 0.89,
       "pass_rate": 0.88,
-      "control": "Article 9(4)(a) — Accuracy & reliability"
+      "controls": [
+        {"id": "Art. 15(1)", "description": "Accuracy"}
+      ]
     }
   ],
-  "record_hash": "sha256:e3b0c44298fc1c149afb..."
+  "record_hash": "e3b0c44298fc1c149afb…"
 }
 ```
+
+`controls` is a list because some evaluators may map to multiple controls in
+future framework versions. `prev_hash` is `"0" * 64` for the first record in
+the log (genesis).
 
 ### Full compliance pipeline
 
