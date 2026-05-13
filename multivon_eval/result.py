@@ -175,6 +175,7 @@ class EvalReport:
     case_results: list[CaseResult]
     model_id: str = ""
     judge_reliability: float | None = None
+    costs: Any = None  # multivon_eval.costs.Costs or None; populated by suite.run()
 
     @property
     def total(self) -> int:
@@ -384,6 +385,7 @@ class EvalReport:
                     "stability_score": round(self.stability_score, 4),
                     "judge_reliability": self.judge_reliability,
                     "by_evaluator": {k: round(v, 4) for k, v in self.scores_by_evaluator().items()},
+                    "costs": self.costs.to_dict() if self.costs is not None else None,
                 },
                 "cases": [
                     {

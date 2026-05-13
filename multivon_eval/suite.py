@@ -209,13 +209,24 @@ class EvalSuite:
         else:
             instrumented_fn = model_fn
 
-        if workers > 1:
-            case_results = self._run_parallel(instrumented_fn, workers, runs)
-        else:
-            case_results = [
-                self._run_case(case, instrumented_fn, runs, tracer=tracer, early_stop=early_stop)
-                for case in self._cases
-            ]
+        # Cost tracker is attached to the contextvar for the duration of
+        # this run. Every judge call inside `judge.make_judge_call` reports
+        # token counts back to it. Lazy import keeps the costs module out
+        # of the import graph for callers that never invoke run().
+        from .costs import CostTracker, set_active_tracker, reset_token
+        cost_tracker = CostTracker()
+        cost_token = set_active_tracker(cost_tracker)
+
+        try:
+            if workers > 1:
+                case_results = self._run_parallel(instrumented_fn, workers, runs)
+            else:
+                case_results = [
+                    self._run_case(case, instrumented_fn, runs, tracer=tracer, early_stop=early_stop)
+                    for case in self._cases
+                ]
+        finally:
+            reset_token(cost_token)
 
         judge_reliability = _measure_judge_reliability(
             self._evaluators, case_results, self._cases
@@ -226,6 +237,7 @@ class EvalSuite:
             case_results=case_results,
             model_id=self.model_id,
             judge_reliability=judge_reliability,
+            costs=cost_tracker.snapshot(),
         )
 
         if verbose:
@@ -1085,7 +1097,16 @@ class EvalSuite:
                     return single_runs[0]
                 return _aggregate_runs(case, single_runs)
 
-        case_results = await asyncio.gather(*[_run_one_async(c) for c in self._cases])
+        # Cost tracker for the duration of run_async. Same mechanism as
+        # the sync .run(); contextvars are correct under asyncio.
+        from .costs import CostTracker, set_active_tracker, reset_token
+        cost_tracker = CostTracker()
+        cost_token = set_active_tracker(cost_tracker)
+
+        try:
+            case_results = await asyncio.gather(*[_run_one_async(c) for c in self._cases])
+        finally:
+            reset_token(cost_token)
 
         judge_reliability = _measure_judge_reliability(
             self._evaluators, list(case_results), self._cases
@@ -1096,6 +1117,7 @@ class EvalSuite:
             case_results=list(case_results),
             model_id=self.model_id,
             judge_reliability=judge_reliability,
+            costs=cost_tracker.snapshot(),
         )
 
         if verbose:

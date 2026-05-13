@@ -179,6 +179,12 @@ def _sync_anthropic_call(prompt: str, config: JudgeConfig) -> str:
         max_tokens=config.max_tokens,
         messages=[{"role": "user", "content": prompt}],
     )
+    _record_usage(
+        provider="anthropic",
+        model=config.model,
+        input_tokens=getattr(response.usage, "input_tokens", 0) if getattr(response, "usage", None) else 0,
+        output_tokens=getattr(response.usage, "output_tokens", 0) if getattr(response, "usage", None) else 0,
+    )
     return response.content[0].text
 
 
@@ -192,6 +198,13 @@ def _sync_openai_call(prompt: str, config: JudgeConfig) -> str:
         model=config.model,
         max_completion_tokens=config.max_tokens,
         messages=[{"role": "user", "content": prompt}],
+    )
+    usage = getattr(response, "usage", None)
+    _record_usage(
+        provider="openai",
+        model=config.model,
+        input_tokens=getattr(usage, "prompt_tokens", 0) if usage else 0,
+        output_tokens=getattr(usage, "completion_tokens", 0) if usage else 0,
     )
     return response.choices[0].message.content or ""
 
@@ -214,6 +227,13 @@ def _sync_litellm_call(prompt: str, config: JudgeConfig) -> str:
         temperature=config.temperature,
         messages=[{"role": "user", "content": prompt}],
         **extra,
+    )
+    usage = getattr(response, "usage", None) or {}
+    _record_usage(
+        provider="litellm",
+        model=config.model,
+        input_tokens=usage.get("prompt_tokens", 0) if hasattr(usage, "get") else getattr(usage, "prompt_tokens", 0),
+        output_tokens=usage.get("completion_tokens", 0) if hasattr(usage, "get") else getattr(usage, "completion_tokens", 0),
     )
     return response.choices[0].message.content or ""
 
@@ -323,6 +343,12 @@ async def _async_anthropic_call(prompt: str, config: JudgeConfig) -> str:
         max_tokens=config.max_tokens,
         messages=[{"role": "user", "content": prompt}],
     )
+    _record_usage(
+        provider="anthropic",
+        model=config.model,
+        input_tokens=getattr(response.usage, "input_tokens", 0) if getattr(response, "usage", None) else 0,
+        output_tokens=getattr(response.usage, "output_tokens", 0) if getattr(response, "usage", None) else 0,
+    )
     return response.content[0].text
 
 
@@ -336,6 +362,13 @@ async def _async_openai_call(prompt: str, config: JudgeConfig) -> str:
         model=config.model,
         max_completion_tokens=config.max_tokens,
         messages=[{"role": "user", "content": prompt}],
+    )
+    usage = getattr(response, "usage", None)
+    _record_usage(
+        provider="openai",
+        model=config.model,
+        input_tokens=getattr(usage, "prompt_tokens", 0) if usage else 0,
+        output_tokens=getattr(usage, "completion_tokens", 0) if usage else 0,
     )
     return response.choices[0].message.content or ""
 
@@ -359,7 +392,36 @@ async def _async_litellm_call(prompt: str, config: JudgeConfig) -> str:
         messages=[{"role": "user", "content": prompt}],
         **extra,
     )
+    usage = getattr(response, "usage", None) or {}
+    _record_usage(
+        provider="litellm",
+        model=config.model,
+        input_tokens=usage.get("prompt_tokens", 0) if hasattr(usage, "get") else getattr(usage, "prompt_tokens", 0),
+        output_tokens=usage.get("completion_tokens", 0) if hasattr(usage, "get") else getattr(usage, "completion_tokens", 0),
+    )
     return response.choices[0].message.content or ""
+
+
+# ── Cost / token accounting hook ────────────────────────────────────────────
+
+
+def _record_usage(*, provider: str, model: str, input_tokens: int, output_tokens: int) -> None:
+    """Forward token counts to whichever cost tracker is currently active.
+
+    Lazy import keeps the hot path free of an unused dependency for code
+    that doesn't track costs.
+    """
+    if input_tokens == 0 and output_tokens == 0:
+        return
+    try:
+        from .costs import record_call
+        record_call(provider=provider, model=model,
+                    input_tokens=int(input_tokens or 0),
+                    output_tokens=int(output_tokens or 0))
+    except Exception:
+        # Cost accounting is observability, not correctness.
+        # Never let a bug here propagate to the eval.
+        pass
 
 
 async def _make_judge_call_async_uncached(prompt: str, config: JudgeConfig) -> str:
