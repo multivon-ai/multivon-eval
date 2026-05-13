@@ -1013,20 +1013,46 @@ class EvalSuite:
         fail_threshold: float | None = None,
         concurrency: int = 5,
         runs: int = 1,
+        evaluator_concurrency: int | None = None,
     ) -> EvalReport:
-        """
-        Run evals with an async model function.
+        """Run evals with an async model function.
 
         Args:
-            model_fn:    Async callable str → str.
-            concurrency: Max concurrent model calls (default 5).
-            runs:        Times to run each case (default 1).
+            model_fn:               Async callable str → str.
+            concurrency:            Max concurrent cases in flight (default 5).
+            runs:                   Times to run each case (default 1).
+            evaluator_concurrency:  Max concurrent evaluators *per case*.
+                                    Defaults to running all evaluators in
+                                    parallel. Set to 1 for strictly sequential
+                                    evaluation within a case.
+
+        Returns an :class:`EvalReport`. Each evaluator's ``aevaluate`` is
+        awaited, so LLM-judge calls overlap I/O rather than serialising.
         """
         for ev in self._evaluators:
             if hasattr(ev, "prepare"):
                 ev.prepare()
 
         sem = asyncio.Semaphore(concurrency)
+        ev_sem = asyncio.Semaphore(evaluator_concurrency) if evaluator_concurrency else None
+
+        async def _eval_one(ev, case: EvalCase, output: str, latency_ms: float, model_error: str | None):
+            if model_error is not None and not isinstance(ev, (Latency, MaxLatency)):
+                return EvalResult(
+                    evaluator=getattr(ev, "name", type(ev).__name__),
+                    score=0.0,
+                    passed=False,
+                    reason=f"[skipped — model error: {model_error}]",
+                )
+            if isinstance(ev, (Latency, MaxLatency)):
+                return await ev.aevaluate(case, output, latency_ms=latency_ms)
+            return await ev.aevaluate(case, output)
+
+        async def _gated_eval(ev, case, output, latency_ms, model_error):
+            if ev_sem is None:
+                return await _eval_one(ev, case, output, latency_ms, model_error)
+            async with ev_sem:
+                return await _eval_one(ev, case, output, latency_ms, model_error)
 
         async def _run_one_async(case: EvalCase) -> CaseResult:
             async with sem:
@@ -1041,27 +1067,16 @@ class EvalSuite:
                         output = f"[MODEL ERROR: {e}]"
                     latency_ms = (time.time() - t0) * 1000
 
-                    ev_results = []
-                    for ev in self._evaluators:
-                        if async_model_error is not None and not isinstance(ev, (Latency, MaxLatency)):
-                            ev_results.append(EvalResult(
-                                evaluator=getattr(ev, "name", type(ev).__name__),
-                                score=0.0,
-                                passed=False,
-                                reason=f"[skipped — model error: {async_model_error}]",
-                            ))
-                            continue
-                        if isinstance(ev, (Latency, MaxLatency)):
-                            result = ev.evaluate(case, output, latency_ms=latency_ms)
-                        else:
-                            result = ev.evaluate(case, output)
-                        ev_results.append(result)
+                    ev_results = await asyncio.gather(*[
+                        _gated_eval(ev, case, output, latency_ms, async_model_error)
+                        for ev in self._evaluators
+                    ])
 
                     single_runs.append(CaseResult(
                         case_input=case.input,
                         actual_output=output,
                         model_error=async_model_error,
-                        results=ev_results,
+                        results=list(ev_results),
                         latency_ms=latency_ms,
                         tags=case.tags,
                     ))

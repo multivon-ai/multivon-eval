@@ -57,6 +57,9 @@ multivon-eval = "multivon_eval.cli:main"
 [tool.setuptools.packages.find]
 include = ["multivon_eval*"]
 
+[tool.setuptools.package-data]
+"multivon_eval._calibration_data" = ["*.json"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py310"

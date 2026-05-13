@@ -39,16 +39,29 @@ Usage:
 from __future__ import annotations
 import hashlib
 import json
+import os
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Callable, Literal
 
+from .exceptions import ComplianceError
 from .result import EvalReport
 
 if TYPE_CHECKING:
     from .suite import EvalSuite
+
+
+# Mode flag for ComplianceReporter.record().
+RecordMode = Literal["summary", "case"]
+
+
+# Anchor callbacks receive the latest tip hash after every record append.
+# Use to ship the chain head to GitHub Actions output, S3 Object Lock, or
+# Sigstore Rekor — anywhere an attacker with filesystem access can't
+# silently roll back the local log.
+AnchorFn = Callable[[str], None]
 
 
 Framework = Literal["eu-ai-act", "nist-ai-rmf", "none"]
@@ -343,26 +356,87 @@ class ComplianceReporter:
         <output_dir>/<suite_name>.audit.sha256   running hash checkpoint (advisory)
     """
 
-    def __init__(self, output_dir: str = "./audit-logs", framework: Framework = "eu-ai-act"):
+    def __init__(
+        self,
+        output_dir: str = "./audit-logs",
+        framework: Framework = "eu-ai-act",
+        *,
+        anchor_fn: AnchorFn | None = None,
+        verbose: bool = True,
+    ):
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.framework = framework
+        self.anchor_fn = anchor_fn
+        self.verbose = verbose
 
     # ── recording ────────────────────────────────────────────────────────────
 
-    def record(self, report: EvalReport, tags: dict[str, str] | None = None) -> str:
-        """
-        Append a chained audit record for this eval run.
+    def record(
+        self,
+        report: EvalReport,
+        tags: dict[str, str] | None = None,
+        *,
+        mode: RecordMode = "summary",
+    ) -> str | list[str]:
+        """Append chained audit record(s) for this eval run.
 
-        Returns the record_id (12-hex-char) for cross-reference.
-        """
-        record_id = uuid.uuid4().hex[:12]
-        timestamp = datetime.now(timezone.utc).isoformat()
-        log_path = self._log_path(report.suite_name)
-        hash_path = self._hash_path(report.suite_name)
-        prev_hash = self._last_chain_hash(log_path)
+        Args:
+            report: The :class:`EvalReport` to audit.
+            tags:   Arbitrary key/value labels stored on the record(s).
+            mode:   ``"summary"`` (default) writes a single aggregate
+                    record per call — same behavior as previous versions.
+                    ``"case"`` writes one chained record *per case* in the
+                    report. Use case mode to satisfy EU AI Act Art. 12
+                    decision-level logging.
 
-        summary = {
+        Returns:
+            ``mode="summary"``: the 12-char ``record_id``.
+            ``mode="case"``:    a list of ``record_id`` values, one per case.
+
+        Side effects:
+            Appends to ``<output_dir>/<suite>.audit.ndjson``; updates the
+            ``.sha256`` checkpoint file; calls ``self.anchor_fn(tip_hash)``
+            (if configured) once after the last write so external systems
+            see only the final tip.
+        """
+        if mode == "summary":
+            return self._record_summary(report, tags)
+        if mode == "case":
+            return self._record_per_case(report, tags)
+        raise ComplianceError(f"Unknown record mode: {mode!r}")
+
+    def _record_summary(self, report: EvalReport, tags: dict[str, str] | None) -> str:
+        summary = self._build_summary(report, tags)
+        evaluator_results = self._build_evaluator_results(report)
+        record_id, record_hash = self._append_record(
+            report,
+            record_type="summary",
+            extra={"summary": summary, "evaluator_results": evaluator_results},
+        )
+        self._call_anchor(record_hash)
+        return record_id
+
+    def _record_per_case(self, report: EvalReport, tags: dict[str, str] | None) -> list[str]:
+        record_ids: list[str] = []
+        last_hash = ""
+        for idx, case_result in enumerate(report.case_results):
+            case_payload = self._build_case_payload(case_result, idx, tags)
+            record_id, record_hash = self._append_record(
+                report,
+                record_type="case",
+                extra={"case": case_payload},
+            )
+            record_ids.append(record_id)
+            last_hash = record_hash
+        if last_hash:
+            self._call_anchor(last_hash)
+        return record_ids
+
+    # ── payload builders ─────────────────────────────────────────────────────
+
+    def _build_summary(self, report: EvalReport, tags: dict[str, str] | None) -> dict:
+        return {
             "total": report.total,
             "passed": report.passed,
             "failed": report.failed,
@@ -374,7 +448,8 @@ class ComplianceReporter:
             "tags": tags or {},
         }
 
-        evaluator_results: list[dict] = []
+    def _build_evaluator_results(self, report: EvalReport) -> list[dict]:
+        results: list[dict] = []
         for ev_name, score in report.scores_by_evaluator().items():
             entry: dict = {
                 "evaluator": ev_name,
@@ -384,9 +459,60 @@ class ComplianceReporter:
             controls = _controls_for(self.framework, ev_name)
             if controls:
                 entry["controls"] = [{"id": c.id, "description": c.description} for c in controls]
-            evaluator_results.append(entry)
+            results.append(entry)
+        return results
 
-        payload = {
+    def _build_case_payload(self, case_result, idx: int, tags: dict[str, str] | None) -> dict:
+        evaluators: list[dict] = []
+        for r in case_result.results:
+            entry: dict = {
+                "evaluator": r.evaluator,
+                "score": round(r.score, 4),
+                "passed": bool(r.passed),
+            }
+            if r.reason:
+                entry["reason"] = r.reason
+            controls = _controls_for(self.framework, r.evaluator)
+            if controls:
+                entry["controls"] = [{"id": c.id, "description": c.description} for c in controls]
+            evaluators.append(entry)
+        payload: dict = {
+            "case_index": idx,
+            "input": case_result.case_input,
+            "output": case_result.actual_output,
+            "passed": bool(case_result.passed),
+            "score": round(case_result.score, 4),
+            "latency_ms": round(case_result.latency_ms, 2),
+            "tags": list(case_result.tags) if case_result.tags else [],
+            "evaluators": evaluators,
+        }
+        if case_result.model_error:
+            payload["model_error"] = case_result.model_error
+        if case_result.runs > 1:
+            payload["runs"] = case_result.runs
+            payload["pass_count"] = case_result.pass_count
+            payload["run_pass_rate"] = round(case_result.run_pass_rate, 4)
+        if tags:
+            payload["record_tags"] = dict(tags)
+        return payload
+
+    # ── append + anchor ──────────────────────────────────────────────────────
+
+    def _append_record(
+        self,
+        report: EvalReport,
+        *,
+        record_type: str,
+        extra: dict,
+    ) -> tuple[str, str]:
+        """Build payload, hash, append, return (record_id, record_hash)."""
+        record_id = uuid.uuid4().hex[:12]
+        timestamp = datetime.now(timezone.utc).isoformat()
+        log_path = self._log_path(report.suite_name)
+        hash_path = self._hash_path(report.suite_name)
+        prev_hash = self._last_chain_hash(log_path)
+
+        payload: dict = {
             "record_id": record_id,
             "suite_name": report.suite_name,
             "model_id": report.model_id,
@@ -394,33 +520,31 @@ class ComplianceReporter:
             "framework": self.framework,
             "chain_version": _CHAIN_VERSION,
             "prev_hash": prev_hash,
-            "summary": summary,
-            "evaluator_results": evaluator_results,
+            "record_type": record_type,
+            **extra,
         }
         record_hash = _hash_payload(payload)
-
-        audit_record = AuditRecord(
-            record_id=record_id,
-            suite_name=report.suite_name,
-            model_id=report.model_id,
-            timestamp=timestamp,
-            framework=self.framework,
-            chain_version=_CHAIN_VERSION,
-            prev_hash=prev_hash,
-            summary=summary,
-            evaluator_results=evaluator_results,
-            record_hash=record_hash,
-        )
+        payload_with_hash = {**payload, "record_hash": record_hash}
+        line = json.dumps(payload_with_hash, separators=(",", ":"))
 
         with open(log_path, "a") as f:
-            f.write(audit_record.to_ndjson() + "\n")
+            f.write(line + "\n")
         with open(hash_path, "a") as f:
             f.write(f"{record_hash}  {record_id}  {timestamp}\n")
 
-        print(f"  [compliance] audit record → {record_id}  ({log_path.name})")
-        if self.framework != "none":
-            print(f"  [compliance] framework: {self.framework}")
-        return record_id
+        if self.verbose:
+            print(f"  [compliance] {record_type} record → {record_id}  ({log_path.name})")
+            if self.framework != "none" and record_type == "summary":
+                print(f"  [compliance] framework: {self.framework}")
+        return record_id, record_hash
+
+    def _call_anchor(self, tip_hash: str) -> None:
+        if self.anchor_fn is None:
+            return
+        try:
+            self.anchor_fn(tip_hash)
+        except Exception as exc:
+            raise ComplianceError(f"anchor_fn failed: {exc}") from exc
 
     # ── verification ─────────────────────────────────────────────────────────
 
@@ -548,3 +672,42 @@ def _hash_payload(payload: dict) -> str:
     sanitized = {k: v for k, v in payload.items() if k != "record_hash"}
     encoded = json.dumps(sanitized, separators=(",", ":"), sort_keys=False).encode()
     return hashlib.sha256(encoded).hexdigest()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Built-in anchor functions
+# ─────────────────────────────────────────────────────────────────────────────
+
+def github_actions_anchor(tip_hash: str) -> None:
+    """Write the chain's tip hash to ``$GITHUB_OUTPUT``.
+
+    GitHub Actions captures workflow outputs at ``$GITHUB_OUTPUT`` and makes
+    them available to downstream jobs. Anchoring the audit-log tip there
+    creates an external, immutable witness — even if the filesystem audit
+    log is later rewritten, the run's recorded output won't match the
+    rewritten tip.
+
+    Use::
+
+        from multivon_eval import ComplianceReporter, github_actions_anchor
+
+        reporter = ComplianceReporter(
+            "./audit-logs",
+            framework="eu-ai-act",
+            anchor_fn=github_actions_anchor,
+        )
+
+    Other anchor sinks (Sigstore Rekor, S3 Object Lock, internal ledgers)
+    can be plugged in by writing a similar ``Callable[[str], None]``.
+    """
+    out_path = os.environ.get("GITHUB_OUTPUT")
+    if not out_path:
+        # Not in a GitHub Actions run — nothing to anchor to.
+        return
+    try:
+        with open(out_path, "a") as f:
+            f.write(f"multivon_audit_tip={tip_hash}\n")
+    except OSError as exc:
+        # Don't break the eval pipeline if GITHUB_OUTPUT can't be written.
+        # Caller can wrap in a stricter anchor_fn if they require it.
+        print(f"  [compliance] github_actions_anchor: could not write $GITHUB_OUTPUT: {exc}")

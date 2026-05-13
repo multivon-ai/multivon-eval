@@ -41,14 +41,27 @@ from .experiments import (
     runs_needed, min_detectable_effect, cohens_h, benjamini_hochberg,
     mcnemar_test, bayesian_interval,
 )
-from .compliance import ComplianceReporter
+from .compliance import ComplianceReporter, github_actions_anchor
+from .reporters.html_compliance import ComplianceHtmlReporter, render_compliance_html
+from .exceptions import (
+    MultivonError, JudgeUnavailable, CalibrationMissing,
+    EvaluatorPrereqMissing, CacheError, SecretsError, ComplianceError,
+)
+from .secrets import (
+    SecretsResolver, EnvResolver, ChainedResolver, StaticResolver,
+    get_secret, set_resolver, get_resolver, reset_resolver,
+)
+from .cache import JudgeCache, get_cache, set_cache
 from .targets import (
     BearerAuth, APIKeyAuth,
     DeployedAPITarget, MultiTurnAPITarget, BrowserTarget,
     simulate_users,
 )
 from .result import CalibrationResult, EvalGateFailure, PairwiseReport, PairwiseResult
-from .calibration import calibrated_threshold, threshold_table
+from .calibration import (
+    calibrated_threshold, threshold_table,
+    calibration_provenance, load_calibration, CalibrationEntry,
+)
 from .evaluators import (
     # Deterministic
     NotEmpty, ExactMatch, Contains, RegexMatch,
@@ -89,15 +102,24 @@ __all__ = [
     "runs_needed", "min_detectable_effect", "cohens_h", "benjamini_hochberg",
     "mcnemar_test", "bayesian_interval",
     # Exceptions
+    "MultivonError", "JudgeUnavailable", "CalibrationMissing",
+    "EvaluatorPrereqMissing", "CacheError", "SecretsError", "ComplianceError",
     "EvalGateFailure",
     # Calibration
     "calibrated_threshold", "threshold_table",
+    "calibration_provenance", "load_calibration", "CalibrationEntry",
+    # Secrets
+    "SecretsResolver", "EnvResolver", "ChainedResolver", "StaticResolver",
+    "get_secret", "set_resolver", "get_resolver", "reset_resolver",
+    # Cache
+    "JudgeCache", "get_cache", "set_cache",
     # Calibration
     "CalibrationResult",
     # Pairwise
     "PairwiseReport", "PairwiseResult",
     # Compliance
-    "ComplianceReporter",
+    "ComplianceReporter", "ComplianceHtmlReporter", "render_compliance_html",
+    "github_actions_anchor",
     # Production targets
     "BearerAuth", "APIKeyAuth",
     "DeployedAPITarget", "MultiTurnAPITarget", "BrowserTarget",
