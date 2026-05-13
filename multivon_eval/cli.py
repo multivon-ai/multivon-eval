@@ -173,6 +173,22 @@ def main():
                        help="Type of eval cases to generate")
     gen_p.add_argument("--output", "-o", help="Save to JSONL file (default: print to stdout)")
 
+    # audit-package — one-shot compliance evidence zip
+    audit_p = sub.add_parser(
+        "audit-package",
+        help="Bundle audit log + calibration + verifier into a single zip for auditors",
+    )
+    audit_p.add_argument("--logs", required=True,
+                         help="Directory containing the audit log NDJSON files")
+    audit_p.add_argument("--suite", required=True,
+                         help="Suite name (matches the audit log filename)")
+    audit_p.add_argument("--framework", required=True,
+                         choices=["eu-ai-act", "nist-ai-rmf", "hipaa", "none"],
+                         help="Compliance framework that drove the audit log")
+    audit_p.add_argument("--out", required=True, help="Output ZIP path")
+    audit_p.add_argument("--period", default=None,
+                         help='Human label like "2026-Q2" (default: today)')
+
     args = parser.parse_args()
 
     if args.command == "run":
@@ -183,6 +199,13 @@ def main():
         cmd_experiments(args)
     elif args.command == "generate":
         cmd_generate(args)
+    elif args.command == "audit-package":
+        from . import audit_package as _ap
+        sys.exit(_ap._cli([
+            "--logs", args.logs, "--suite", args.suite,
+            "--framework", args.framework, "--out", args.out,
+            *(["--period", args.period] if args.period else []),
+        ]))
     else:
         parser.print_help()
         sys.exit(1)

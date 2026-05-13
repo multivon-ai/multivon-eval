@@ -869,6 +869,57 @@ class EvalSuite:
         return suite
 
     @classmethod
+    def hipaa_safe_harbor(
+        cls,
+        name: str = "HIPAA Safe Harbor Eval",
+        *,
+        schema=None,
+    ) -> "EvalSuite":
+        """Evaluator set for healthcare AI under HIPAA Security Rule + Safe Harbor.
+
+        Wires the technical-safeguard controls that operate on AI output. Use
+        ``ComplianceReporter(framework="hipaa")`` to surface the matching
+        45 CFR §164.312 / §164.514(b)(2) annotations and to detect
+        administrative + physical safeguards that still require organizational
+        measures (BAA, access logs, training).
+
+            §164.312(a)  Access control       → PIIEvaluator (PHI mediation)
+            §164.312(b)  Audit controls       → Faithfulness, Hallucination, AnswerAccuracy
+            §164.312(c)  Integrity of ePHI    → NotEmpty, SchemaEvaluator (if schema)
+            §164.514(b)(2) De-identification  → PIIEvaluator(jurisdiction="hipaa")
+
+        Usage:
+            suite = EvalSuite.hipaa_safe_harbor()
+            suite.add_cases(cases)
+            reporter = ComplianceReporter("./audit-logs", framework="hipaa")
+            print(reporter.coverage(suite))
+            report = suite.run(model_fn, runs=5)
+            reporter.record(report, tags={"system": "clinical-triage"})
+
+        HIPAA PII coverage caveat: ``PIIEvaluator(jurisdiction="hipaa")``
+        detects 13 of 18 Safe Harbor PHI identifiers via regex. The 5 remaining
+        (names, geographic subdivisions below state, photographs, biometric
+        identifiers, and any unique non-pattern identifier) require an upstream
+        de-identification step. The library is honest about this.
+        """
+        from .evaluators.compliance import PIIEvaluator, SchemaEvaluator
+        from .evaluators.deterministic import NotEmpty
+        from .evaluators.llm_judge import AnswerAccuracy, Faithfulness, Hallucination
+        suite = (
+            cls(name)
+            .add_evaluators(
+                PIIEvaluator(jurisdiction="hipaa", redact=True),
+                NotEmpty(),
+                Faithfulness(),
+                Hallucination(),
+                AnswerAccuracy(),
+            )
+        )
+        if schema is not None:
+            suite.add_evaluator(SchemaEvaluator(schema, strict=True))
+        return suite
+
+    @classmethod
     def for_chatbot(cls, name: str = "Chatbot Eval") -> "EvalSuite":
         """Conversation relevance, knowledge retention, turn consistency, completeness.
 
