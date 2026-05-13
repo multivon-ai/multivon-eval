@@ -27,27 +27,37 @@ from ..judge import JudgeConfig, resolve_judge, make_judge_call
 from ..calibration import calibrated_threshold as _calibrated_threshold
 
 
+def _with_max_tokens(judge: JudgeConfig, max_tokens: int | None) -> JudgeConfig:
+    """Return a copy of ``judge`` with an optional max_tokens override.
+
+    Crucially, every field is forwarded — including ``base_url`` (so
+    on-prem judge endpoints survive) and ``cache`` (so opt-in caching
+    actually reaches :func:`make_judge_call`). The earlier helpers
+    rebuilt JudgeConfig from a hand-picked subset of fields, which
+    silently dropped any field that was added later. Don't do that again
+    — copy everything, override only what changes.
+    """
+    return JudgeConfig(
+        provider=judge.provider,
+        model=judge.model,
+        base_url=judge.base_url,
+        temperature=judge.temperature,
+        max_tokens=max_tokens if max_tokens is not None else judge.max_tokens,
+        timeout=judge.timeout,
+        reliability_check=judge.reliability_check,
+        reliability_sample=judge.reliability_sample,
+        cache=judge.cache,
+        extra=dict(judge.extra),
+    )
+
+
 def _judge_call(prompt: str, max_tokens: int = 1024) -> str:
     """Backward-compat shim — uses the global JudgeConfig."""
-    cfg = resolve_judge(None)
-    cfg = JudgeConfig(
-        provider=cfg.provider, model=cfg.model,
-        temperature=cfg.temperature, max_tokens=max_tokens,
-        timeout=cfg.timeout, extra=cfg.extra,
-    )
-    return make_judge_call(prompt, cfg)
+    return make_judge_call(prompt, _with_max_tokens(resolve_judge(None), max_tokens))
 
 
 def _call(prompt: str, judge: JudgeConfig, max_tokens: int | None = None) -> str:
-    cfg = JudgeConfig(
-        provider=judge.provider,
-        model=judge.model,
-        temperature=judge.temperature,
-        max_tokens=max_tokens or judge.max_tokens,
-        timeout=judge.timeout,
-        extra=judge.extra,
-    )
-    return make_judge_call(prompt, cfg)
+    return make_judge_call(prompt, _with_max_tokens(judge, max_tokens))
 
 
 def _parse_yes_no(text: str) -> bool:

@@ -257,19 +257,59 @@ def make_judge_call(prompt: str, config: JudgeConfig) -> str:
     retried is re-raised as :class:`JudgeUnavailable`.
 
     If ``config.cache`` is true, results are read/written through the on-disk
-    judge cache (see :mod:`multivon_eval.cache`).
+    judge cache (see :mod:`multivon_eval.cache`). The cache is advisory:
+    if it can't be initialised or a get/put fails (corrupt DB, unwritable
+    path, sqlite lock), the call falls through to the live judge so the
+    eval still completes.
     """
-    if config.cache:
-        # Imported lazily so installs that never enable the cache pay nothing.
+    if not config.cache:
+        return _make_judge_call_uncached(prompt, config)
+
+    # Imported lazily so installs that never enable the cache pay nothing.
+    cache = None
+    try:
         from .cache import get_cache
         cache = get_cache()
         cached = cache.get(prompt, config)
         if cached is not None:
             return cached
-        result = _make_judge_call_uncached(prompt, config)
-        cache.put(prompt, config, result)
-        return result
-    return _make_judge_call_uncached(prompt, config)
+    except CacheError as exc:
+        _warn_cache_degraded("read", exc)
+        cache = None
+    except Exception as exc:  # never let an unknown cache bug break an eval
+        _warn_cache_degraded("read", exc)
+        cache = None
+
+    result = _make_judge_call_uncached(prompt, config)
+    if cache is not None:
+        try:
+            cache.put(prompt, config, result)
+        except CacheError as exc:
+            _warn_cache_degraded("write", exc)
+        except Exception as exc:
+            _warn_cache_degraded("write", exc)
+    return result
+
+
+# Imported here to avoid a circular import at top of the module.
+from .exceptions import CacheError  # noqa: E402
+
+
+_CACHE_DEGRADATION_WARNED = False
+
+
+def _warn_cache_degraded(direction: str, exc: BaseException) -> None:
+    """Print a one-time warning when the cache fails. Don't crash the eval."""
+    global _CACHE_DEGRADATION_WARNED
+    if _CACHE_DEGRADATION_WARNED:
+        return
+    _CACHE_DEGRADATION_WARNED = True
+    import sys
+    print(
+        f"  [multivon-eval] judge cache {direction} failed ({type(exc).__name__}: {exc}); "
+        f"continuing without cache.",
+        file=sys.stderr,
+    )
 
 
 # ── Async siblings ──────────────────────────────────────────────────────────
@@ -354,14 +394,34 @@ async def _make_judge_call_async_uncached(prompt: str, config: JudgeConfig) -> s
 async def make_judge_call_async(prompt: str, config: JudgeConfig) -> str:
     """Async sibling of :func:`make_judge_call`. Same retry, same wrapping,
     same cache integration — uses provider async SDKs (AsyncAnthropic /
-    AsyncOpenAI / litellm.acompletion)."""
-    if config.cache:
+    AsyncOpenAI / litellm.acompletion).
+
+    Cache is advisory: a CacheError on read or write degrades to an uncached
+    call rather than failing the eval.
+    """
+    if not config.cache:
+        return await _make_judge_call_async_uncached(prompt, config)
+
+    cache = None
+    try:
         from .cache import get_cache
         cache = get_cache()
         cached = cache.get(prompt, config)
         if cached is not None:
             return cached
-        result = await _make_judge_call_async_uncached(prompt, config)
-        cache.put(prompt, config, result)
-        return result
-    return await _make_judge_call_async_uncached(prompt, config)
+    except CacheError as exc:
+        _warn_cache_degraded("read", exc)
+        cache = None
+    except Exception as exc:
+        _warn_cache_degraded("read", exc)
+        cache = None
+
+    result = await _make_judge_call_async_uncached(prompt, config)
+    if cache is not None:
+        try:
+            cache.put(prompt, config, result)
+        except CacheError as exc:
+            _warn_cache_degraded("write", exc)
+        except Exception as exc:
+            _warn_cache_degraded("write", exc)
+    return result
