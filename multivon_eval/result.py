@@ -18,12 +18,16 @@ class EvalResult:
 
 class EvalGateFailure(SystemExit):
     """
-    Raised by EvalSuite.run() when pass_rate < fail_threshold.
+    Raised when a gate on the run fails (pass_rate, budget, etc.).
 
     Subclasses SystemExit so CI scripts see exit code 1. Can be caught
     explicitly by callers that want to inspect the report before exiting.
+
+    pass_rate and threshold are set for pass-rate gate failures and may be
+    None for other gate types (e.g., budget violations).
     """
-    def __init__(self, message: str, pass_rate: float, threshold: float) -> None:
+    def __init__(self, message: str, pass_rate: float | None = None,
+                 threshold: float | None = None) -> None:
         super().__init__(message)
         self.pass_rate = pass_rate
         self.threshold = threshold
@@ -221,6 +225,85 @@ class EvalReport:
     def failed_cases(self) -> list["CaseResult"]:
         """Cases where at least one evaluator failed."""
         return [cr for cr in self.case_results if not cr.passed]
+
+    def assert_budget(
+        self,
+        *,
+        max_total_cost_usd: float | None = None,
+        max_avg_cost_per_case_usd: float | None = None,
+        max_total_tokens: int | None = None,
+        max_p95_latency_ms: float | None = None,
+        max_avg_latency_ms: float | None = None,
+    ) -> None:
+        """Enforce cost / token / latency budgets on the run.
+
+        Raises :class:`EvalGateFailure` (subclass of SystemExit) if any
+        provided budget is exceeded — same exit semantics as the existing
+        ``suite.run(fail_threshold=...)`` gate, so it works in CI without
+        additional plumbing.
+
+        All thresholds are opt-in: pass only the dimensions you want to
+        enforce. None == no limit. Built so CFO-level constraints and
+        infra-level SLOs (p95 latency) can both be gated in the same call.
+
+        Inspired by Promptfoo's ``cost`` and ``latency`` assertions, but
+        scoped to the whole run rather than per-case — cost is a
+        cross-call aggregate concern, not a per-evaluator one.
+        """
+        violations: list[str] = []
+
+        # Cost gates — only enforceable if pricing data is present.
+        if (max_total_cost_usd is not None or max_avg_cost_per_case_usd is not None) and self.costs is not None:
+            total = self.costs.total_cost_usd
+            if total is None:
+                violations.append(
+                    "Cost budget requested but at least one model lacks pricing data — "
+                    "register pricing via multivon_eval.register_pricing() to enable gating."
+                )
+            else:
+                if max_total_cost_usd is not None and total > max_total_cost_usd:
+                    violations.append(
+                        f"Total cost ${total:.4f} exceeds budget ${max_total_cost_usd:.4f}"
+                    )
+                if max_avg_cost_per_case_usd is not None and self.total > 0:
+                    avg = total / self.total
+                    if avg > max_avg_cost_per_case_usd:
+                        violations.append(
+                            f"Avg cost/case ${avg:.4f} exceeds budget ${max_avg_cost_per_case_usd:.4f}"
+                        )
+
+        # Token gates.
+        if max_total_tokens is not None and self.costs is not None:
+            if self.costs.total_tokens > max_total_tokens:
+                violations.append(
+                    f"Total tokens {self.costs.total_tokens:,} exceeds budget {max_total_tokens:,}"
+                )
+
+        # Latency gates use the per-case CaseResult.latency_ms timing.
+        if max_avg_latency_ms is not None or max_p95_latency_ms is not None:
+            latencies = sorted(
+                cr.latency_ms for cr in self.case_results if cr.latency_ms is not None
+            )
+            if latencies:
+                if max_avg_latency_ms is not None:
+                    avg_ms = sum(latencies) / len(latencies)
+                    if avg_ms > max_avg_latency_ms:
+                        violations.append(
+                            f"Avg latency {avg_ms:.0f}ms exceeds budget {max_avg_latency_ms:.0f}ms"
+                        )
+                if max_p95_latency_ms is not None:
+                    # Linear-interpolation p95 (good enough for budget gating).
+                    idx = max(0, int(round(0.95 * (len(latencies) - 1))))
+                    p95_ms = latencies[idx]
+                    if p95_ms > max_p95_latency_ms:
+                        violations.append(
+                            f"p95 latency {p95_ms:.0f}ms exceeds budget {max_p95_latency_ms:.0f}ms"
+                        )
+
+        if violations:
+            raise EvalGateFailure(
+                "Budget gate FAILED:\n  • " + "\n  • ".join(violations)
+            )
 
     @property
     def passed_cases(self) -> list["CaseResult"]:
