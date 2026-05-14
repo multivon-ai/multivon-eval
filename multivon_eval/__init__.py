@@ -53,7 +53,24 @@ from .lockfile import (
 )
 from .costs import Costs, CostTracker, ProviderUsage, ModelPricing, register_pricing
 from .audit_package import build_audit_package
-from .pytest_plugin import assert_evaluators, EvaluatorFailure
+
+# Pytest plugin: pytest is an optional dependency. Guard the import so a
+# user who installs multivon-eval without pytest can still `import multivon_eval`.
+# (Python clears `except ... as` bindings after the block, so we stash the
+# message in a module-level constant rather than capturing the exception.)
+_PYTEST_MISSING_MSG = (
+    "multivon_eval.assert_evaluators requires pytest. "
+    "Install with: pip install 'multivon-eval[pytest]'"
+)
+try:
+    from .pytest_plugin import assert_evaluators, EvaluatorFailure
+except ImportError:
+    def assert_evaluators(*_args, **_kwargs):  # type: ignore[no-redef]
+        raise ImportError(_PYTEST_MISSING_MSG)
+
+    class EvaluatorFailure(Exception):  # type: ignore[no-redef]
+        """Placeholder for the real pytest-plugin exception when pytest is missing."""
+
 from .secrets import (
     SecretsResolver, EnvResolver, ChainedResolver, StaticResolver,
     get_secret, set_resolver, get_resolver, reset_resolver,
