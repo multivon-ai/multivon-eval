@@ -3,7 +3,40 @@ import json
 import csv
 import math
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Any
+
+
+class EvalStatus(str, Enum):
+    """Terminal status of a case after running the suite.
+
+    Subclasses :class:`str` so the value is JSON-serializable as-is, and so
+    ``status == "passed"`` works without unwrapping.
+
+    The split between quality-level outcomes (``PASSED`` / ``FAILED_QUALITY``)
+    and infrastructure-level outcomes (``MODEL_ERROR`` / ``JUDGE_ERROR`` /
+    ``EVALUATOR_ERROR`` / ``TIMEOUT`` / ``SKIPPED``) is load-bearing — error
+    cases are excluded from ``pass_rate`` and ``avg_score`` so a transient
+    judge outage doesn't masquerade as a model regression.
+    """
+    PASSED = "passed"
+    FAILED_QUALITY = "failed_quality"
+    MODEL_ERROR = "model_error"
+    JUDGE_ERROR = "judge_error"
+    EVALUATOR_ERROR = "evaluator_error"
+    TIMEOUT = "timeout"
+    SKIPPED = "skipped"
+
+
+# Statuses that count as a real, completed quality measurement. Anything
+# else is plumbing — excluded from pass_rate / avg_score denominators.
+EVALUATION_STATUSES = frozenset({EvalStatus.PASSED, EvalStatus.FAILED_QUALITY})
+
+# Statuses that indicate something went wrong below the model/quality layer.
+ERROR_STATUSES = frozenset({
+    EvalStatus.MODEL_ERROR, EvalStatus.JUDGE_ERROR,
+    EvalStatus.EVALUATOR_ERROR, EvalStatus.TIMEOUT,
+})
 
 
 @dataclass
@@ -42,11 +75,44 @@ class CaseResult:
     latency_ms: float = 0.0
     tags: list[str] = field(default_factory=list)
     model_error: str | None = None  # set when the model call raised an exception
+    judge_error: str | None = None  # set when a judge call raised (transient/auth/etc)
+    evaluator_error: str | None = None  # set when an evaluator itself raised (bug)
+    skipped: bool = False  # set when the case was deliberately skipped (e.g. tag-filter)
+    # ``agent_trace`` is populated when the suite was run with a tracer.
+    # Exposed on CaseResult (not just EvalCase) so notebooks can iterate the
+    # captured steps from the report without reaching back into the suite.
+    agent_trace: list[Any] | None = None  # list[AgentStep] when set; Any to avoid circular import
 
     # Multi-run fields — populated when suite.run(runs > 1)
     runs: int = 1
     all_scores: list[float] = field(default_factory=list)   # one score per run
     pass_count: int = -1  # -1 = single run (not tracked)
+
+    @property
+    def status(self) -> "EvalStatus":
+        """High-level outcome of the case.
+
+        Order of precedence (highest → lowest):
+          1. Plumbing failures (skipped → model_error → judge_error → evaluator_error)
+          2. Quality outcome (passed if all evaluators passed, else failed_quality)
+
+        Used by :attr:`EvalReport.pass_rate` to exclude error cases from the
+        denominator — a transient judge outage shouldn't drag pass_rate down
+        as if the model regressed.
+        """
+        if self.skipped:
+            return EvalStatus.SKIPPED
+        if self.model_error is not None:
+            return EvalStatus.MODEL_ERROR
+        if self.judge_error is not None:
+            return EvalStatus.JUDGE_ERROR
+        if self.evaluator_error is not None:
+            return EvalStatus.EVALUATOR_ERROR
+        # No infrastructure failure → fall through to quality outcome.
+        if self.pass_count >= 0:
+            return EvalStatus.PASSED if self.pass_count == self.runs else EvalStatus.FAILED_QUALITY
+        all_passed = all(r.passed for r in self.results) if self.results else False
+        return EvalStatus.PASSED if all_passed else EvalStatus.FAILED_QUALITY
 
     @property
     def passed(self) -> bool:
@@ -186,22 +252,57 @@ class EvalReport:
         return len(self.case_results)
 
     @property
+    def evaluated(self) -> int:
+        """Cases where evaluation actually completed (no error/skip)."""
+        return sum(1 for r in self.case_results if r.status in EVALUATION_STATUSES)
+
+    @property
+    def errors(self) -> int:
+        """Cases where evaluation could not complete (model/judge/evaluator/timeout)."""
+        return sum(1 for r in self.case_results if r.status in ERROR_STATUSES)
+
+    @property
+    def skipped(self) -> int:
+        """Cases deliberately skipped (e.g., via tag filter)."""
+        return sum(1 for r in self.case_results if r.status == EvalStatus.SKIPPED)
+
+    @property
+    def errors_by_kind(self) -> dict[str, int]:
+        """Breakdown of error cases by status — model_error vs judge_error etc."""
+        counts: dict[str, int] = {}
+        for r in self.case_results:
+            if r.status in ERROR_STATUSES:
+                counts[r.status.value] = counts.get(r.status.value, 0) + 1
+        return counts
+
+    @property
     def passed(self) -> int:
-        return sum(1 for r in self.case_results if r.passed)
+        return sum(1 for r in self.case_results if r.status == EvalStatus.PASSED)
 
     @property
     def failed(self) -> int:
-        return self.total - self.passed
+        """Cases that completed evaluation and failed on quality (NOT errors)."""
+        return sum(1 for r in self.case_results if r.status == EvalStatus.FAILED_QUALITY)
 
     @property
     def pass_rate(self) -> float:
-        return self.passed / self.total if self.total else 0.0
+        """Fraction of EVALUATED cases that passed.
+
+        Error and skipped cases are excluded from the denominator — a judge
+        outage or a crashed model_fn shouldn't be mistaken for a quality
+        regression. Use :attr:`errors` to surface infrastructure problems
+        independently.
+        """
+        denom = self.evaluated
+        return self.passed / denom if denom else 0.0
 
     @property
     def avg_score(self) -> float:
-        if not self.case_results:
+        """Average evaluator score across cases that actually evaluated."""
+        evaluated = [r for r in self.case_results if r.status in EVALUATION_STATUSES]
+        if not evaluated:
             return 0.0
-        return sum(r.score for r in self.case_results) / len(self.case_results)
+        return sum(r.score for r in evaluated) / len(evaluated)
 
     @property
     def flaky_count(self) -> int:
@@ -431,6 +532,9 @@ class EvalReport:
                 latency_ms=c.get("latency_ms", 0.0),
                 tags=c.get("tags", []),
                 model_error=c.get("model_error"),
+                judge_error=c.get("judge_error"),
+                evaluator_error=c.get("evaluator_error"),
+                skipped=c.get("skipped", False),
                 runs=runs,
                 all_scores=all_scores,
                 pass_count=-1,
@@ -456,8 +560,12 @@ class EvalReport:
                 "model": self.model_id,
                 "summary": {
                     "total": self.total,
+                    "evaluated": self.evaluated,
                     "passed": self.passed,
                     "failed": self.failed,
+                    "errors": self.errors,
+                    "errors_by_kind": self.errors_by_kind,
+                    "skipped": self.skipped,
                     "pass_rate": round(self.pass_rate, 4),
                     "pass_rate_ci_95": list(self.pass_rate_ci()),
                     "avg_score": round(self.avg_score, 4),
@@ -474,7 +582,11 @@ class EvalReport:
                     {
                         "input": cr.case_input,
                         "output": cr.actual_output,
+                        "status": cr.status.value,
                         "model_error": cr.model_error,
+                        "judge_error": cr.judge_error,
+                        "evaluator_error": cr.evaluator_error,
+                        "skipped": cr.skipped,
                         "passed": cr.passed,
                         "score": round(cr.score, 4),
                         "score_std": round(cr.score_std, 4),

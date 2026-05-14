@@ -23,7 +23,7 @@ Experiment tracking (compare runs across versions):
     exp.compare(old_run_id, run_id)
 """
 
-__version__ = "0.6.2"
+__version__ = "0.7.0"
 
 from .suite import EvalSuite
 from .case import EvalCase, AgentStep, ToolCall
@@ -85,7 +85,11 @@ from .targets import (
     DeployedAPITarget, MultiTurnAPITarget, BrowserTarget,
     simulate_users,
 )
-from .result import CalibrationResult, EvalGateFailure, PairwiseReport, PairwiseResult
+from .result import (
+    CalibrationResult, CaseResult, EvalGateFailure, EvalReport, EvalResult,
+    EvalStatus, EVALUATION_STATUSES, ERROR_STATUSES,
+    PairwiseReport, PairwiseResult,
+)
 from .calibration import (
     calibrated_threshold, threshold_table,
     calibration_provenance, load_calibration, CalibrationEntry,

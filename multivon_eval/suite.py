@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import TYPE_CHECKING, Any, Callable, Awaitable
 
 from .case import EvalCase
+from .exceptions import JudgeUnavailable
 from .result import CalibrationResult, CaseResult, EvalGateFailure, EvalReport, EvalResult
 from .evaluators.base import Evaluator
 from .evaluators.deterministic import Latency, MaxLatency
@@ -165,28 +166,55 @@ class EvalSuite:
                 case = dataclasses.replace(case, agent_trace=trace)
 
         results = []
+        # judge_error / evaluator_error are populated below if any evaluator
+        # raises. Latching the FIRST one of each kind is enough for status
+        # classification — surfacing more detail (per-evaluator failures) is
+        # already in the EvalResult.reason strings.
+        judge_error: str | None = None
+        evaluator_error: str | None = None
         for ev in self._evaluators:
+            ev_name = getattr(ev, "name", type(ev).__name__)
             if model_error is not None and not isinstance(ev, (Latency, MaxLatency)):
                 results.append(EvalResult(
-                    evaluator=getattr(ev, "name", type(ev).__name__),
+                    evaluator=ev_name,
                     score=0.0,
                     passed=False,
                     reason=f"[skipped — model error: {model_error}]",
                 ))
                 continue
-            if isinstance(ev, (Latency, MaxLatency)):
-                result = ev.evaluate(case, output, latency_ms=latency_ms)
-            else:
-                result = ev.evaluate(case, output)
+            try:
+                if isinstance(ev, (Latency, MaxLatency)):
+                    result = ev.evaluate(case, output, latency_ms=latency_ms)
+                else:
+                    result = ev.evaluate(case, output)
+            except JudgeUnavailable as ju:
+                if judge_error is None:
+                    judge_error = str(ju)
+                result = EvalResult(
+                    evaluator=ev_name, score=0.0, passed=False,
+                    reason=f"[judge unavailable: {ju}]",
+                )
+            except Exception as ex:
+                # An evaluator itself crashed — distinct from a judge outage.
+                # Capture so downstream code can route it to evaluator_error.
+                if evaluator_error is None:
+                    evaluator_error = f"{type(ex).__name__}: {ex}"
+                result = EvalResult(
+                    evaluator=ev_name, score=0.0, passed=False,
+                    reason=f"[evaluator error: {type(ex).__name__}: {ex}]",
+                )
             results.append(result)
 
         return CaseResult(
             case_input=case.input,
             actual_output=output,
             model_error=model_error,
+            judge_error=judge_error,
+            evaluator_error=evaluator_error,
             results=results,
             latency_ms=latency_ms,
             tags=case.tags,
+            agent_trace=case.agent_trace,
         )
 
     def _run_case(
@@ -1144,16 +1172,32 @@ class EvalSuite:
         ev_sem = asyncio.Semaphore(evaluator_concurrency) if evaluator_concurrency else None
 
         async def _eval_one(ev, case: EvalCase, output: str, latency_ms: float, model_error: str | None):
+            ev_name = getattr(ev, "name", type(ev).__name__)
             if model_error is not None and not isinstance(ev, (Latency, MaxLatency)):
                 return EvalResult(
-                    evaluator=getattr(ev, "name", type(ev).__name__),
+                    evaluator=ev_name,
                     score=0.0,
                     passed=False,
                     reason=f"[skipped — model error: {model_error}]",
                 )
-            if isinstance(ev, (Latency, MaxLatency)):
-                return await ev.aevaluate(case, output, latency_ms=latency_ms)
-            return await ev.aevaluate(case, output)
+            # Catch judge + evaluator exceptions so one outage doesn't crash
+            # the whole case. The error type is returned via the result's
+            # ``reason``; suite-level aggregation will tag the case with the
+            # appropriate :class:`EvalStatus`.
+            try:
+                if isinstance(ev, (Latency, MaxLatency)):
+                    return await ev.aevaluate(case, output, latency_ms=latency_ms)
+                return await ev.aevaluate(case, output)
+            except JudgeUnavailable as ju:
+                return EvalResult(
+                    evaluator=ev_name, score=0.0, passed=False,
+                    reason=f"[judge unavailable: {ju}]",
+                )
+            except Exception as ex:
+                return EvalResult(
+                    evaluator=ev_name, score=0.0, passed=False,
+                    reason=f"[evaluator error: {type(ex).__name__}: {ex}]",
+                )
 
         async def _gated_eval(ev, case, output, latency_ms, model_error):
             if ev_sem is None:
@@ -1179,13 +1223,26 @@ class EvalSuite:
                         for ev in self._evaluators
                     ])
 
+                    # Surface judge/evaluator errors from the result reasons
+                    # so CaseResult.status returns the right EvalStatus enum.
+                    async_judge_error: str | None = None
+                    async_evaluator_error: str | None = None
+                    for r in ev_results:
+                        if async_judge_error is None and r.reason.startswith("[judge unavailable:"):
+                            async_judge_error = r.reason
+                        elif async_evaluator_error is None and r.reason.startswith("[evaluator error:"):
+                            async_evaluator_error = r.reason
+
                     single_runs.append(CaseResult(
                         case_input=case.input,
                         actual_output=output,
                         model_error=async_model_error,
+                        judge_error=async_judge_error,
+                        evaluator_error=async_evaluator_error,
                         results=list(ev_results),
                         latency_ms=latency_ms,
                         tags=case.tags,
+                        agent_trace=case.agent_trace,
                     ))
 
                 if runs == 1:
