@@ -9,6 +9,7 @@ from __future__ import annotations
 from .base import Evaluator
 from .llm_judge import _judge_call, _parse_yes_no, _qag_eval
 from ..case import EvalCase
+from ..judge import JudgeConfig, resolve_judge
 from ..result import EvalResult
 
 
@@ -20,8 +21,9 @@ class ConversationRelevance(Evaluator):
     """
     name = "conversation_relevance"
 
-    def __init__(self, threshold: float = 0.7):
+    def __init__(self, threshold: float = 0.7, judge: JudgeConfig | None = None):
         super().__init__(threshold)
+        self._judge_cfg = judge
 
     def evaluate(self, case: EvalCase, output: str) -> EvalResult:
         if not case.conversation:
@@ -34,7 +36,8 @@ class ConversationRelevance(Evaluator):
             ("Does the response ignore important context from earlier in the conversation?", False),
             ("Does the response follow naturally from the preceding turns?", True),
         ]
-        score, reasons = _qag_eval(questions, ctx)
+        judge = resolve_judge(self._judge_cfg)
+        score, reasons = _qag_eval(questions, ctx, judge)
         return self._result(score, "\n".join(reasons))
 
 
@@ -48,8 +51,9 @@ class KnowledgeRetention(Evaluator):
     """
     name = "knowledge_retention"
 
-    def __init__(self, threshold: float = 0.7):
+    def __init__(self, threshold: float = 0.7, judge: JudgeConfig | None = None):
         super().__init__(threshold)
+        self._judge_cfg = judge
 
     def evaluate(self, case: EvalCase, output: str) -> EvalResult:
         if not case.conversation:
@@ -69,7 +73,8 @@ class KnowledgeRetention(Evaluator):
             ("Does the response contradict information the user provided in a prior turn?", False),
             ("Does the response show awareness of the user's preferences or context established earlier?", True),
         ]
-        score, reasons = _qag_eval(questions, ctx)
+        judge = resolve_judge(self._judge_cfg)
+        score, reasons = _qag_eval(questions, ctx, judge)
         return self._result(score, "\n".join(reasons))
 
 
@@ -83,8 +88,9 @@ class ConversationCompleteness(Evaluator):
     """
     name = "conversation_completeness"
 
-    def __init__(self, threshold: float = 0.7):
+    def __init__(self, threshold: float = 0.7, judge: JudgeConfig | None = None):
         super().__init__(threshold)
+        self._judge_cfg = judge
 
     def evaluate(self, case: EvalCase, output: str) -> EvalResult:
         if not case.conversation:
@@ -105,7 +111,8 @@ class ConversationCompleteness(Evaluator):
             ("Does the final response bring the conversation to a satisfying resolution?", True),
             ("Would the user need to ask follow-up questions to get what they originally wanted?", False),
         ]
-        score, reasons = _qag_eval(questions, ctx)
+        judge = resolve_judge(self._judge_cfg)
+        score, reasons = _qag_eval(questions, ctx, judge)
         return self._result(score, "\n".join(reasons))
 
 
@@ -116,8 +123,9 @@ class TurnConsistency(Evaluator):
     """
     name = "turn_consistency"
 
-    def __init__(self, threshold: float = 0.8):
+    def __init__(self, threshold: float = 0.8, judge: JudgeConfig | None = None):
         super().__init__(threshold)
+        self._judge_cfg = judge
 
     def evaluate(self, case: EvalCase, output: str) -> EvalResult:
         if not case.conversation:
@@ -132,5 +140,6 @@ class TurnConsistency(Evaluator):
             ("Does the assistant contradict something it said in a previous turn?", False),
             ("Does the assistant maintain a consistent persona and tone throughout?", True),
         ]
-        score, reasons = _qag_eval(questions, ctx)
+        judge = resolve_judge(self._judge_cfg)
+        score, reasons = _qag_eval(questions, ctx, judge)
         return self._result(score, "\n".join(reasons))
