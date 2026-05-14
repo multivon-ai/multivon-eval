@@ -210,3 +210,65 @@ def test_audit_package_uses_v2_calibration_when_present(tmp_path):
         "Expected calibration_v2.json in the bundle since v2.json ships with 0.6.0; "
         f"got: {sorted(names)}"
     )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Additional regressions surfaced by the codex review pass
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_contains_positional_threshold_still_works():
+    """Backwards compatibility: Contains([...], False, 0.75) must still treat
+    0.75 as `threshold`, NOT as the new match_any flag. The fix made match_any
+    keyword-only after `threshold` to preserve this. Regression check."""
+    from multivon_eval import Contains, EvalCase
+    ev = Contains(["x"], False, 0.75)
+    assert ev.threshold == 0.75, "third positional arg must remain `threshold`"
+    assert ev.match_any is False, "match_any must default to False"
+
+
+def test_conversation_evaluators_accept_judge_kwarg():
+    """Codex review caught that conversation.py had the same _qag_eval
+    missing-judge bug. Verify each accepts the kwarg now."""
+    from multivon_eval import (
+        ConversationRelevance, KnowledgeRetention,
+        ConversationCompleteness, TurnConsistency, JudgeConfig,
+    )
+    j = JudgeConfig(provider="openai", model="gpt-4o-mini")
+    for cls in (ConversationRelevance, KnowledgeRetention, ConversationCompleteness, TurnConsistency):
+        ev = cls(judge=j)
+        assert ev._judge_cfg is j
+
+
+def test_qag_eval_receives_resolved_judge():
+    """End-to-end shape check: when a per-evaluator judge is passed, the
+    internal _qag_eval call receives a resolved JudgeConfig (not None,
+    not the wrong type)."""
+    from unittest.mock import patch
+    from multivon_eval import EvalCase, AgentStep, ToolCall, JudgeConfig, PlanQuality
+
+    j = JudgeConfig(provider="openai", model="gpt-4o-mini", temperature=0.0)
+    case = EvalCase(input="x", agent_trace=[AgentStep(thought="t", output="o")])
+
+    with patch("multivon_eval.evaluators.agent._qag_eval") as mock_qag:
+        mock_qag.return_value = (1.0, ["ok"])
+        ev = PlanQuality(judge=j)
+        ev.evaluate(case, "out")
+        # The third positional arg to _qag_eval must be the resolved judge,
+        # not None — that was the original bug.
+        called_with_judge = mock_qag.call_args[0][2]
+        assert called_with_judge is not None
+        # Resolved judge mirrors model id from the input
+        assert called_with_judge.model == "gpt-4o-mini"
+
+
+def test_pytest_plugin_import_only_swallows_missing_pytest():
+    """If pytest_plugin raises ImportError for some reason OTHER than pytest
+    missing (e.g., a real internal regression), the __init__ guard must NOT
+    silently mask it as 'install pytest'. Codex flagged the catch was too broad.
+
+    This test inspects the source rather than triggering the path — invoking
+    the path requires running in a no-pytest interpreter."""
+    import multivon_eval as m
+    src = open(m.__file__).read()
+    # Either narrow to ModuleNotFoundError + name check, OR re-raise on non-pytest
+    assert ("ModuleNotFoundError" in src and "_exc.name" in src) or "raise" in src

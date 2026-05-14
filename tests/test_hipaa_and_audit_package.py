@@ -180,7 +180,10 @@ class TestBuildAuditPackage:
         prefix = "compliance-evidence-2026-Q2/"
         assert all(n.startswith(prefix) for n in names)
         relnames = [n.removeprefix(prefix) for n in names]
-        for expected in ("audit_log.ndjson", "calibration_v1.json", "coverage_report.md",
+        # Calibration file name varies with shipped version (v2 preferred over v1).
+        cal_names = [n for n in relnames if n.startswith("calibration_v") and n.endswith(".json")]
+        assert len(cal_names) == 1, f"expected exactly one calibration file, got {cal_names}"
+        for expected in ("audit_log.ndjson", "coverage_report.md",
                          "verify.py", "README.md", "manifest.json"):
             assert expected in relnames
 
@@ -212,12 +215,15 @@ class TestBuildAuditPackage:
             logs_dir=logs, suite_name="HIPAA Demo", framework="hipaa", out_path=out,
         )
         with zipfile.ZipFile(out) as zf:
-            prefix = [n for n in zf.namelist() if n.endswith("calibration_v1.json")][0].removesuffix(
-                "calibration_v1.json"
-            )
-            cal_blob = zf.read(prefix + "calibration_v1.json")
+            # The shipped calibration is now versioned: v2 preferred, falls
+            # back to v1 if v2 isn't packaged. Find whichever one ended up
+            # in the bundle.
+            cal_names = [n for n in zf.namelist()
+                         if n.endswith("calibration_v1.json") or n.endswith("calibration_v2.json")]
+            assert cal_names, "no calibration_v*.json in package"
+            cal_blob = zf.read(cal_names[0])
             cal_data = json.loads(cal_blob)
-        assert cal_data["schema_version"] == 1
+        assert cal_data["schema_version"] >= 1
         assert len(cal_data["entries"]) > 0
 
     def test_verifier_script_runs_clean(self, tmp_path):

@@ -230,9 +230,11 @@ class TestTrajectoryEfficiency:
         assert result.passed
         assert result.score == 0.9
 
-    @patch("multivon_eval.evaluators.agent._judge_call", return_value="No")
+    # Recovery scoring now uses `_judge_call_with` (per-evaluator judge) instead
+    # of the global `_judge_call`, so the patch target has changed accordingly.
+    @patch("multivon_eval.evaluators.agent._judge_call_with", return_value="No")
     @patch("multivon_eval.evaluators.agent._qag_eval", return_value=(0.8, ["reasonable"]))
-    def test_failed_tool_recovery_penalizes_score(self, _qag_eval, _judge_call):
+    def test_failed_tool_recovery_penalizes_score(self, _qag_eval, _judge_call_with):
         steps = [
             AgentStep(
                 thought="Try the tool",
