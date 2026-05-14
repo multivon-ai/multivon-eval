@@ -65,11 +65,25 @@ def _read_audit_log(logs_dir: Path, suite_name: str) -> bytes:
     return log_path.read_bytes()
 
 
-def _read_calibration_data() -> bytes:
-    """Return the bundled calibration JSON exactly as shipped."""
+def _read_calibration_data() -> tuple[str, bytes]:
+    """Return (version_label, raw JSON) for the calibration table actually in use.
+
+    Prefers v2 (the current shipped table) and falls back to v1 — matching
+    the loader precedence in :mod:`multivon_eval.calibration`. Returning the
+    version label lets the caller name the bundled file appropriately so an
+    auditor sees which calibration drove the evaluator decisions.
+    """
     from importlib import resources
     pkg = resources.files("multivon_eval._calibration_data")
-    return pkg.joinpath("v1.json").read_bytes()
+    for version in ("v2", "v1"):
+        try:
+            data = pkg.joinpath(f"{version}.json").read_bytes()
+            return version, data
+        except FileNotFoundError:
+            continue
+    raise FileNotFoundError(
+        "No calibration data shipped with multivon_eval (looked for v2.json, v1.json)"
+    )
 
 
 def _verifier_script() -> bytes:
@@ -246,14 +260,15 @@ def build_audit_package(
 
     # ── gather files in memory so we can hash them deterministically ──
     audit_log = _read_audit_log(logs_dir, suite_name)
-    calibration_json = _read_calibration_data()
+    calibration_version, calibration_json = _read_calibration_data()
+    calibration_filename = f"calibration_{calibration_version}.json"
     coverage_md = _coverage_report_for(framework, suite_name).encode("utf-8")
     verifier_py = _verifier_script()
-    readme = _readme_for(framework, suite_name, period_label).encode("utf-8")
+    readme = _readme_for(framework, suite_name, period_label, calibration_filename).encode("utf-8")
 
     files: dict[str, bytes] = {
         "audit_log.ndjson": audit_log,
-        "calibration_v1.json": calibration_json,
+        calibration_filename: calibration_json,
         "coverage_report.md": coverage_md,
         "verify.py": verifier_py,
         "README.md": readme,
@@ -290,7 +305,8 @@ def build_audit_package(
     return out_path
 
 
-def _readme_for(framework: str, suite_name: str, period_label: str) -> str:
+def _readme_for(framework: str, suite_name: str, period_label: str,
+                calibration_filename: str = "calibration_v1.json") -> str:
     return f"""# Compliance Evidence Package
 
 **Suite:** {suite_name}
@@ -305,7 +321,7 @@ def _readme_for(framework: str, suite_name: str, period_label: str) -> str:
 - `audit_log.ndjson` — Append-only NDJSON log produced by
   `ComplianceReporter`. Every entry is part of a SHA-256 hash chain;
   see `verify.py` to recompute it.
-- `calibration_v1.json` — The per-judge threshold table that drove the
+- `{calibration_filename}` — The per-judge threshold table that drove the
   evaluator decisions in the audit log, with dataset hashes, N, F1,
   and measurement dates.
 - `coverage_report.md` — Catalog of the framework's measurable and
