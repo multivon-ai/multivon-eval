@@ -43,19 +43,37 @@ class ExactMatch(Evaluator):
 
 
 class Contains(Evaluator):
-    """Passes if the output contains all required substrings (score = fraction found)."""
+    """Substring presence check.
+
+    By default, passes when ALL substrings are found (score = fraction found).
+    Set ``match_any=True`` to instead pass if at least one is found.
+    """
     name = "contains"
 
-    def __init__(self, substrings: list[str], case_sensitive: bool = False, threshold: float = 1.0):
+    def __init__(
+        self,
+        substrings: list[str],
+        case_sensitive: bool = False,
+        match_any: bool = False,
+        threshold: float = 1.0,
+    ):
         super().__init__(threshold)
         self.substrings = substrings
         self.case_sensitive = case_sensitive
+        self.match_any = match_any
 
     def evaluate(self, case: EvalCase, output: str) -> EvalResult:
         text = output if self.case_sensitive else output.lower()
-        missing = [s for s in self.substrings if (s if self.case_sensitive else s.lower()) not in text]
-        score = 1.0 - (len(missing) / len(self.substrings)) if self.substrings else 1.0
-        reason = "All substrings found" if not missing else f"Missing: {missing}"
+        present = [s for s in self.substrings if (s if self.case_sensitive else s.lower()) in text]
+        missing = [s for s in self.substrings if s not in present]
+        if not self.substrings:
+            return self._result(1.0, "No substrings to check")
+        if self.match_any:
+            score = 1.0 if present else 0.0
+            reason = f"Found: {present}" if present else f"None of {self.substrings} found"
+        else:
+            score = len(present) / len(self.substrings)
+            reason = "All substrings found" if not missing else f"Missing: {missing}"
         return self._result(score, reason)
 
 
@@ -96,13 +114,27 @@ class JSONSchemaEval(Evaluator):
 
 
 class WordCount(Evaluator):
-    """Passes if the word count is within [min_words, max_words]."""
+    """Passes if the word count is within [min_words, max_words].
+
+    Also accepts short kwarg names ``min`` and ``max`` as aliases (these are
+    the names used in the public notebooks; they are forwarded to
+    ``min_words`` / ``max_words`` for backward compatibility).
+    """
     name = "word_count"
 
-    def __init__(self, min_words: int = 0, max_words: int = 10_000, threshold: float = 1.0):
+    def __init__(
+        self,
+        min_words: int | None = None,
+        max_words: int | None = None,
+        threshold: float = 1.0,
+        *,
+        min: int | None = None,
+        max: int | None = None,
+    ):
         super().__init__(threshold)
-        self.min_words = min_words
-        self.max_words = max_words
+        # Resolve short-form kwargs (notebook compat). Long-form wins when both are passed.
+        self.min_words = 0 if (min_words is None and min is None) else (min_words if min_words is not None else min)
+        self.max_words = 10_000 if (max_words is None and max is None) else (max_words if max_words is not None else max)
 
     def evaluate(self, case: EvalCase, output: str) -> EvalResult:
         count = len(output.split())
