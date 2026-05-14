@@ -70,7 +70,8 @@ suite.add_evaluators(
     Hallucination(),
 )
 
-report = suite.run(rag_model)
-report.save_json("rag_eval_results.json")
-report.save_csv("rag_eval_results.csv")
-print("\nSaved to rag_eval_results.json and rag_eval_results.csv")
+if __name__ == "__main__":
+    report = suite.run(rag_model)
+    report.save_json("rag_eval_results.json")
+    report.save_csv("rag_eval_results.csv")
+    print("\nSaved to rag_eval_results.json and rag_eval_results.csv")

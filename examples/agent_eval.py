@@ -141,7 +141,8 @@ suite.add_evaluators(
 suite.add_check("Response should acknowledge the customer's specific issue")
 suite.add_check("Response should confirm what action was taken")
 
-# runs=3 surfaces non-deterministic tool selection (flaky cases)
-report = suite.run(agent, tracer=tracer, runs=3)
-report.save_json("agent_eval_results.json")
-print("\nSaved to agent_eval_results.json")
+if __name__ == "__main__":
+    # runs=3 surfaces non-deterministic tool selection (flaky cases)
+    report = suite.run(agent, tracer=tracer, runs=3)
+    report.save_json("agent_eval_results.json")
+    print("\nSaved to agent_eval_results.json")

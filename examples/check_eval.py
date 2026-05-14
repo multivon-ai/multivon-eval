@@ -63,6 +63,7 @@ suite.add_check("Response should be concise (under 100 words)", threshold=0.8)
 #     ],
 # )
 
-report = suite.run(support_bot)
-report.save_json("check_eval_results.json")
-print("\nSaved to check_eval_results.json")
+if __name__ == "__main__":
+    report = suite.run(support_bot)
+    report.save_json("check_eval_results.json")
+    print("\nSaved to check_eval_results.json")
