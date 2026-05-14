@@ -153,3 +153,60 @@ def test_agent_evaluators_construct_without_judge(cls):
     """Backward compatibility — old callers that didn't pass judge must still work."""
     ev = cls()
     assert ev._judge_cfg is None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Finding #10 — audit-package was bundling v1 calibration even when v2 ships
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_audit_package_uses_v2_calibration_when_present(tmp_path):
+    """The audit package should bundle whichever calibration version the loader
+    actually uses (v2 falls back to v1) — and name the file appropriately so an
+    auditor can see which version drove the evaluator decisions."""
+    import zipfile
+    from multivon_eval import ComplianceReporter, EvalSuite, EvalCase, Faithfulness
+    from multivon_eval import build_audit_package
+
+    # Set up a tiny audit log
+    logs_dir = tmp_path / "logs"
+    logs_dir.mkdir()
+    reporter = ComplianceReporter(str(logs_dir), framework="none")
+    suite = EvalSuite("test-suite-v10")
+    suite.add_cases([EvalCase(input="x", context="ctx", expected_output="y")])
+
+    # Stub an EvalReport-like dict for record (the lib's record() will compute
+    # what it needs; we use a real .run() with a no-op evaluator to be safe).
+    from multivon_eval.evaluators.base import Evaluator
+    from multivon_eval.result import EvalResult
+
+    class NoOp(Evaluator):
+        name = "noop"
+        def __init__(self): super().__init__(threshold=1.0)
+        def evaluate(self, case, output): return self._result(1.0, "ok")
+
+    suite.add_evaluators(NoOp())
+    report = suite.run(lambda i: "ok", verbose=False)
+    reporter.record(report)
+
+    out_zip = tmp_path / "pkg.zip"
+    build_audit_package(
+        logs_dir=logs_dir,
+        suite_name="test-suite-v10",
+        framework="none",
+        out_path=out_zip,
+        period_label="2026-test",
+    )
+    assert out_zip.exists()
+
+    # Inspect the zip: must contain calibration_v2.json (since v2 ships in 0.6.x)
+    with zipfile.ZipFile(out_zip) as zf:
+        names = {n.split("/")[-1] for n in zf.namelist()}
+    # We accept either v2 or v1 (in case the test runs in an environment
+    # where v2 was removed) — but reject the hardcoded "v1" bug case.
+    assert ("calibration_v2.json" in names) or ("calibration_v1.json" in names)
+    # Per the loader precedence in calibration.py, v2 should win when both exist.
+    # The published 0.6.0+ wheel ships v2.json, so:
+    assert "calibration_v2.json" in names, (
+        "Expected calibration_v2.json in the bundle since v2.json ships with 0.6.0; "
+        f"got: {sorted(names)}"
+    )
