@@ -54,9 +54,12 @@ class Contains(Evaluator):
         self,
         substrings: list[str],
         case_sensitive: bool = False,
-        match_any: bool = False,
         threshold: float = 1.0,
+        *,
+        match_any: bool = False,
     ):
+        # Position of `match_any` is keyword-only so existing positional callers
+        # of `Contains([...], False, 0.75)` keep treating 0.75 as `threshold`.
         super().__init__(threshold)
         self.substrings = substrings
         self.case_sensitive = case_sensitive
