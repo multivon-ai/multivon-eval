@@ -148,14 +148,20 @@ def main() -> None:
     args = sys.argv[1:]
     cmd = args[0] if args else "demo"
 
+    # No-arg call keeps the legacy "run the demo" behavior so `pip install
+    # multivon-eval && python -m multivon_eval` stays a 1-liner.
     if cmd in ("demo", ""):
         _run_demo()
-    elif cmd in ("-h", "--help", "help"):
+        return
+
+    if cmd in ("-h", "--help", "help"):
         print(__doc__)
-    else:
-        print(f"Unknown command: {cmd!r}")
-        print("Usage: python -m multivon_eval [demo]")
-        sys.exit(1)
+        return
+
+    # Anything else routes to the CLI so `python -m multivon_eval init`
+    # works identically to the `multivon-eval` console-script entry.
+    from . import cli
+    cli.main()
 
 
 if __name__ == "__main__":

@@ -2,6 +2,7 @@
 multivon-eval CLI
 
 Usage:
+    multivon-eval init --template rag --dir ./my-eval
     multivon-eval run eval.py
     multivon-eval report results.json
     multivon-eval experiments list
@@ -13,6 +14,53 @@ from __future__ import annotations
 import sys
 import json
 import argparse
+import os
+from pathlib import Path
+
+
+def cmd_init(args):
+    """Scaffold a starter project — runnable eval in under 5 minutes."""
+    from .templates import render, list_templates
+
+    target = Path(args.dir).resolve()
+    files = render(args.template, with_ci=args.ci)
+
+    # If --dir points at an existing file, fail with a clean error rather
+    # than letting `target.iterdir()` raise NotADirectoryError downstream.
+    if target.exists() and not target.is_dir():
+        print(f"--dir must be a directory, but {target} is a file.", file=sys.stderr)
+        return 1
+    # Refuse to clobber a non-empty existing directory unless --force.
+    if target.exists() and any(target.iterdir()) and not args.force:
+        print(f"Target directory is not empty: {target}", file=sys.stderr)
+        print(f"Re-run with --force to overwrite.", file=sys.stderr)
+        return 1
+    target.mkdir(parents=True, exist_ok=True)
+
+    written: list[Path] = []
+    for rel_path, content in files.items():
+        out_path = target / rel_path
+        # Reject any path that tries to escape the target dir (defense in depth;
+        # all template keys are author-controlled but the check is cheap).
+        if not out_path.resolve().is_relative_to(target):
+            raise ValueError(f"Template path escapes target dir: {rel_path}")
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(content)
+        written.append(out_path)
+
+    rel = target.relative_to(Path.cwd()) if target.is_relative_to(Path.cwd()) else target
+    print(f"\n  Scaffolded {len(written)} file(s) into {rel}/")
+    for p in sorted(written):
+        print(f"    {p.relative_to(target)}")
+
+    # Print the 3-command flow the README will also have.
+    print(f"\n  Next:")
+    print(f"    cd {rel}")
+    print(f"    pip install -r requirements.txt")
+    if args.template != "quickstart":
+        print(f"    cp .env.example .env  # then add your API key")
+    print(f"    python eval.py\n")
+    return 0
 
 
 def cmd_run(args):
@@ -138,6 +186,33 @@ def main():
     parser = argparse.ArgumentParser(prog="multivon-eval", description="Multivon Eval CLI")
     sub = parser.add_subparsers(dest="command")
 
+    # init — scaffold a starter project
+    init_p = sub.add_parser(
+        "init",
+        help="Scaffold a starter eval project (runnable in under 5 minutes)",
+    )
+    init_p.add_argument(
+        "--template", "-t",
+        default="rag",
+        choices=["quickstart", "rag", "agent", "regulated"],
+        help="Which starter to generate (default: rag)",
+    )
+    init_p.add_argument(
+        "--dir", "-d",
+        default=".",
+        help="Target directory (default: current directory)",
+    )
+    init_p.add_argument(
+        "--ci",
+        default=None,
+        choices=["github"],
+        help="Also generate a CI workflow (currently: github)",
+    )
+    init_p.add_argument(
+        "--force", action="store_true",
+        help="Overwrite files in --dir even if it's not empty",
+    )
+
     # run
     run_p = sub.add_parser("run", help="Execute an eval file")
     run_p.add_argument("file", help="Python eval file to run")
@@ -191,7 +266,9 @@ def main():
 
     args = parser.parse_args()
 
-    if args.command == "run":
+    if args.command == "init":
+        sys.exit(cmd_init(args) or 0)
+    elif args.command == "run":
         cmd_run(args)
     elif args.command == "report":
         cmd_report(args)
