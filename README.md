@@ -11,11 +11,35 @@
 
 Run structured evals over your AI outputs — from simple string checks to LLM-as-judge scoring to agent trace validation — with a clean Python API, beautiful terminal reports, and CI/CD integration out of the box.
 
+## Quickstart
+
+```bash
+pip install multivon-eval
+
+# Scaffold a runnable eval project in under 5 minutes
+multivon-eval init --template rag --dir my-eval
+cd my-eval && python eval.py
+```
+
+Or try a self-contained demo with no setup:
+
 ```bash
 pip install multivon-eval && python -m multivon_eval
 ```
 
-Runs a self-contained demo eval. LLM-judge evaluators are added automatically if `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or a local server (Ollama on `:11434`, LM Studio on `:1234`, or `OPENAI_BASE_URL`) is detected.
+LLM-judge evaluators are added automatically if `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or a local server (Ollama on `:11434`, LM Studio on `:1234`, or `OPENAI_BASE_URL`) is detected.
+
+## What's new in 0.7.0
+
+- **`CaseResult.status` enum** — distinguishes `judge_error` / `model_error` / `evaluator_error` from quality failures. `pass_rate` excludes error cases from the denominator so a transient judge outage doesn't masquerade as a model regression.
+- **Per-evaluator error isolation** — one judge outage no longer crashes the whole case; the rest of the evaluators still run.
+- **JUnit XML output** — `report.save_junit_xml("junit.xml")` for native rendering in GitHub Actions / GitLab CI test panels.
+- **`multivon-eval view <report.json>`** — opens the HTML dashboard in a local browser. No setup.
+- **`multivon-eval init`** — 4 starter templates (quickstart, rag, agent, regulated). 5-minute first eval.
+- **`Levenshtein` + `ChrfScore`** — classical text-similarity evaluators, pure-Python, no external deps.
+- **`EvalReport.assert_budget(...)`** — cost / token / latency gates for CI.
+
+See [CHANGELOG.md](CHANGELOG.md) for the full list including breaking changes.
 
 ---
 
