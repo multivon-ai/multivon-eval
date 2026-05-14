@@ -23,7 +23,7 @@ Experiment tracking (compare runs across versions):
     exp.compare(old_run_id, run_id)
 """
 
-__version__ = "0.6.0"
+__version__ = "0.6.1"
 
 from .suite import EvalSuite
 from .case import EvalCase, AgentStep, ToolCall
@@ -56,15 +56,19 @@ from .audit_package import build_audit_package
 
 # Pytest plugin: pytest is an optional dependency. Guard the import so a
 # user who installs multivon-eval without pytest can still `import multivon_eval`.
-# (Python clears `except ... as` bindings after the block, so we stash the
-# message in a module-level constant rather than capturing the exception.)
+# Narrow the catch to ModuleNotFoundError for pytest specifically so any
+# OTHER ImportError raised by the plugin module (real regressions) bubbles up
+# instead of being silently downgraded to "install pytest".
 _PYTEST_MISSING_MSG = (
     "multivon_eval.assert_evaluators requires pytest. "
     "Install with: pip install 'multivon-eval[pytest]'"
 )
 try:
     from .pytest_plugin import assert_evaluators, EvaluatorFailure
-except ImportError:
+except ModuleNotFoundError as _exc:
+    if _exc.name != "pytest":
+        raise
+
     def assert_evaluators(*_args, **_kwargs):  # type: ignore[no-redef]
         raise ImportError(_PYTEST_MISSING_MSG)
 

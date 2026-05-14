@@ -10,7 +10,7 @@ import json
 import re
 
 from .base import Evaluator
-from .llm_judge import _judge_call, _parse_yes_no, _qag_eval
+from .llm_judge import _judge_call, _call as _judge_call_with, _parse_yes_no, _qag_eval
 from ..case import EvalCase, AgentStep
 from ..judge import JudgeConfig, resolve_judge
 from ..result import EvalResult
@@ -290,7 +290,9 @@ class TrajectoryEfficiency(Evaluator):
                 f"\nAnswer \"Yes\" or \"No\"."
             )
             try:
-                answer = _judge_call(recovery_prompt, max_tokens=10)
+                # Use the same resolved judge as the QAG above so a caller's
+                # `judge=` is honored consistently across both scoring paths.
+                answer = _judge_call_with(recovery_prompt, judge, max_tokens=10)
                 recovered = _parse_yes_no(answer)
                 if not recovered:
                     score = max(0.0, score - 0.2)
