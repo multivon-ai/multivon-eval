@@ -125,14 +125,24 @@ def cmd_view(args):
 
     Generates the HTML once into a temp dir, starts a tiny stdlib
     http.server on the requested port, and opens the user's browser.
-    Stays alive until Ctrl-C — exits cleanly on shutdown.
+    Stays alive until Ctrl-C. The temp dir is cleaned up on every exit
+    path (success, Ctrl-C, port collision).
     """
     from pathlib import Path
     import http.server
+    import signal
     import socketserver
     import tempfile
     import webbrowser
     import threading
+
+    # Translate SIGTERM into a KeyboardInterrupt so the with-block's
+    # cleanup (TemporaryDirectory unlink, httpd shutdown) runs on
+    # `docker stop`, `kill <pid>`, or pytest's proc.terminate() the
+    # same way Ctrl-C does.
+    def _term_handler(_signum, _frame):
+        raise KeyboardInterrupt
+    signal.signal(signal.SIGTERM, _term_handler)
 
     report_path = Path(args.file)
     if not report_path.exists():
@@ -146,39 +156,55 @@ def cmd_view(args):
     report = EvalReport.from_dict(data)
     html = report.to_html()
 
-    tmp_dir = Path(tempfile.mkdtemp(prefix="multivon-view-"))
-    html_path = tmp_dir / "index.html"
-    html_path.write_text(html, encoding="utf-8")
+    # TemporaryDirectory removes the dir on context exit — including the
+    # Ctrl-C path inside it via the with-block. No orphaned multivon-view-*
+    # dirs left behind on bind failure, exception, or normal shutdown.
+    with tempfile.TemporaryDirectory(prefix="multivon-view-") as tmp_str:
+        tmp_dir = Path(tmp_str)
+        (tmp_dir / "index.html").write_text(html, encoding="utf-8")
 
-    # Bind to a fixed port if requested; let the OS pick a free one
-    # otherwise so two `view` invocations don't collide.
-    port = args.port or 0
+        port = args.port or 0
 
-    class _Handler(http.server.SimpleHTTPRequestHandler):
-        def __init__(self, *posargs, **kw):
-            super().__init__(*posargs, directory=str(tmp_dir), **kw)
-        def log_message(self, format, *fmtargs):
-            # Suppress noisy default access logs; the user just wants the URL.
-            pass
+        class _Handler(http.server.SimpleHTTPRequestHandler):
+            def __init__(self, *posargs, **kw):
+                super().__init__(*posargs, directory=str(tmp_dir), **kw)
 
-    with socketserver.TCPServer(("127.0.0.1", port), _Handler) as httpd:
-        actual_port = httpd.server_address[1]
-        url = f"http://127.0.0.1:{actual_port}/"
-        print(f"  multivon-eval view  →  {url}")
-        print(f"  Source: {report_path}")
-        print(f"  Press Ctrl-C to stop.\n")
+            def log_message(self, format, *fmtargs):
+                # Suppress default access logs — user just wants the URL.
+                pass
 
-        if args.no_browser:
-            print("  --no-browser was set; not opening browser automatically.")
-        else:
-            # Open the browser AFTER the server is listening (otherwise the
-            # first request can race).
-            threading.Timer(0.2, lambda: webbrowser.open(url)).start()
+        class _ReusableServer(socketserver.TCPServer):
+            # Quick-restart friendly: skip the kernel's TIME_WAIT timer if
+            # the user Ctrl-C'd a moment ago and is now rerunning.
+            allow_reuse_address = True
 
         try:
-            httpd.serve_forever()
-        except KeyboardInterrupt:
-            print("\n  Stopping server.")
+            httpd = _ReusableServer(("127.0.0.1", port), _Handler)
+        except OSError as ex:
+            # Print a clean error instead of leaking a traceback when
+            # the explicit --port is taken.
+            target = f"127.0.0.1:{port}" if port else "127.0.0.1:auto"
+            print(f"multivon-eval view: could not bind {target} — {ex}", file=sys.stderr)
+            return 1
+
+        with httpd:
+            actual_port = httpd.server_address[1]
+            url = f"http://127.0.0.1:{actual_port}/"
+            print(f"  multivon-eval view  →  {url}")
+            print(f"  Source: {report_path}")
+            print(f"  Press Ctrl-C to stop.\n")
+
+            if args.no_browser:
+                print("  --no-browser was set; not opening browser automatically.")
+            else:
+                # Delay browser open until AFTER the server is bound so the
+                # first request can't race.
+                threading.Timer(0.2, lambda: webbrowser.open(url)).start()
+
+            try:
+                httpd.serve_forever()
+            except KeyboardInterrupt:
+                print("\n  Stopping server.")
     return 0
 
 
