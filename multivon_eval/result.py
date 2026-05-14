@@ -639,6 +639,100 @@ class EvalReport:
         with open(path, "w", encoding="utf-8") as f:
             f.write(self.to_html())
 
+    def to_junit_xml(self) -> str:
+        """Render the report as JUnit XML.
+
+        GitHub Actions, GitLab CI, CircleCI, Jenkins, and most other CI
+        systems render JUnit XML natively in their PR/job summary UI —
+        producing one of these alongside the JSON report makes eval
+        failures show up in the CI's structured test panel.
+
+        Mapping (per JUnit conventions):
+          - Suite: the multivon-eval suite. One ``<testsuite>``.
+          - Test case: each (case, evaluator) pair. One ``<testcase>``.
+          - Pass/fail: a passing evaluator emits a bare ``<testcase>``;
+            a failing one emits ``<failure>``; an error case (model
+            crashed, judge unavailable) emits ``<error>``; a deliberately
+            skipped case emits ``<skipped>``.
+
+        The string returned is ready to drop into a CI artifact path
+        (e.g., ``junit.xml``).
+        """
+        from xml.etree.ElementTree import Element, SubElement, tostring
+        from xml.sax.saxutils import escape
+
+        # Per JUnit convention: total tests = number of <testcase> rows.
+        total_tests = sum(len(cr.results) or 1 for cr in self.case_results)
+        n_failures = sum(
+            1
+            for cr in self.case_results
+            for r in cr.results
+            if cr.status == EvalStatus.FAILED_QUALITY and not r.passed
+        )
+        n_errors = sum(
+            1
+            for cr in self.case_results
+            for r in cr.results
+            if cr.status in ERROR_STATUSES
+        ) + sum(1 for cr in self.case_results if cr.status in ERROR_STATUSES and not cr.results)
+        n_skipped = sum(
+            1
+            for cr in self.case_results
+            for _ in (cr.results or [None])
+            if cr.status == EvalStatus.SKIPPED
+        )
+        suite_time = sum(cr.latency_ms for cr in self.case_results) / 1000.0
+
+        ts = Element("testsuites")
+        suite_el = SubElement(ts, "testsuite", {
+            "name": self.suite_name or "multivon-eval",
+            "tests": str(total_tests),
+            "failures": str(n_failures),
+            "errors": str(n_errors),
+            "skipped": str(n_skipped),
+            "time": f"{suite_time:.3f}",
+        })
+
+        for cr in self.case_results:
+            classname = self.suite_name or "multivon-eval"
+            results_to_emit = cr.results or [None]   # error cases with no results still emit one row
+            for r in results_to_emit:
+                name = r.evaluator if r is not None else "(no evaluators ran)"
+                tc = SubElement(suite_el, "testcase", {
+                    "classname": classname,
+                    "name": f"{name} :: {(cr.case_input or '')[:80]}",
+                    "time": f"{cr.latency_ms / 1000.0:.3f}",
+                })
+                if cr.status == EvalStatus.SKIPPED:
+                    SubElement(tc, "skipped", {"message": "case marked skipped"})
+                    continue
+                if cr.status in ERROR_STATUSES:
+                    detail = (
+                        cr.model_error or cr.judge_error or cr.evaluator_error or
+                        (r.reason if r is not None else "") or "error"
+                    )
+                    SubElement(tc, "error", {
+                        "type": cr.status.value,
+                        "message": (detail[:200] if detail else "error"),
+                    }).text = escape(detail or "")
+                    continue
+                # Quality outcome: emit <failure> only when the specific
+                # evaluator failed. Passing evaluators emit no child element.
+                if r is not None and not r.passed:
+                    SubElement(tc, "failure", {
+                        "type": "quality",
+                        "message": (r.reason[:200] if r.reason else "evaluator failed"),
+                    }).text = escape(r.reason or "")
+
+        # tostring returns bytes; decode to str. Prepend the XML declaration
+        # so consumers that strictly check it (e.g., some linters) are happy.
+        return '<?xml version="1.0" encoding="UTF-8"?>\n' + tostring(ts, encoding="unicode")
+
+    def save_junit_xml(self, path: str) -> None:
+        """Write the JUnit XML report to ``path``."""
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(self.to_junit_xml())
+
     def save_csv(self, path: str) -> None:
         rows = []
         for cr in self.case_results:

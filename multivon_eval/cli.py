@@ -112,6 +112,75 @@ def cmd_report(args):
         report.save_html(args.html)
         console.print(f"\n  HTML report saved → [dim]{args.html}[/]")
 
+    if args.junit:
+        from .result import EvalReport
+        report = EvalReport.from_dict(data)
+        report.save_junit_xml(args.junit)
+        console.print(f"  JUnit XML saved → [dim]{args.junit}[/]  "
+                      f"(GitHub Actions / GitLab CI will render this as a test panel)")
+
+
+def cmd_view(args):
+    """Open a saved JSON report as HTML, served locally.
+
+    Generates the HTML once into a temp dir, starts a tiny stdlib
+    http.server on the requested port, and opens the user's browser.
+    Stays alive until Ctrl-C — exits cleanly on shutdown.
+    """
+    from pathlib import Path
+    import http.server
+    import socketserver
+    import tempfile
+    import webbrowser
+    import threading
+
+    report_path = Path(args.file)
+    if not report_path.exists():
+        print(f"Report not found: {report_path}", file=sys.stderr)
+        return 1
+
+    with open(report_path) as f:
+        data = json.load(f)
+
+    from .result import EvalReport
+    report = EvalReport.from_dict(data)
+    html = report.to_html()
+
+    tmp_dir = Path(tempfile.mkdtemp(prefix="multivon-view-"))
+    html_path = tmp_dir / "index.html"
+    html_path.write_text(html, encoding="utf-8")
+
+    # Bind to a fixed port if requested; let the OS pick a free one
+    # otherwise so two `view` invocations don't collide.
+    port = args.port or 0
+
+    class _Handler(http.server.SimpleHTTPRequestHandler):
+        def __init__(self, *posargs, **kw):
+            super().__init__(*posargs, directory=str(tmp_dir), **kw)
+        def log_message(self, format, *fmtargs):
+            # Suppress noisy default access logs; the user just wants the URL.
+            pass
+
+    with socketserver.TCPServer(("127.0.0.1", port), _Handler) as httpd:
+        actual_port = httpd.server_address[1]
+        url = f"http://127.0.0.1:{actual_port}/"
+        print(f"  multivon-eval view  →  {url}")
+        print(f"  Source: {report_path}")
+        print(f"  Press Ctrl-C to stop.\n")
+
+        if args.no_browser:
+            print("  --no-browser was set; not opening browser automatically.")
+        else:
+            # Open the browser AFTER the server is listening (otherwise the
+            # first request can race).
+            threading.Timer(0.2, lambda: webbrowser.open(url)).start()
+
+        try:
+            httpd.serve_forever()
+        except KeyboardInterrupt:
+            print("\n  Stopping server.")
+    return 0
+
 
 def cmd_experiments(args):
     from .experiments import Experiment, list_experiments
@@ -223,6 +292,23 @@ def main():
     report_p = sub.add_parser("report", help="Display a saved JSON report")
     report_p.add_argument("file", help="JSON results file")
     report_p.add_argument("--html", metavar="PATH", help="Also save an HTML report to PATH")
+    report_p.add_argument("--junit", metavar="PATH",
+                          help="Also save a JUnit XML report to PATH (renders natively in GitHub Actions / GitLab CI)")
+
+    # view — local HTML report server
+    view_p = sub.add_parser(
+        "view",
+        help="Open a saved JSON report as HTML in a local web server",
+    )
+    view_p.add_argument("file", help="JSON results file to render")
+    view_p.add_argument(
+        "--port", type=int, default=0,
+        help="Port to listen on (default: OS picks an open port)",
+    )
+    view_p.add_argument(
+        "--no-browser", action="store_true",
+        help="Don't open the browser automatically (useful for SSH / containers)",
+    )
 
     # experiments
     exp_p = sub.add_parser("experiments", help="Manage experiment history")
@@ -272,6 +358,8 @@ def main():
         cmd_run(args)
     elif args.command == "report":
         cmd_report(args)
+    elif args.command == "view":
+        sys.exit(cmd_view(args) or 0)
     elif args.command == "experiments":
         cmd_experiments(args)
     elif args.command == "generate":
