@@ -116,9 +116,16 @@ class CaseResult:
 
     @property
     def passed(self) -> bool:
-        if self.pass_count >= 0:
-            return self.pass_count == self.runs
-        return all(r.passed for r in self.results)
+        """Whether this case is a clean pass.
+
+        Defined as ``status == EvalStatus.PASSED`` so the two views always
+        agree. A case with NO evaluator results is not a pass — there's
+        nothing to prove it succeeded, and ``status`` classifies it as
+        ``FAILED_QUALITY``. A case in any error state (model/judge/
+        evaluator/timeout) is not a pass even if individual evaluator
+        results were collected before the error fired.
+        """
+        return self.status == EvalStatus.PASSED
 
     @property
     def score(self) -> float:
@@ -428,14 +435,19 @@ class EvalReport:
         return random.sample(pool, min(n, len(pool)))
 
     def pass_rate_ci(self, confidence: float = 0.95) -> tuple[float, float]:
-        """Wilson score 95% CI on the pass rate. More reliable than normal approx for small n."""
+        """Wilson score 95% CI on the pass rate.
+
+        Denominator matches :attr:`pass_rate` (``evaluated``) so the CI
+        describes the same metric being reported. More reliable than the
+        normal approximation for small n.
+        """
         from .experiments import wilson_interval
-        return wilson_interval(self.passed, self.total, confidence)
+        return wilson_interval(self.passed, self.evaluated, confidence)
 
     def avg_score_ci(self, confidence: float = 0.95) -> tuple[float, float]:
-        """Bootstrap CI on the mean score. Use when n < 30 or score distribution is skewed."""
+        """Bootstrap CI on the mean score over evaluated cases (no errors)."""
         from .experiments import bootstrap_interval
-        scores = [cr.score for cr in self.case_results]
+        scores = [cr.score for cr in self.case_results if cr.status in EVALUATION_STATUSES]
         return bootstrap_interval(scores, confidence)
 
     def score_percentiles(self, percentiles: list[int] | None = None) -> dict[str, float]:

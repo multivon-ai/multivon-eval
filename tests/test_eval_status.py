@@ -250,3 +250,106 @@ def test_serialization_round_trip_preserves_status_fields():
     rt = EvalReport.from_dict(blob)
     statuses = [cr.status for cr in rt.case_results]
     assert statuses == [EvalStatus.PASSED, EvalStatus.MODEL_ERROR, EvalStatus.JUDGE_ERROR]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Round-2 codex review regressions
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_aggregate_runs_propagates_error_fields():
+    """When runs > 1 and one of the runs errors, the aggregated CaseResult
+    must surface the error (not silently downgrade to FAILED_QUALITY).
+    Codex round-2 P1 finding."""
+    from multivon_eval.suite import _aggregate_runs
+
+    case = EvalCase(input="x")
+    good_run = _make_case(results=[EvalResult("e", 1.0, True)])
+    judge_err_run = _make_case(judge_error="429 rate limit",
+                                results=[EvalResult("e", 0.0, False)])
+    agg = _aggregate_runs(case, [good_run, judge_err_run, good_run])
+    assert agg.judge_error is not None and "429" in agg.judge_error
+    assert agg.status == EvalStatus.JUDGE_ERROR
+
+
+def test_pass_rate_ci_uses_evaluated_not_total():
+    """pass_rate_ci must use the same denominator as pass_rate so the
+    confidence interval describes the metric being reported.
+    Codex round-2 P1/P2 finding."""
+    passing = _make_case(results=[EvalResult("e", 1.0, True)])
+    err = _make_case(judge_error="boom")
+    report = _report(passing, passing, passing, err, err)
+    # 3 of 3 evaluated passed; the Wilson lower bound on 3/3 ≠ 3/5.
+    lo, hi = report.pass_rate_ci()
+    # Bound must be >= the lo for 3/3 (n=3), which is much higher than 3/5.
+    lo_3_3, _ = (lambda: __import__("multivon_eval.experiments", fromlist=["wilson_interval"]).wilson_interval(3, 3))()
+    assert lo == pytest.approx(lo_3_3, abs=1e-9)
+
+
+def test_run_on_cases_isolates_judge_unavailable():
+    """The imported-trace path (run_on_cases) must also catch JudgeUnavailable
+    so one outage doesn't crash the whole batch. Codex round-2 P2 finding."""
+    suite = EvalSuite("imported-isolation")
+    suite.add_cases([EvalCase(input="x")])
+    suite.add_evaluators(_AlwaysJudgeFail(), _AlwaysPass())
+    report = suite.run_on_cases([(EvalCase(input="x"), "out")], verbose=False)
+    cr = report.case_results[0]
+    assert cr.status == EvalStatus.JUDGE_ERROR
+    # Both evaluators recorded results (the passing one wasn't crashed).
+    assert len(cr.results) == 2
+
+
+def test_async_error_classification_uses_structured_metadata():
+    """The async path should use EvalResult.metadata['error_kind'] for
+    classification, not string-parse the human-readable reason. Codex
+    round-2 P2 finding.
+
+    Indirect check: an evaluator whose reason TEXT happens to start with
+    '[judge unavailable:' but whose metadata says no error must NOT be
+    classified as judge_error."""
+    import asyncio
+    from multivon_eval import EvalResult
+
+    class _ReasonMimicry:
+        name = "innocent"
+        threshold = 0.7
+        async def aevaluate(self, case, output):
+            # Reason text mimicry; metadata says no error.
+            return EvalResult(
+                evaluator="innocent", score=1.0, passed=True,
+                reason="[judge unavailable: but this is actually a benign note]",
+                metadata={},  # no error_kind
+            )
+        def evaluate(self, case, output):
+            import asyncio
+            return asyncio.run(self.aevaluate(case, output))
+
+    suite = EvalSuite("mimicry")
+    suite.add_cases([EvalCase(input="x")])
+    suite.add_evaluators(_ReasonMimicry())
+
+    async def model(i): return "out"
+    report = asyncio.run(suite.run_async(model, verbose=False))
+    cr = report.case_results[0]
+    # The case should be PASSED, not misclassified as JUDGE_ERROR from the
+    # reason string.
+    assert cr.status == EvalStatus.PASSED
+    assert cr.judge_error is None
+
+
+def test_passed_and_status_agree_on_empty_results():
+    """A case with no evaluator results — `passed` and `status` must agree.
+    P3 finding: status said FAILED_QUALITY but passed said True (empty all())."""
+    cr = _make_case(results=[])
+    assert cr.passed is False
+    assert cr.status == EvalStatus.FAILED_QUALITY
+
+
+def test_passed_false_when_case_in_error_state():
+    """Even if some individual evaluator result has passed=True, if the case
+    is in an error state, the case-level .passed must be False."""
+    cr = _make_case(
+        results=[EvalResult("e", 1.0, True)],
+        judge_error="429",
+    )
+    assert cr.passed is False
+    assert cr.status == EvalStatus.JUDGE_ERROR

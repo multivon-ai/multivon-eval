@@ -67,6 +67,10 @@ class RunRecord:
     flaky_count: int = 0
     stability_score: float = 1.0
     pass_by_evaluator: dict[str, float] = field(default_factory=dict)
+    # 0.7.0: the denominator behind pass_rate (excludes error/skipped cases).
+    # Defaulted from ``total`` for legacy records that didn't store it.
+    evaluated: int = -1
+    errors: int = 0
 
     def to_dict(self) -> dict:
         return {
@@ -77,6 +81,8 @@ class RunRecord:
             "pass_rate": self.pass_rate,
             "avg_score": self.avg_score,
             "total": self.total,
+            "evaluated": self.evaluated,
+            "errors": self.errors,
             "passed": self.passed,
             "failed": self.failed,
             "scores_by_evaluator": self.scores_by_evaluator,
@@ -97,6 +103,9 @@ class RunRecord:
             pass_rate=d["pass_rate"],
             avg_score=d["avg_score"],
             total=d["total"],
+            # Legacy records (pre-0.7.0) didn't store evaluated; default to total.
+            evaluated=d.get("evaluated", d["total"]),
+            errors=d.get("errors", 0),
             passed=d["passed"],
             failed=d["failed"],
             scores_by_evaluator=d.get("scores_by_evaluator", {}),
@@ -146,6 +155,8 @@ class Experiment:
             pass_rate=round(report.pass_rate, 4),
             avg_score=round(report.avg_score, 4),
             total=report.total,
+            evaluated=report.evaluated,
+            errors=report.errors,
             passed=report.passed,
             failed=report.failed,
             scores_by_evaluator={k: round(v, 4) for k, v in report.scores_by_evaluator().items()},
@@ -639,30 +650,34 @@ def _print_comparison(a: RunRecord, b: RunRecord) -> None:
         print(f"\n  Tags A: {a.tags}")
         print(f"  Tags B: {b.tags}")
 
-    # Confidence intervals on pass rates
-    ci_a = wilson_interval(a.passed, a.total)
-    ci_b = wilson_interval(b.passed, b.total)
+    # Confidence intervals on pass rates — use the same denominator as
+    # pass_rate (evaluated cases, excluding errors). Falls back to total
+    # for legacy records that pre-date the 0.7.0 status enum.
+    denom_a = a.evaluated if a.evaluated >= 0 else a.total
+    denom_b = b.evaluated if b.evaluated >= 0 else b.total
+    ci_a = wilson_interval(a.passed, denom_a)
+    ci_b = wilson_interval(b.passed, denom_b)
     print(f"\n  95% CI (before): [{ci_a[0]:.1%}, {ci_a[1]:.1%}]")
     print(f"  95% CI (after):  [{ci_b[0]:.1%}, {ci_b[1]:.1%}]")
 
-    # Statistical significance + effect size
+    # Statistical significance + effect size — same denominator.
     delta_pass = b.pass_rate - a.pass_rate
-    p_value = _two_proportion_z_test(a.pass_rate, a.total, b.pass_rate, b.total)
+    p_value = _two_proportion_z_test(a.pass_rate, denom_a, b.pass_rate, denom_b)
     h = cohens_h(a.pass_rate, b.pass_rate)
     print(f"  Statistical significance: {_significance_label(p_value)}")
     if abs(delta_pass) >= 0.001:
         print(f"  Effect size (Cohen's h):  {h:+.3f} ({_cohens_h_label(h)})")
 
     # Min-detectable-effect warning when dataset is small
-    mde = min_detectable_effect(max(a.total, b.total), baseline=min(a.pass_rate, b.pass_rate))
+    mde = min_detectable_effect(max(denom_a, denom_b), baseline=min(a.pass_rate, b.pass_rate))
     if mde > 0.05:
-        print(f"  Min detectable effect at n={max(a.total, b.total)}: ~{mde:.0%}  "
+        print(f"  Min detectable effect at n={max(denom_a, denom_b)}: ~{mde:.0%}  "
               f"(changes smaller than this are not reliably detectable)")
 
     # Power hint: if not significant, suggest how many more cases are needed
     if p_value >= 0.05 and abs(delta_pass) >= 0.01:
         needed = runs_needed(abs(delta_pass), baseline=min(a.pass_rate, b.pass_rate))
-        if needed > max(a.total, b.total):
+        if needed > max(denom_a, denom_b):
             print(f"  Hint: need ≥{needed} test cases to detect this {abs(delta_pass):.0%} delta at 80% power.")
 
     # Verdict

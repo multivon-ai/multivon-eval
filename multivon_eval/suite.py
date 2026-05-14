@@ -193,6 +193,7 @@ class EvalSuite:
                 result = EvalResult(
                     evaluator=ev_name, score=0.0, passed=False,
                     reason=f"[judge unavailable: {ju}]",
+                    metadata={"error_kind": "judge_error", "error_detail": str(ju)},
                 )
             except Exception as ex:
                 # An evaluator itself crashed — distinct from a judge outage.
@@ -202,6 +203,8 @@ class EvalSuite:
                 result = EvalResult(
                     evaluator=ev_name, score=0.0, passed=False,
                     reason=f"[evaluator error: {type(ex).__name__}: {ex}]",
+                    metadata={"error_kind": "evaluator_error",
+                              "error_detail": f"{type(ex).__name__}: {ex}"},
                 )
             results.append(result)
 
@@ -588,8 +591,29 @@ class EvalSuite:
         case_results = []
         for case, output in traced_outputs:
             results = []
+            # Apply the same per-evaluator isolation as the live run path —
+            # an imported trace shouldn't crash the whole suite if one
+            # evaluator's judge is unavailable.
+            judge_err: str | None = None
+            evaluator_err: str | None = None
             for ev in self._evaluators:
-                result = ev.evaluate(case, output)
+                ev_name = getattr(ev, "name", type(ev).__name__)
+                try:
+                    result = ev.evaluate(case, output)
+                except JudgeUnavailable as ju:
+                    if judge_err is None:
+                        judge_err = str(ju)
+                    result = EvalResult(
+                        evaluator=ev_name, score=0.0, passed=False,
+                        reason=f"[judge unavailable: {ju}]",
+                    )
+                except Exception as ex:
+                    if evaluator_err is None:
+                        evaluator_err = f"{type(ex).__name__}: {ex}"
+                    result = EvalResult(
+                        evaluator=ev_name, score=0.0, passed=False,
+                        reason=f"[evaluator error: {type(ex).__name__}: {ex}]",
+                    )
                 results.append(result)
             case_results.append(CaseResult(
                 case_input=case.input,
@@ -597,6 +621,9 @@ class EvalSuite:
                 results=results,
                 latency_ms=0.0,
                 tags=case.tags,
+                judge_error=judge_err,
+                evaluator_error=evaluator_err,
+                agent_trace=case.agent_trace,
             ))
 
         report = EvalReport(
@@ -1179,11 +1206,12 @@ class EvalSuite:
                     score=0.0,
                     passed=False,
                     reason=f"[skipped — model error: {model_error}]",
+                    metadata={"error_kind": "model_error_skip"},
                 )
             # Catch judge + evaluator exceptions so one outage doesn't crash
-            # the whole case. The error type is returned via the result's
-            # ``reason``; suite-level aggregation will tag the case with the
-            # appropriate :class:`EvalStatus`.
+            # the whole case. The error TYPE is tagged via
+            # ``EvalResult.metadata['error_kind']`` so downstream code can
+            # classify without parsing reason strings.
             try:
                 if isinstance(ev, (Latency, MaxLatency)):
                     return await ev.aevaluate(case, output, latency_ms=latency_ms)
@@ -1192,11 +1220,14 @@ class EvalSuite:
                 return EvalResult(
                     evaluator=ev_name, score=0.0, passed=False,
                     reason=f"[judge unavailable: {ju}]",
+                    metadata={"error_kind": "judge_error", "error_detail": str(ju)},
                 )
             except Exception as ex:
                 return EvalResult(
                     evaluator=ev_name, score=0.0, passed=False,
                     reason=f"[evaluator error: {type(ex).__name__}: {ex}]",
+                    metadata={"error_kind": "evaluator_error",
+                              "error_detail": f"{type(ex).__name__}: {ex}"},
                 )
 
         async def _gated_eval(ev, case, output, latency_ms, model_error):
@@ -1223,15 +1254,17 @@ class EvalSuite:
                         for ev in self._evaluators
                     ])
 
-                    # Surface judge/evaluator errors from the result reasons
-                    # so CaseResult.status returns the right EvalStatus enum.
+                    # Surface judge/evaluator errors via the metadata sentinel
+                    # set by _eval_one. Avoids brittle string parsing of
+                    # human-readable reason strings.
                     async_judge_error: str | None = None
                     async_evaluator_error: str | None = None
                     for r in ev_results:
-                        if async_judge_error is None and r.reason.startswith("[judge unavailable:"):
-                            async_judge_error = r.reason
-                        elif async_evaluator_error is None and r.reason.startswith("[evaluator error:"):
-                            async_evaluator_error = r.reason
+                        kind = r.metadata.get("error_kind") if r.metadata else None
+                        if async_judge_error is None and kind == "judge_error":
+                            async_judge_error = r.metadata.get("error_detail", r.reason)
+                        elif async_evaluator_error is None and kind == "evaluator_error":
+                            async_evaluator_error = r.metadata.get("error_detail", r.reason)
 
                     single_runs.append(CaseResult(
                         case_input=case.input,
@@ -1309,6 +1342,23 @@ def _aggregate_runs(case: EvalCase, single_runs: list[CaseResult]) -> CaseResult
             reason=f"avg over {n} runs (passed {pass_votes}/{len(ev_results)})",
         ))
 
+    # Propagate error fields from any single run that hit one — otherwise a
+    # judge outage on run 3-of-5 would be lost in the aggregate and the
+    # case would silently downgrade to FAILED_QUALITY. Latch the FIRST
+    # error of each kind across runs.
+    agg_model_err: str | None = None
+    agg_judge_err: str | None = None
+    agg_eval_err: str | None = None
+    agg_skipped = False
+    for r in single_runs:
+        if agg_model_err is None and r.model_error is not None:
+            agg_model_err = r.model_error
+        if agg_judge_err is None and r.judge_error is not None:
+            agg_judge_err = r.judge_error
+        if agg_eval_err is None and r.evaluator_error is not None:
+            agg_eval_err = r.evaluator_error
+        if r.skipped:
+            agg_skipped = True
     return CaseResult(
         case_input=case.input,
         actual_output=single_runs[-1].actual_output,  # last run's output
@@ -1318,6 +1368,11 @@ def _aggregate_runs(case: EvalCase, single_runs: list[CaseResult]) -> CaseResult
         runs=n,
         all_scores=all_scores,
         pass_count=pass_count,
+        model_error=agg_model_err,
+        judge_error=agg_judge_err,
+        evaluator_error=agg_eval_err,
+        skipped=agg_skipped,
+        agent_trace=case.agent_trace,
     )
 
 
