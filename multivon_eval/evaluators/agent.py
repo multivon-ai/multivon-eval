@@ -12,6 +12,7 @@ import re
 from .base import Evaluator
 from .llm_judge import _judge_call, _parse_yes_no, _qag_eval
 from ..case import EvalCase, AgentStep
+from ..judge import JudgeConfig, resolve_judge
 from ..result import EvalResult
 
 
@@ -136,8 +137,9 @@ class PlanQuality(Evaluator):
     """
     name = "plan_quality"
 
-    def __init__(self, threshold: float = 0.7):
+    def __init__(self, threshold: float = 0.7, judge: JudgeConfig | None = None):
         super().__init__(threshold)
+        self._judge_cfg = judge
 
     def evaluate(self, case: EvalCase, output: str) -> EvalResult:
         if not case.agent_trace:
@@ -152,7 +154,8 @@ class PlanQuality(Evaluator):
             ("Does each step in the plan follow logically from the previous one?", True),
             ("Would an expert consider this plan efficient for the task?", True),
         ]
-        score, reasons = _qag_eval(questions, ctx)
+        judge = resolve_judge(self._judge_cfg)
+        score, reasons = _qag_eval(questions, ctx, judge)
         return self._result(score, "\n".join(reasons))
 
 
@@ -163,8 +166,9 @@ class TaskCompletion(Evaluator):
     """
     name = "task_completion"
 
-    def __init__(self, threshold: float = 0.7):
+    def __init__(self, threshold: float = 0.7, judge: JudgeConfig | None = None):
         super().__init__(threshold)
+        self._judge_cfg = judge
 
     def evaluate(self, case: EvalCase, output: str) -> EvalResult:
         trace_str = ""
@@ -178,7 +182,8 @@ class TaskCompletion(Evaluator):
             ("Is the final output a complete response (not partial or cut off)?", True),
             ("Did the agent fail to complete the task or produce an error?", False),
         ]
-        score, reasons = _qag_eval(questions, ctx)
+        judge = resolve_judge(self._judge_cfg)
+        score, reasons = _qag_eval(questions, ctx, judge)
         return self._result(score, "\n".join(reasons))
 
 
@@ -245,8 +250,9 @@ class TrajectoryEfficiency(Evaluator):
     """
     name = "trajectory_efficiency"
 
-    def __init__(self, threshold: float = 0.7):
+    def __init__(self, threshold: float = 0.7, judge: JudgeConfig | None = None):
         super().__init__(threshold)
+        self._judge_cfg = judge
 
     def evaluate(self, case: EvalCase, output: str) -> EvalResult:
         if not case.agent_trace:
@@ -271,7 +277,8 @@ class TrajectoryEfficiency(Evaluator):
             ("Did the agent avoid making the same tool call more than once with identical arguments?", True),
         ]
 
-        score, reasons = _qag_eval(questions, ctx)
+        judge = resolve_judge(self._judge_cfg)
+        score, reasons = _qag_eval(questions, ctx, judge)
 
         # Bonus: error recovery — if there were failed tool calls, did the agent handle them?
         if failed_tools:
@@ -314,8 +321,9 @@ class AgentMemoryEval(Evaluator):
     """
     name = "agent_memory"
 
-    def __init__(self, threshold: float = 0.7):
+    def __init__(self, threshold: float = 0.7, judge: JudgeConfig | None = None):
         super().__init__(threshold)
+        self._judge_cfg = judge
 
     def evaluate(self, case: EvalCase, output: str) -> EvalResult:
         if not case.context:
@@ -336,7 +344,8 @@ class AgentMemoryEval(Evaluator):
                 (f"Does the response include: \"{case.expected_output[:200]}\"?", True)
             )
 
-        score, reasons = _qag_eval(questions, ctx)
+        judge = resolve_judge(self._judge_cfg)
+        score, reasons = _qag_eval(questions, ctx, judge)
         return self._result(score, "\n".join(reasons))
 
 
