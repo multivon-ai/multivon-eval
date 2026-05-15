@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from pathlib import Path
     from .integrations.base import AgentTracer
     from .lockfile import SuiteLock
+    from .retry import JudgeRetry
 
 
 class EvalSuite:
@@ -240,6 +241,64 @@ class EvalSuite:
 
         return _aggregate_runs(case, single_runs)
 
+    def _run_case_with_retry(
+        self,
+        case: EvalCase,
+        model_fn: Callable[[str], str],
+        runs: int = 1,
+        tracer: "AgentTracer | None" = None,
+        early_stop: bool = False,
+        judge_retry: "JudgeRetry | None" = None,
+    ) -> CaseResult:
+        """Wrap :meth:`_run_case` with the retry policy. No-op when
+        ``judge_retry`` is None — the common path.
+
+        Retry happens at the CASE level: a single retriable status
+        re-runs all evaluators for the case (and all sub-runs when
+        ``runs > 1``). This is wasteful when only one evaluator hit
+        the outage, but it keeps the multi-run + early-stop semantics
+        intact and matches what an operator typically wants: a clean
+        end-to-end result, not a partial patchwork.
+        """
+        if judge_retry is None:
+            return self._run_case(case, model_fn, runs, tracer=tracer, early_stop=early_stop)
+
+        from .retry import should_retry, sleep_for_attempt
+
+        retry_errors: list[str] = []
+        cr: CaseResult | None = None
+        for attempt in range(1, judge_retry.max_attempts + 1):
+            # Sleep BEFORE the attempt for attempt >= 2 — attempt 1 runs
+            # immediately. This keeps the no-retry happy path zero-cost.
+            if attempt > 1:
+                sleep_for_attempt(judge_retry, attempt)
+            cr = self._run_case(case, model_fn, runs, tracer=tracer, early_stop=early_stop)
+            if not should_retry(cr.status, judge_retry):
+                break
+            # ``retry_errors`` records "errors that *prompted* a retry" —
+            # not "errors observed" — so we don't append on the last
+            # attempt. Otherwise an exhausted 3-attempt chain would
+            # report retry_attempts=3 even though only 2 retries
+            # actually happened.
+            if attempt >= judge_retry.max_attempts:
+                break
+            retry_errors.append(
+                cr.judge_error or cr.evaluator_error or cr.model_error or f"<{cr.status.value}>"
+            )
+        assert cr is not None  # max_attempts >= 1 guarantees one pass
+
+        # Record retry history on the case result. ``retry_attempts``
+        # is the number of FAILED prior attempts — for a case that
+        # passed first try it's 0. For an exhausted retry chain on
+        # max_attempts=3 it's 2 (two retries failed before giving up).
+        if retry_errors:
+            cr = dataclasses.replace(
+                cr,
+                retry_attempts=len(retry_errors),
+                retry_errors=list(retry_errors),
+            )
+        return cr
+
     def run(
         self,
         model_fn: Callable[[str], str],
@@ -249,6 +308,7 @@ class EvalSuite:
         runs: int = 1,
         tracer: "AgentTracer | None" = None,
         early_stop: bool = False,
+        judge_retry: "JudgeRetry | None" = None,
     ) -> EvalReport:
         """
         Run all evaluators over all cases.
@@ -265,6 +325,13 @@ class EvalSuite:
             early_stop:      Stop each case early once the result is statistically
                              clear (SPRT). Only applies when runs > 1. Reduces LLM
                              spend on easy cases without sacrificing accuracy.
+            judge_retry:     :class:`JudgeRetry` policy for transient judge /
+                             timeout errors. Default ``None`` = no retry.
+                             Cases whose status is in ``policy.retry_on`` are
+                             re-evaluated up to ``policy.max_attempts`` times
+                             with exponential backoff. The retry history lands
+                             on ``CaseResult.retry_attempts`` /
+                             ``CaseResult.retry_errors``.
         """
         if tracer is not None and workers > 1:
             raise ValueError(
@@ -294,10 +361,16 @@ class EvalSuite:
 
         try:
             if workers > 1:
-                case_results = self._run_parallel(instrumented_fn, workers, runs)
+                case_results = self._run_parallel(
+                    instrumented_fn, workers, runs, judge_retry=judge_retry,
+                )
             else:
                 case_results = [
-                    self._run_case(case, instrumented_fn, runs, tracer=tracer, early_stop=early_stop)
+                    self._run_case_with_retry(
+                        case, instrumented_fn, runs,
+                        tracer=tracer, early_stop=early_stop,
+                        judge_retry=judge_retry,
+                    )
                     for case in self._cases
                 ]
         finally:
@@ -721,12 +794,19 @@ class EvalSuite:
         )
 
     def _run_parallel(
-        self, model_fn: Callable[[str], str], workers: int, runs: int
+        self,
+        model_fn: Callable[[str], str],
+        workers: int,
+        runs: int,
+        judge_retry: "JudgeRetry | None" = None,
     ) -> list[CaseResult]:
         results: dict[int, CaseResult] = {}
         with ThreadPoolExecutor(max_workers=workers) as pool:
             futures = {
-                pool.submit(self._run_case, case, model_fn, runs): i
+                pool.submit(
+                    self._run_case_with_retry, case, model_fn, runs,
+                    None, False, judge_retry,
+                ): i
                 for i, case in enumerate(self._cases)
             }
             for future in as_completed(futures):
@@ -1178,6 +1258,7 @@ class EvalSuite:
         concurrency: int = 5,
         runs: int = 1,
         evaluator_concurrency: int | None = None,
+        judge_retry: "JudgeRetry | None" = None,
     ) -> EvalReport:
         """Run evals with an async model function.
 
@@ -1189,6 +1270,11 @@ class EvalSuite:
                                     Defaults to running all evaluators in
                                     parallel. Set to 1 for strictly sequential
                                     evaluation within a case.
+            judge_retry:            :class:`JudgeRetry` policy for transient
+                                    judge / timeout errors. See
+                                    :meth:`run` for semantics. Async path uses
+                                    ``asyncio.sleep`` so concurrent retries
+                                    don't block the event loop.
 
         Returns an :class:`EvalReport`. Each evaluator's ``aevaluate`` is
         awaited, so LLM-judge calls overlap I/O rather than serialising.
@@ -1284,6 +1370,36 @@ class EvalSuite:
                     return single_runs[0]
                 return _aggregate_runs(case, single_runs)
 
+        async def _run_one_async_with_retry(case: EvalCase) -> CaseResult:
+            """Wrap ``_run_one_async`` with the retry policy. Mirrors the
+            sync helper but uses ``asyncio.sleep`` so concurrent retries
+            don't block the event loop."""
+            if judge_retry is None:
+                return await _run_one_async(case)
+            from .retry import should_retry, async_sleep_for_attempt
+            retry_errors: list[str] = []
+            cr: CaseResult | None = None
+            for attempt in range(1, judge_retry.max_attempts + 1):
+                if attempt > 1:
+                    await async_sleep_for_attempt(judge_retry, attempt)
+                cr = await _run_one_async(case)
+                if not should_retry(cr.status, judge_retry):
+                    break
+                if attempt >= judge_retry.max_attempts:
+                    break  # exhausted — don't tally the final failure as a retry trigger
+                retry_errors.append(
+                    cr.judge_error or cr.evaluator_error or cr.model_error
+                    or f"<{cr.status.value}>"
+                )
+            assert cr is not None
+            if retry_errors:
+                cr = dataclasses.replace(
+                    cr,
+                    retry_attempts=len(retry_errors),
+                    retry_errors=list(retry_errors),
+                )
+            return cr
+
         # Cost tracker for the duration of run_async. Same mechanism as
         # the sync .run(); contextvars are correct under asyncio.
         from .costs import CostTracker, set_active_tracker, reset_token
@@ -1291,7 +1407,9 @@ class EvalSuite:
         cost_token = set_active_tracker(cost_tracker)
 
         try:
-            case_results = await asyncio.gather(*[_run_one_async(c) for c in self._cases])
+            case_results = await asyncio.gather(
+                *[_run_one_async_with_retry(c) for c in self._cases]
+            )
         finally:
             reset_token(cost_token)
 

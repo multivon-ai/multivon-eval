@@ -111,6 +111,14 @@ class CaseResult:
     all_scores: list[float] = field(default_factory=list)   # one score per run
     pass_count: int = -1  # -1 = single run (not tracked)
 
+    # Retry history — populated when suite.run(judge_retry=JudgeRetry(...))
+    # encountered a retriable status (judge_error / timeout) and re-ran
+    # the case. ``retry_attempts`` counts the number of RETRIES performed
+    # (0 = no retry needed, max_attempts - 1 = exhausted). ``retry_errors``
+    # holds the error string from each failed attempt.
+    retry_attempts: int = 0
+    retry_errors: list[str] = field(default_factory=list)
+
     @property
     def status(self) -> "EvalStatus":
         """High-level outcome of the case.
