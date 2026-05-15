@@ -27,10 +27,13 @@ def test_calibration_versions_lists_shipped_files():
     assert all(not v.endswith(".json") for v in versions)
 
 
-def test_load_calibration_default_returns_v2():
-    """Default load (no version, no env) returns v2 — the shipped preference."""
+def test_load_calibration_default_returns_v2(monkeypatch):
+    """Default load (no version kwarg, no env override) returns v2 since
+    both v1.json and v2.json are shipped. Strict — codex caught that the
+    original ``>= 2 or table.entries`` was vacuous."""
+    monkeypatch.delenv("MULTIVON_CALIBRATION_VERSION", raising=False)
     table = load_calibration(reload=True)
-    assert table.schema_version >= 2 or table.entries  # accept either schema if v2 absent
+    assert table.schema_version == 2
 
 
 def test_load_calibration_explicit_v1_vs_v2_are_distinct_objects():
@@ -63,24 +66,29 @@ def test_load_calibration_unknown_version_raises():
 def test_calibrated_threshold_honors_version_pin():
     """calibrated_threshold(..., version=) uses the pinned table.
 
-    Pick a judge × evaluator combo that exists in BOTH v1 and v2; verify
-    the threshold returned matches the version-specific value when we
-    pin to that version.
+    Codex review noted the earlier version of this test didn't prove the
+    pin was actually used (v1/v2 thresholds were equal for gpt-4o-mini).
+    Use ``gpt-5.5`` which is a v2-only addition: pinning to v1 must miss
+    it (default 0.7 fallback, no provenance entry), pinning to v2 must
+    hit the real calibrated row.
     """
-    judge = JudgeConfig(provider="openai", model="gpt-4o-mini").resolve()
+    judge = JudgeConfig(provider="openai", model="gpt-5.5").resolve()
+
     t_v1 = calibrated_threshold("faithfulness", judge, version="v1")
     t_v2 = calibrated_threshold("faithfulness", judge, version="v2")
-    # Both versions must return a valid float — they happen to be equal
-    # for this judge × evaluator after the calibration reconciliation,
-    # but the version pinning is independently observable via the
-    # provenance entry.
-    assert isinstance(t_v1, float) and isinstance(t_v2, float)
     p_v1 = calibration_provenance("faithfulness", judge, version="v1")
     p_v2 = calibration_provenance("faithfulness", judge, version="v2")
-    # Schemas could differ; what matters is each load picked the right file.
-    # Verify via load_calibration().schema_version.
-    assert load_calibration(version="v1").schema_version == 1
-    assert load_calibration(version="v2").schema_version == 2
+
+    # v1 doesn't know about gpt-5.5 → falls back to the default + no
+    # provenance entry. v2 returns a calibrated threshold + provenance.
+    assert p_v1 is None, "gpt-5.5 must not be in v1.json"
+    assert t_v1 == 0.7   # _DEFAULT_THRESHOLD fallback for uncalibrated combos
+
+    assert p_v2 is not None, "gpt-5.5 must be in v2.json"
+    assert p_v2.dataset and p_v2.judge_model == "gpt-5.5"
+    # Calibrated threshold for gpt-5.5/faithfulness ≠ the default 0.7
+    # (or the test would be vacuous again).
+    assert t_v2 == p_v2.threshold
 
 
 def test_env_var_override_changes_default_version(monkeypatch):
@@ -108,3 +116,10 @@ def test_threshold_table_with_version_pin():
     keys_v1 = set(tt_v1.keys())
     keys_v2 = set(tt_v2.keys())
     assert keys_v2 - keys_v1, "v2 threshold_table should have keys v1 doesn't"
+
+
+def test_load_calibration_empty_string_version_raises():
+    """An empty-string explicit version kwarg is a programmer bug, not
+    'use the default'. Must raise loudly. Codex round-2 finding."""
+    with pytest.raises(FileNotFoundError):
+        load_calibration(version="")

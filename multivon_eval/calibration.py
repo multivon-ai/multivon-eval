@@ -178,7 +178,17 @@ def load_calibration(reload: bool = False, *, version: str | None = None) -> Cal
         FileNotFoundError: If the requested ``version`` isn't shipped
             with the package.
     """
-    label = version or _resolve_default_version()
+    # Explicit kwarg always wins, even an empty string — pinning to a
+    # known-invalid label should fail loudly, not silently fall back to
+    # the env / default. Codex review caught this.
+    if version is None:
+        label = _resolve_default_version()
+    elif not version:
+        raise FileNotFoundError(
+            "load_calibration: empty version label — pass a label like 'v1' or 'v2'"
+        )
+    else:
+        label = version
     if reload:
         _TABLE_CACHE.pop(label, None)
     cached = _TABLE_CACHE.get(label)
