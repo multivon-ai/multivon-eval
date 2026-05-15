@@ -129,25 +129,73 @@ def _parse_table(raw: dict) -> CalibrationTable:
     )
 
 
-_TABLE: CalibrationTable | None = None
+# Cached table keyed by version label. Lets a single process load v1 and
+# v2 simultaneously (e.g., for comparing thresholds across releases) without
+# re-parsing the JSON on every lookup.
+_TABLE_CACHE: dict[str, CalibrationTable] = {}
+
+# Default version preference order when no version is requested explicitly.
+# v2 wins; v1 is the long-term fallback. Override globally via the env var
+# ``MULTIVON_CALIBRATION_VERSION`` for reproducibility-critical CI runs.
+_DEFAULT_PREFERENCE = ("v2", "v1")
 
 
-def load_calibration(reload: bool = False) -> CalibrationTable:
+def _resolve_default_version() -> str:
+    """Pick the calibration version label honoring the env-var override."""
+    import os as _os
+    forced = _os.environ.get("MULTIVON_CALIBRATION_VERSION", "").strip()
+    if forced:
+        return forced
+    for cand in _DEFAULT_PREFERENCE:
+        try:
+            _read_data_file(f"{cand}.json")
+            return cand
+        except FileNotFoundError:
+            continue
+    # Final fallback — caller will get a FileNotFoundError when load_calibration
+    # tries to read the file, which is the right behavior.
+    return _DEFAULT_PREFERENCE[-1]
+
+
+def load_calibration(reload: bool = False, *, version: str | None = None) -> CalibrationTable:
     """Return the loaded calibration table (lazy, cached).
 
-    Prefers ``v2.json`` when present in the shipped package data; falls
-    back to ``v1.json``. Pass ``reload=True`` to force a re-read from
-    disk; primarily for tests that mutate the file or want to test the
-    loader directly.
+    By default, picks the version label from
+    ``MULTIVON_CALIBRATION_VERSION`` if set, then falls back to the
+    shipped preference order (v2 → v1). Pass ``version="v1"`` (or any
+    other shipped label) to pin explicitly — useful for CI runs that
+    need to reproduce historical behavior even after a new calibration
+    sweep ships.
+
+    Args:
+        reload: Force a re-read from disk; primarily for tests that
+            mutate ``_calibration_data/*.json`` and want to see the
+            change without restarting the process.
+        version: Explicit version label (e.g. ``"v1"``, ``"v2"``). When
+            omitted, the env-var or shipped preference order decides.
+
+    Raises:
+        FileNotFoundError: If the requested ``version`` isn't shipped
+            with the package.
     """
-    global _TABLE
-    if _TABLE is None or reload:
-        # Try v2 first; the runtime accepts either schema version.
-        try:
-            _TABLE = _parse_table(_read_data_file("v2.json"))
-        except FileNotFoundError:
-            _TABLE = _parse_table(_read_data_file("v1.json"))
-    return _TABLE
+    # Explicit kwarg always wins, even an empty string — pinning to a
+    # known-invalid label should fail loudly, not silently fall back to
+    # the env / default. Codex review caught this.
+    if version is None:
+        label = _resolve_default_version()
+    elif not version:
+        raise FileNotFoundError(
+            "load_calibration: empty version label — pass a label like 'v1' or 'v2'"
+        )
+    else:
+        label = version
+    if reload:
+        _TABLE_CACHE.pop(label, None)
+    cached = _TABLE_CACHE.get(label)
+    if cached is not None:
+        return cached
+    _TABLE_CACHE[label] = _parse_table(_read_data_file(f"{label}.json"))
+    return _TABLE_CACHE[label]
 
 
 def calibrated_threshold(
@@ -155,6 +203,7 @@ def calibrated_threshold(
     judge: "JudgeConfig",
     *,
     strict: bool = False,
+    version: str | None = None,
 ) -> float:
     """Return the calibrated threshold for ``(evaluator, judge.model)``.
 
@@ -162,8 +211,11 @@ def calibrated_threshold(
     unless ``strict=True``, in which case :class:`CalibrationMissing` is
     raised. Strict mode is meant for procurement-style policy gates where
     "no calibrated threshold" is itself a finding.
+
+    Pass ``version="v1"`` (or another shipped label) to pin the lookup
+    to a specific calibration release for reproducibility.
     """
-    table = load_calibration()
+    table = load_calibration(version=version)
     model = judge.model or ""
     entry = table.lookup(evaluator, model)
     if entry is not None:
@@ -176,22 +228,42 @@ def calibrated_threshold(
 def calibration_provenance(
     evaluator: str,
     judge: "JudgeConfig",
+    *,
+    version: str | None = None,
 ) -> CalibrationEntry | None:
     """Return the full :class:`CalibrationEntry` (dataset / N / F1 / date)
     that produced this threshold, or ``None`` if uncalibrated.
 
     Use this when generating audit reports — the entry's ``dataset_hash``,
     ``n``, and ``measured_at`` are exactly what an auditor will ask for.
+    Honors ``version=`` so an audit can be re-run against the calibration
+    that was active when the original eval was recorded.
     """
-    table = load_calibration()
+    table = load_calibration(version=version)
     return table.lookup(evaluator, judge.model or "")
 
 
-def threshold_table() -> dict[tuple[str, str], float]:
+def threshold_table(*, version: str | None = None) -> dict[tuple[str, str], float]:
     """Back-compat helper: flat ``{(evaluator, judge_model): threshold}``.
 
     Includes every alias so callers using either the canonical id or a
     short alias both hit. New code should prefer :func:`load_calibration`
     so it can read provenance too.
     """
-    return {key: thr for key, thr in load_calibration().iter_thresholds()}
+    return {key: thr for key, thr in load_calibration(version=version).iter_thresholds()}
+
+
+def calibration_versions() -> list[str]:
+    """List the calibration version labels shipped with the installed package.
+
+    Useful for CI gates that want to assert ``"v2" in calibration_versions()``
+    before relying on threshold pinning at that version.
+    """
+    from importlib import resources
+    pkg = resources.files("multivon_eval._calibration_data")
+    labels: list[str] = []
+    for entry in pkg.iterdir():
+        name = entry.name
+        if name.endswith(".json"):
+            labels.append(name[:-5])  # strip ".json"
+    return sorted(labels)
