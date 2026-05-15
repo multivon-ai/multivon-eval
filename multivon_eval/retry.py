@@ -26,6 +26,10 @@ Final result records:
   - ``CaseResult.retry_attempts`` — number of retries performed
     (0 = no retry; max_attempts - 1 = exhausted)
   - ``CaseResult.retry_errors`` — error string per failed attempt
+    that PROMPTED a retry. ``len(retry_errors) == retry_attempts``.
+    The final attempt's failure (if any) lives on
+    ``CaseResult.judge_error`` and ``CaseResult.status``; it's not
+    duplicated here.
 
 The retry policy is OPT-IN (default ``None``) so existing CI gates that
 treat judge errors as actionable signal continue to fire immediately.
@@ -39,12 +43,21 @@ from dataclasses import dataclass, field
 from .result import EvalStatus
 
 
-# Which EvalStatus values are retriable by default. Quality failures
-# (FAILED_QUALITY), model errors (MODEL_ERROR) and evaluator bugs
-# (EVALUATOR_ERROR) are NOT retried — they are signals, not noise.
+# Which EvalStatus values are retriable by default.
+#
+# JUDGE_ERROR is the only status that gets retried by default —
+# quality failures (FAILED_QUALITY), model errors (MODEL_ERROR), and
+# evaluator bugs (EVALUATOR_ERROR) are signal, not noise.
+#
+# TIMEOUT is INTENTIONALLY left out of the default tuple even though it
+# would be retriable in principle: no current code path produces
+# EvalStatus.TIMEOUT (the enum exists for future wiring of per-case
+# timeout budgets). Callers who do classify their own timeouts to that
+# status can opt in via ``JudgeRetry(retry_on=("judge_error", "timeout"))``.
+# Codex round-1 caught the dead config — better to ship a precise
+# default than promise a behavior nothing actually triggers.
 _DEFAULT_RETRY_ON: tuple[str, ...] = (
     EvalStatus.JUDGE_ERROR.value,
-    EvalStatus.TIMEOUT.value,
 )
 
 
@@ -66,9 +79,11 @@ class JudgeRetry:
         max_backoff: Upper bound on per-retry sleep (seconds). Keeps a
             long retry chain from spending 10 minutes on a single case.
         retry_on: Tuple of :class:`EvalStatus` string values to retry on.
-            Defaults to ``("judge_error", "timeout")``. Setting this to
-            ``()`` disables retry entirely; ``EvalStatus`` enum members
-            (or their string values) are both accepted.
+            Defaults to ``("judge_error",)``. Setting this to ``()``
+            disables retry entirely; ``EvalStatus`` enum members (or
+            their string values) are both accepted. ``"timeout"`` is
+            accepted for forward compat but no current path produces
+            it — wire your own timeout classification first.
 
     Frozen so two suites sharing one policy instance can't accidentally
     mutate each other's config mid-run.
@@ -116,19 +131,20 @@ class JudgeRetry:
         ``attempt_index=1`` returns 0 (no sleep before the first attempt).
         ``attempt_index=2`` returns ``base_backoff`` plus jitter.
         ``attempt_index=N`` returns ``base_backoff * factor ** (N - 2)``
-        (clipped to ``max_backoff``) plus jitter.
+        plus jitter, clamped to ``[0, max_backoff]``.
 
-        Jitter is symmetric around the deterministic value; callers can
-        treat the return value as the actual sleep duration.
+        Important: jitter is applied BEFORE the ``max_backoff`` clamp so
+        a high-jitter draw can't push the actual sleep above the cap.
+        Codex round-1 caught this — cap 60s + jitter 0.1 used to produce
+        66s sleeps.
         """
         if attempt_index <= 1:
             return 0.0
         deterministic = self.base_backoff * (self.factor ** (attempt_index - 2))
-        deterministic = min(deterministic, self.max_backoff)
         if self.jitter > 0 and deterministic > 0:
             spread = deterministic * self.jitter
-            return max(0.0, deterministic + random.uniform(-spread, spread))
-        return deterministic
+            deterministic = deterministic + random.uniform(-spread, spread)
+        return max(0.0, min(deterministic, self.max_backoff))
 
 
 def should_retry(status: EvalStatus, policy: JudgeRetry) -> bool:

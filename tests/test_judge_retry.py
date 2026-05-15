@@ -129,9 +129,12 @@ def test_backoff_for_jitter_stays_in_band(monkeypatch):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def test_should_retry_default_policy_matches_judge_error():
+    """Default retry_on is judge_error only — no code path produces
+    TIMEOUT today (the enum exists for future use). See
+    ``test_default_retry_on_excludes_timeout_until_wired`` below."""
     pol = JudgeRetry()
     assert should_retry(EvalStatus.JUDGE_ERROR, pol) is True
-    assert should_retry(EvalStatus.TIMEOUT, pol) is True
+    assert should_retry(EvalStatus.TIMEOUT, pol) is False
 
 
 def test_should_retry_excludes_quality_and_model_failures():
@@ -316,12 +319,35 @@ def test_async_sleep_for_attempt(monkeypatch):
 # Parallel workers honor the policy
 # ─────────────────────────────────────────────────────────────────────────────
 
-def test_suite_run_workers_2_honors_retry_policy(monkeypatch):
+def test_suite_run_workers_2_honors_retry_policy_per_case(monkeypatch):
     """Each parallel worker independently applies the retry policy to
-    its case."""
+    its case. Codex round-1 ISSUE 4: the original test shared one
+    evaluator across both cases, so a single failure across BOTH was
+    enough to make the test pass — per-case retry routing wasn't
+    actually verified. Use a per-case evaluator wrapper instead, so
+    each case independently sees fail_n=2 and must retry exactly twice.
+    """
     monkeypatch.setattr("multivon_eval.retry.time.sleep", lambda _: None)
 
-    ev = _FlakeyJudgeEvaluator(fail_n=1)
+    class _PerCaseFlake(Evaluator):
+        """Same flake pattern, but counts calls keyed by case.input —
+        so each input sees ``fail_n`` failures BEFORE recovering."""
+        name = "per_case_flake"
+
+        def __init__(self, fail_n: int):
+            super().__init__(threshold=0.5)
+            self._fail_n = fail_n
+            self._counts: dict[str, int] = {}
+
+        def evaluate(self, case, output):
+            key = case.input
+            n = self._counts.get(key, 0) + 1
+            self._counts[key] = n
+            if n <= self._fail_n:
+                raise JudgeUnavailable(f"transient on {key} call {n}")
+            return EvalResult(self.name, 1.0, True, reason="recovered")
+
+    ev = _PerCaseFlake(fail_n=2)
     suite = EvalSuite("parallel-retry")
     suite.add_case(EvalCase("a", expected_output="A"))
     suite.add_case(EvalCase("b", expected_output="B"))
@@ -331,9 +357,67 @@ def test_suite_run_workers_2_honors_retry_policy(monkeypatch):
         lambda _: "ok", verbose=False, workers=2,
         judge_retry=JudgeRetry(max_attempts=3, base_backoff=0, jitter=0),
     )
-    # Both cases pass after one retry each (or one case retries twice
-    # depending on which thread races first — either way every case
-    # ends up PASSED, since fail_n=1 across the SHARED evaluator means
-    # exactly one call fails total).
+    # Each case independently saw 2 failed retries → final attempt passed.
+    assert len(report.case_results) == 2
     for cr in report.case_results:
         assert cr.status == EvalStatus.PASSED
+        assert cr.retry_attempts == 2, (
+            f"each case should retry exactly twice; got {cr.retry_attempts} on {cr.case_input!r}"
+        )
+        assert len(cr.retry_errors) == 2
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Codex round-1 regressions
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_backoff_jitter_cannot_exceed_max_backoff(monkeypatch):
+    """Codex ISSUE 1: max_backoff was applied BEFORE jitter, so a
+    high-jitter draw could push actual sleep above the cap. Now jitter
+    is applied first and the total is clamped."""
+    pol = JudgeRetry(base_backoff=10.0, factor=1.0, jitter=0.5, max_backoff=12.0)
+    # Force the HIGH end of the jitter window (10 + 5 = 15 deterministic).
+    monkeypatch.setattr("random.uniform", lambda a, b: b)
+    val = pol.backoff_for(2)
+    assert val <= 12.0, f"jitter pushed actual sleep above max_backoff: {val}"
+    # And the LOW end stays non-negative.
+    monkeypatch.setattr("random.uniform", lambda a, b: a)
+    val = pol.backoff_for(2)
+    assert val >= 0.0
+
+
+def test_default_retry_on_excludes_timeout_until_wired():
+    """Codex ISSUE 2: there's no code path that classifies a case as
+    EvalStatus.TIMEOUT today. Including ``timeout`` in the default
+    ``retry_on`` would be dead config — at best confusing, at worst
+    promising behavior that never fires. Default is judge_error only.
+    Callers can opt in to timeout retry once they wire it themselves."""
+    pol = JudgeRetry()
+    assert "timeout" not in pol.normalized_retry_on()
+    assert "judge_error" in pol.normalized_retry_on()
+
+    # ...but the policy still ACCEPTS timeout if a caller opts in:
+    pol = JudgeRetry(retry_on=("judge_error", "timeout"))
+    assert "timeout" in pol.normalized_retry_on()
+
+
+def test_retry_errors_length_matches_retry_attempts(monkeypatch):
+    """Codex ISSUE 3: the docstring claimed retry_errors held every
+    failed attempt, but exhausted retries omit the FINAL failure.
+    Lock in the contract: len(retry_errors) == retry_attempts, ALWAYS.
+    The final failure (when retries are exhausted) lives on the
+    case's ``judge_error`` / ``status`` fields, not duplicated here."""
+    monkeypatch.setattr("multivon_eval.retry.time.sleep", lambda _: None)
+
+    for fail_n in (0, 1, 2, 5, 99):
+        ev = _FlakeyJudgeEvaluator(fail_n=fail_n)
+        suite = _basic_suite(ev)
+        report = suite.run(
+            lambda _: "pong", verbose=False,
+            judge_retry=JudgeRetry(max_attempts=3, base_backoff=0, jitter=0),
+        )
+        cr = report.case_results[0]
+        assert len(cr.retry_errors) == cr.retry_attempts, (
+            f"contract violated for fail_n={fail_n}: "
+            f"len(retry_errors)={len(cr.retry_errors)} retry_attempts={cr.retry_attempts}"
+        )

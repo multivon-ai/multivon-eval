@@ -112,10 +112,14 @@ class CaseResult:
     pass_count: int = -1  # -1 = single run (not tracked)
 
     # Retry history — populated when suite.run(judge_retry=JudgeRetry(...))
-    # encountered a retriable status (judge_error / timeout) and re-ran
-    # the case. ``retry_attempts`` counts the number of RETRIES performed
-    # (0 = no retry needed, max_attempts - 1 = exhausted). ``retry_errors``
-    # holds the error string from each failed attempt.
+    # encountered a retriable status (judge_error by default) and re-ran
+    # the case. ``retry_attempts`` counts the number of RETRIES that
+    # actually happened (0 = no retry needed, max_attempts - 1 =
+    # exhausted). ``retry_errors`` holds the error message from each
+    # failed attempt THAT PROMPTED a retry — the final attempt's
+    # failure (if any) is reflected in ``judge_error`` / ``status``
+    # instead, not duplicated here. So ``len(retry_errors) ==
+    # retry_attempts`` always.
     retry_attempts: int = 0
     retry_errors: list[str] = field(default_factory=list)
 
