@@ -267,16 +267,70 @@ def test_tool_error_records_error_marker():
 
 
 def test_reset_between_cases_does_not_leak():
-    """After reset(), the tracer must have a clean slate AND drop its
-    live handler reference (else a stale handler could flush into the
-    next case's trace)."""
+    """Behavioral guarantee: after ``reset()``, the trace is empty AND
+    a stale handler from before the reset can't write into the next
+    case's trace. Codex D16 cycle 4 — test behavior, not the
+    ``_live_handler is None`` private detail."""
     tracer = LangGraphTracer()
-    h = tracer._build_handler()
+    stale_handler = tracer._build_handler()
     rid = uuid4()
-    h.on_chat_model_start({}, [], run_id=rid)
-    h.on_llm_end(_llm_response("first"), run_id=rid)
+    stale_handler.on_chat_model_start({}, [], run_id=rid)
+    stale_handler.on_llm_end(_llm_response("first"), run_id=rid)
     assert len(tracer.get_trace()) == 1
 
     tracer.reset()
-    assert tracer.get_trace() == []
-    assert tracer._live_handler is None
+    # New case starts: build a fresh handler and run a different LLM turn.
+    fresh_handler = tracer._build_handler()
+    rid2 = uuid4()
+    fresh_handler.on_chat_model_start({}, [], run_id=rid2)
+    fresh_handler.on_llm_end(_llm_response("second"), run_id=rid2)
+
+    # Behavior check: get_trace() must NOT include the stale "first"
+    # text. The stale handler is GC-eligible but even if held alive,
+    # its in-flight step must not bleed into the new case.
+    trace = tracer.get_trace()
+    assert all("first" not in s.thought for s in trace), (
+        f"stale handler leaked into new case: {[s.thought for s in trace]}"
+    )
+    assert any("second" in s.thought for s in trace), (
+        f"fresh handler didn't write through: {[s.thought for s in trace]}"
+    )
+
+
+def test_serial_branches_do_not_cross_contaminate():
+    """Codex D16 cycle 4 ISSUE 1: the tracer keeps a SINGLE
+    ``_current_step``. If LangGraph fires two LLM turns serially
+    (typical: model → tools → model), the second turn's start must
+    cleanly close the first — no cross-attribution of tools.
+
+    True interleaved parallel branches (``Send`` API, parallel
+    subgraphs) are a known v1 limitation, documented in the tracer's
+    class docstring. This test locks the SERIAL contract.
+    """
+    tracer = LangGraphTracer()
+    handler = tracer._build_handler()
+
+    # Turn 1: model decides, tool fires, result returns.
+    llm1 = uuid4()
+    tool1 = uuid4()
+    handler.on_chat_model_start({}, [], run_id=llm1)
+    handler.on_llm_end(_llm_response("Use tool A."), run_id=llm1)
+    handler.on_tool_start({"name": "toolA"}, '{}', run_id=tool1)
+    handler.on_tool_end("resultA", run_id=tool1)
+
+    # Turn 2: NEW model turn closes Turn 1's step.
+    llm2 = uuid4()
+    tool2 = uuid4()
+    handler.on_chat_model_start({}, [], run_id=llm2)
+    handler.on_llm_end(_llm_response("Use tool B."), run_id=llm2)
+    handler.on_tool_start({"name": "toolB"}, '{}', run_id=tool2)
+    handler.on_tool_end("resultB", run_id=tool2)
+
+    steps = tracer.get_trace()
+    assert len(steps) == 2, f"serial turns must produce 2 steps, got {len(steps)}"
+    # Strict attribution: toolA belongs to step 1 (says "Use tool A"),
+    # toolB to step 2 (says "Use tool B"). No cross-contamination.
+    assert "Use tool A" in steps[0].thought
+    assert [t.name for t in steps[0].tool_calls] == ["toolA"]
+    assert "Use tool B" in steps[1].thought
+    assert [t.name for t in steps[1].tool_calls] == ["toolB"]

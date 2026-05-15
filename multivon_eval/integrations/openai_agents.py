@@ -312,54 +312,100 @@ def _items_to_steps(items: list[Any]) -> list[AgentStep]:
 def _extract_item_text(item: Any) -> str:
     """Pull the assistant text out of a MessageOutputItem / ReasoningItem.
 
-    The SDK exposes ``raw_item`` which is the OpenAI Responses API
-    object. We probe a few shapes — Responses API messages, Chat
-    Completions messages, plain text.
+    Three real shapes (codex D16 cycle 4 finding):
+
+    - ``MessageOutputItem.raw_item``: a Responses-API message with
+      ``content: list[OutputContent]`` where each has a ``.text``.
+    - ``ReasoningItem.raw_item`` (``ResponseReasoningItem``): has
+      ``summary: list[Summary]`` (``Summary.text``) and optionally
+      ``content: list[Content]``. We check both fields.
+    - Some older / chat-completions paths: ``raw.message.content`` as
+      a plain string.
+
+    Falls back to empty string for unfamiliar shapes — better an empty
+    thought than a crash from an SDK schema drift.
     """
     raw = getattr(item, "raw_item", None)
     if raw is None:
         return ""
-    # Responses API: raw.content is a list of OutputContent objects
+
+    parts: list[str] = []
+
+    # ReasoningItem path: pull from raw.summary first. Each Summary has
+    # a .text field (verified against openai-agents 0.x SDK).
+    summary = getattr(raw, "summary", None)
+    if isinstance(summary, list):
+        for s in summary:
+            t = getattr(s, "text", None)
+            if isinstance(t, str):
+                parts.append(t)
+            elif isinstance(s, dict):
+                t = s.get("text")
+                if isinstance(t, str):
+                    parts.append(t)
+
+    # MessageOutputItem path (and ReasoningItem's optional content
+    # field): raw.content is a list of OutputContent / Content objects.
     content = getattr(raw, "content", None)
     if isinstance(content, list):
-        parts: list[str] = []
         for c in content:
-            text = getattr(c, "text", None)
-            if isinstance(text, str):
-                parts.append(text)
+            t = getattr(c, "text", None)
+            if isinstance(t, str):
+                parts.append(t)
             elif isinstance(c, dict):
-                parts.append(c.get("text", "") or "")
-        if parts:
-            return " ".join(parts).strip()
-    if isinstance(content, str):
-        return content
+                t = c.get("text")
+                if isinstance(t, str):
+                    parts.append(t)
+    elif isinstance(content, str):
+        parts.append(content)
+
+    if parts:
+        return " ".join(parts).strip()
+
     # Chat Completions style: raw.message.content (str)
     msg = getattr(raw, "message", None)
     if msg is not None:
         c = getattr(msg, "content", None)
         if isinstance(c, str):
             return c
+
     return ""
 
 
+def _attr_or_key(obj: Any, name: str, default: Any = None) -> Any:
+    """Read ``name`` from ``obj`` as either an attribute or a dict key.
+
+    Defensive against SDK shape drift — some run-item snapshots
+    surface fields as object attributes (dataclasses / pydantic
+    models) and some as dict keys when they've been round-tripped
+    through JSON. Codex D16 cycle 4 finding.
+    """
+    if obj is None:
+        return default
+    if isinstance(obj, dict):
+        return obj.get(name, default)
+    return getattr(obj, name, default)
+
+
 def _extract_tool_call(item: Any) -> tuple[str, str, dict[str, Any]]:
-    """Return (call_id, tool_name, arguments_dict) for a ToolCallItem."""
+    """Return (call_id, tool_name, arguments_dict) for a ToolCallItem.
+
+    Supports both object-shaped and dict-shaped ``raw_item`` — the
+    SDK can emit either depending on whether the trace passed
+    through a serializer."""
     import json
     raw = getattr(item, "raw_item", None)
     if raw is None:
         return ("", "<unknown>", {})
-    call_id = getattr(raw, "call_id", None) or getattr(raw, "id", "") or ""
-    name = getattr(raw, "name", None) or "<unknown>"
+    call_id = _attr_or_key(raw, "call_id") or _attr_or_key(raw, "id") or ""
+    name = _attr_or_key(raw, "name") or "<unknown>"
     # arguments is typically a JSON string on the Responses API
-    args_raw = getattr(raw, "arguments", None)
+    args_raw = _attr_or_key(raw, "arguments")
     args: dict[str, Any] = {}
     if isinstance(args_raw, str):
         try:
             parsed = json.loads(args_raw)
-            if isinstance(parsed, dict):
-                args = parsed
-            else:
-                args = {"input": args_raw}
+            args = parsed if isinstance(parsed, dict) else {"input": args_raw}
         except (ValueError, TypeError):
             args = {"input": args_raw}
     elif isinstance(args_raw, dict):
@@ -368,23 +414,17 @@ def _extract_tool_call(item: Any) -> tuple[str, str, dict[str, Any]]:
 
 
 def _extract_tool_output(item: Any) -> tuple[str, Any]:
-    """Return (call_id, output) for a ToolCallOutputItem."""
+    """Return (call_id, output) for a ToolCallOutputItem.
+
+    Output may live on the item directly (``item.output``) or on the
+    nested ``raw_item.output`` — both paths are checked. Same dict-
+    or-attr defense as :func:`_extract_tool_call`."""
     raw = getattr(item, "raw_item", None)
-    call_id = ""
-    if raw is not None:
-        call_id = (
-            getattr(raw, "call_id", None)
-            or (raw.get("call_id") if isinstance(raw, dict) else None)
-            or ""
-        )
+    call_id = _attr_or_key(raw, "call_id") or ""
     output = getattr(item, "output", None)
     if output is None:
-        # Output might live on raw_item.output too
-        if raw is not None:
-            output = getattr(raw, "output", None) or (
-                raw.get("output") if isinstance(raw, dict) else None
-            )
-    return (str(call_id or ""), output)
+        output = _attr_or_key(raw, "output")
+    return (str(call_id), output)
 
 
 def _extract_response_text(response: Any) -> str:

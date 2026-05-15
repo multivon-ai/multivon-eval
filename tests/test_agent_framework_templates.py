@@ -128,30 +128,103 @@ def test_openai_sdk_template_imports_without_api_key(tmp_path):
     )
 
 
+def test_openai_sdk_template_source_has_no_module_body_key_check():
+    """Codex D16 cycle 4 ISSUE 5: the import-without-key test skips
+    when the openai-agents SDK isn't installed, so a regression that
+    moves the key check back to module body could slip past CI on
+    envs without the extra.
+
+    Lock the contract via AST inspection (robust to docstrings /
+    comments / nested raises): no ``raise`` statement may live at
+    module level. The check belongs inside ``_check_key()`` or the
+    ``__main__`` block.
+    """
+    import ast
+    eval_src = TEMPLATES["agent-openai-sdk"]["eval.py"]
+    tree = ast.parse(eval_src)
+
+    # Find any top-level ``raise`` (module.body, not nested in defs/ifs/...)
+    top_level_raises = [
+        node for node in tree.body if isinstance(node, ast.Raise)
+    ]
+    assert top_level_raises == [], (
+        f"template eval.py raises at module body — should be deferred to "
+        f"_check_key() or __main__. Found {len(top_level_raises)} raise(s)."
+    )
+
+    # The check function must exist and be called inside __main__.
+    func_names = {
+        node.name for node in tree.body if isinstance(node, ast.FunctionDef)
+    }
+    assert "_check_key" in func_names, "template missing _check_key() function"
+
+    # Look for `if __name__ == "__main__":` and verify _check_key() is invoked inside.
+    main_blocks = [
+        node for node in tree.body
+        if isinstance(node, ast.If)
+        and isinstance(node.test, ast.Compare)
+        and any(isinstance(c, ast.Constant) and c.value == "__main__" for c in node.test.comparators)
+    ]
+    assert main_blocks, "template has no __main__ guard"
+    main_src = "\n".join(ast.unparse(node) for node in main_blocks[0].body)
+    assert "_check_key()" in main_src, (
+        "_check_key() must be invoked inside the __main__ block"
+    )
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # README updates from persona C: framework templates are discoverable
 # ─────────────────────────────────────────────────────────────────────────────
 
-def test_readme_mentions_agent_langgraph_template():
-    """Persona C: existing user must SEE the new template in the
-    'Pick your path' table. Discoverability is the whole point."""
+def test_readme_pick_your_path_includes_both_new_templates():
+    """Persona C finding + codex cycle 4 ISSUE 6 strengthening:
+    "Pick your path" table must show the exact init command for both
+    new templates, not just a stray mention. Discoverability is the
+    whole point."""
     readme = Path(__file__).parent.parent / "README.md"
     text = readme.read_text(encoding="utf-8")
-    assert "agent-langgraph" in text, "agent-langgraph missing from README"
-    assert "agent-openai-sdk" in text, "agent-openai-sdk missing from README"
+    # The actual init command must appear so a user can copy-paste.
+    assert "multivon-eval init -t agent-langgraph" in text, (
+        "Pick-your-path table must show the exact `init -t agent-langgraph` command"
+    )
+    assert "multivon-eval init -t agent-openai-sdk" in text, (
+        "Pick-your-path table must show the exact `init -t agent-openai-sdk` command"
+    )
+    # And the path-selection table itself must mention LangGraph and
+    # OpenAI Agents SDK by name.
+    pick_section = text.split("Pick your path")[-1].split("##")[0]
+    assert "LangGraph" in pick_section, "Pick-your-path missing LangGraph row"
+    assert "OpenAI Agents SDK" in pick_section, "Pick-your-path missing OpenAI Agents SDK row"
 
 
-def test_template_readme_documents_tracer_wiring():
-    """Persona A finding: the callback-forwarding pattern is the
-    crux. Must be documented in the template README, not just buried
-    in eval.py."""
+def test_langgraph_template_readme_shows_callback_wiring_snippet():
+    """Codex cycle 4 ISSUE 7: substring 'callbacks' was too loose —
+    lock the actual snippet a user must copy.
+
+    The template README must show the `config={"callbacks": kwargs.get(...)}`
+    pattern in a code block, because that's the wiring that decides
+    whether the trace captures anything."""
     lg_readme = TEMPLATES["agent-langgraph"]["README.md"]
-    assert "callbacks" in lg_readme.lower()
-    assert "**kwargs" in lg_readme or "kwargs.get" in lg_readme
+    # The specific snippet (not just the word "callbacks").
+    assert 'kwargs.get("callbacks"' in lg_readme, (
+        "agent-langgraph README must show `kwargs.get(\"callbacks\", [])`"
+    )
+    assert "config={" in lg_readme, (
+        "agent-langgraph README must show config={\"callbacks\": ...} usage"
+    )
 
+
+def test_openai_sdk_template_readme_shows_capture_wiring_snippet():
+    """Codex cycle 4 ISSUE 7: lock the `TRACER.capture(result)` snippet,
+    not just the word 'capture'."""
     oai_readme = TEMPLATES["agent-openai-sdk"]["README.md"]
-    assert "capture" in oai_readme.lower()
-    assert "tracer.capture" in oai_readme or "TRACER.capture" in oai_readme
+    assert "TRACER.capture(result)" in oai_readme, (
+        "agent-openai-sdk README must show the literal TRACER.capture(result) call"
+    )
+    # And the surrounding model_fn pattern.
+    assert "Runner.run_sync" in oai_readme, (
+        "agent-openai-sdk README must show Runner.run_sync(...) usage"
+    )
 
 
 def test_template_readme_has_migration_note():

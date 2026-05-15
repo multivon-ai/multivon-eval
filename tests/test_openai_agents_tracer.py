@@ -224,16 +224,64 @@ def test_orphan_output_with_no_matching_call_becomes_synthetic_at_end():
 
 def test_other_item_types_are_skipped_silently():
     """Unrecognized item types (e.g. RawResponsesStreamEvent) don't
-    crash the parser and don't appear in the trace."""
+    crash the parser AND don't break turn-merging. Strengthened from
+    codex D16 cycle 4 — must assert exact step count + merge, not
+    just that thoughts are non-empty."""
     class _Unknown(SimpleNamespace): pass
     items = [
         _msg("hi"),
         _Unknown(),                  # silently skipped
-        _msg("bye"),                 # same turn (no tool between unknown items)
+        _msg("bye"),                 # same turn (no tool between)
     ]
     steps = _items_to_steps(items)
-    # The unknown doesn't break the turn-merging logic.
-    assert all(s.thought for s in steps)
+    assert len(steps) == 1, (
+        f"expected ONE merged step (unknowns don't break the turn), got {len(steps)}"
+    )
+    assert "hi" in steps[0].thought and "bye" in steps[0].thought
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Codex D16 cycle 4: real-SDK-shape fixtures + dict-shaped raw_item
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_reasoning_item_with_real_sdk_shape_summary():
+    """Codex cycle 4 ISSUE 2: real ``ResponseReasoningItem`` exposes
+    text via ``summary: list[Summary]`` where each Summary has a
+    ``.text``. Previous fixture used the message-style ``content``,
+    which masked this code path."""
+    reasoning = ReasoningItem(raw_item=SimpleNamespace(
+        summary=[
+            SimpleNamespace(text="Step 1: think.", type="summary_text"),
+            SimpleNamespace(text="Step 2: respond.", type="summary_text"),
+        ],
+        content=None,
+    ))
+    items = [reasoning, _msg("Done thinking.")]
+    steps = _items_to_steps(items)
+    assert len(steps) == 1, "reasoning + message in same turn → one step"
+    assert "Step 1: think." in steps[0].thought
+    assert "Step 2: respond." in steps[0].thought
+    assert "Done thinking." in steps[0].thought
+
+
+def test_tool_call_with_dict_shaped_raw_item():
+    """Codex cycle 4 ISSUE 3: some SDK paths serialize raw_item as a
+    dict. The parser must read call_id / name / arguments by key,
+    not just attribute."""
+    items = [
+        ToolCallItem(raw_item={
+            "call_id": "c1",
+            "name": "lookup_order",
+            "arguments": '{"order_id": "O-101"}',
+        }),
+        ToolCallOutputItem(raw_item={"call_id": "c1"}, output="ok"),
+    ]
+    steps = _items_to_steps(items)
+    tools = [t for s in steps for t in s.tool_calls]
+    assert len(tools) == 1, f"dict raw_item not parsed correctly: {tools}"
+    assert tools[0].name == "lookup_order"
+    assert tools[0].arguments == {"order_id": "O-101"}
+    assert tools[0].result == "ok"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -278,19 +326,37 @@ def test_instrument_clears_state_before_each_call():
 
 
 def test_run_hooks_isolated_buffer(monkeypatch):
-    """Codex D16 cycle 2 ISSUE 4: live RunHooks must have a PRIVATE
-    buffer so concurrent runs don't interleave traces. Verify by
-    checking that hooks.steps is a separate list from tracer._steps."""
+    """Codex D16 cycle 2 ISSUE 4 + cycle 4 ISSUE 8: live RunHooks
+    must have a PRIVATE buffer so concurrent runs don't interleave.
+
+    Behavioral test (no private-attribute assertion): create TWO hooks
+    instances and run them as two parallel agent runs would. The
+    second hook's events must NOT flow into the first hook's trace,
+    and merge() must yield only the merged hook's data."""
     pytest.importorskip("agents")
     tracer = OpenAIAgentsTracer()
-    hooks = tracer.run_hooks()
-    # Different list object — no aliasing.
-    assert hooks.steps is not tracer._steps
-    # Mutating hooks.steps does not affect tracer._steps until merge().
-    hooks.steps.append(AgentStep(thought="hook-only"))
-    assert tracer.get_trace() == []
-    tracer.merge(hooks)
-    assert len(tracer.get_trace()) == 1
+
+    hooks_a = tracer.run_hooks()
+    hooks_b = tracer.run_hooks()
+
+    # Simulate two concurrent runs writing to their hooks.
+    hooks_a.steps.append(AgentStep(thought="from-A", tool_calls=[]))
+    hooks_b.steps.append(AgentStep(thought="from-B", tool_calls=[]))
+
+    # Before any merge, the tracer sees nothing.
+    assert tracer.get_trace() == [], "hooks must not auto-write to tracer"
+
+    # Merging A alone yields only A.
+    tracer.merge(hooks_a)
+    trace = tracer.get_trace()
+    assert len(trace) == 1
+    assert trace[0].thought == "from-A"
+
+    # Merging B then appends only B.
+    tracer.merge(hooks_b)
+    trace = tracer.get_trace()
+    assert len(trace) == 2
+    assert {s.thought for s in trace} == {"from-A", "from-B"}
 
 
 def test_merge_handles_objects_without_steps_attr():

@@ -68,10 +68,18 @@ class LangGraphTracer(CallbackTracer):
         suite.run(model_fn, tracer=tracer)
 
     Compatible with: LangGraph >= 0.2. Verified on 0.5+ (latest at
-    ship time). Single-agent sync graphs. Streaming, async, and
-    multi-agent handoffs are not yet supported — they may produce
-    correct-looking but incomplete traces. File an issue with your
-    graph shape if you need them.
+    ship time). **Single-agent, single-branch sync graphs.** Known v1
+    limitations (file an issue if you hit them):
+
+      - Streaming (``graph.stream(...)``) and async (``graph.ainvoke``)
+        emit the same callback events but the tracer hasn't been
+        validated against them end-to-end.
+      - Parallel branches via ``Send`` or parallel subgraphs use a
+        single ``_current_step`` and may cross-attribute tool calls
+        across branches. Use a separate tracer instance per branch
+        until proper run_id-keyed step tracking lands.
+      - Multi-agent handoffs are captured as adjacent steps but the
+        handoff itself isn't a first-class trace event.
     """
 
     def __init__(self) -> None:
