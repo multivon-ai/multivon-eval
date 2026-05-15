@@ -111,6 +111,18 @@ class CaseResult:
     all_scores: list[float] = field(default_factory=list)   # one score per run
     pass_count: int = -1  # -1 = single run (not tracked)
 
+    # Retry history — populated when suite.run(judge_retry=JudgeRetry(...))
+    # encountered a retriable status (judge_error by default) and re-ran
+    # the case. ``retry_attempts`` counts the number of RETRIES that
+    # actually happened (0 = no retry needed, max_attempts - 1 =
+    # exhausted). ``retry_errors`` holds the error message from each
+    # failed attempt THAT PROMPTED a retry — the final attempt's
+    # failure (if any) is reflected in ``judge_error`` / ``status``
+    # instead, not duplicated here. So ``len(retry_errors) ==
+    # retry_attempts`` always.
+    retry_attempts: int = 0
+    retry_errors: list[str] = field(default_factory=list)
+
     @property
     def status(self) -> "EvalStatus":
         """High-level outcome of the case.
@@ -578,6 +590,8 @@ class EvalReport:
                 runs=runs,
                 all_scores=all_scores,
                 pass_count=-1,
+                retry_attempts=c.get("retry_attempts", 0),
+                retry_errors=list(c.get("retry_errors", [])),
             )
             if runs > 1:
                 rpr = c.get("run_pass_rate", 1.0)
@@ -634,6 +648,8 @@ class EvalReport:
                         "run_pass_rate": round(cr.run_pass_rate, 4),
                         "is_flaky": cr.is_flaky,
                         "runs": cr.runs,
+                        "retry_attempts": cr.retry_attempts,
+                        "retry_errors": cr.retry_errors,
                         "latency_ms": round(cr.latency_ms, 1),
                         "tags": cr.tags,
                         "evaluators": [
