@@ -401,6 +401,34 @@ def test_default_retry_on_excludes_timeout_until_wired():
     assert "timeout" in pol.normalized_retry_on()
 
 
+def test_retry_history_survives_json_round_trip(monkeypatch, tmp_path):
+    """Codex round-2: ``EvalReport.to_json`` / ``from_dict`` originally
+    omitted ``retry_attempts`` and ``retry_errors`` so saved JSON
+    reports lost the retry history. Lock the round-trip contract."""
+    import json
+    monkeypatch.setattr("multivon_eval.retry.time.sleep", lambda _: None)
+
+    ev = _FlakeyJudgeEvaluator(fail_n=2)
+    suite = _basic_suite(ev)
+    report = suite.run(
+        lambda _: "pong", verbose=False,
+        judge_retry=JudgeRetry(max_attempts=3, base_backoff=0, jitter=0),
+    )
+    out = tmp_path / "report.json"
+    out.write_text(report.to_json(), encoding="utf-8")
+    raw = json.loads(out.read_text())
+    case_blob = raw["cases"][0]
+    assert case_blob["retry_attempts"] == 2
+    assert len(case_blob["retry_errors"]) == 2
+
+    # And from_dict reconstructs CaseResult with the fields intact.
+    from multivon_eval import EvalReport
+    restored = EvalReport.from_dict(raw)
+    cr = restored.case_results[0]
+    assert cr.retry_attempts == 2
+    assert len(cr.retry_errors) == 2
+
+
 def test_retry_errors_length_matches_retry_attempts(monkeypatch):
     """Codex ISSUE 3: the docstring claimed retry_errors held every
     failed attempt, but exhausted retries omit the FINAL failure.

@@ -590,6 +590,8 @@ class EvalReport:
                 runs=runs,
                 all_scores=all_scores,
                 pass_count=-1,
+                retry_attempts=c.get("retry_attempts", 0),
+                retry_errors=list(c.get("retry_errors", [])),
             )
             if runs > 1:
                 rpr = c.get("run_pass_rate", 1.0)
@@ -646,6 +648,8 @@ class EvalReport:
                         "run_pass_rate": round(cr.run_pass_rate, 4),
                         "is_flaky": cr.is_flaky,
                         "runs": cr.runs,
+                        "retry_attempts": cr.retry_attempts,
+                        "retry_errors": cr.retry_errors,
                         "latency_ms": round(cr.latency_ms, 1),
                         "tags": cr.tags,
                         "evaluators": [
