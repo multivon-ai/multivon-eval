@@ -93,6 +93,13 @@ class SuiteLock:
     case_count: int = 0
     cases_hash: str | None = None
     run_config: dict[str, Any] | None = None
+    # Active calibration version label ("v1", "v2", …) when the lock was
+    # built. Recorded at the suite level so it lands in the audit log
+    # even when no evaluator had a matching calibration entry — the
+    # per-evaluator ``calibration.version`` is None in that case but the
+    # suite-level pin is still the relevant fact for replay. Codex
+    # round-2 finding (D12).
+    calibration_version: str | None = None
     extra: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
@@ -104,6 +111,7 @@ class SuiteLock:
             "case_count": self.case_count,
             "cases_hash": self.cases_hash,
             "run_config": self.run_config,
+            "calibration_version": self.calibration_version,
             "extra": self.extra,
         }
 
@@ -120,6 +128,7 @@ class SuiteLock:
             case_count=data.get("case_count", 0),
             cases_hash=data.get("cases_hash"),
             run_config=data.get("run_config"),
+            calibration_version=data.get("calibration_version"),
             extra=data.get("extra", {}),
         )
 
@@ -344,12 +353,27 @@ def build_suite_lock(suite: "EvalSuite") -> SuiteLock:
     """Fingerprint a suite into a :class:`SuiteLock`."""
     eval_fps = [fingerprint_evaluator(e) for e in suite._evaluators]
     cases_hash = _cases_hash(suite._cases)
+    # Resolve the active calibration version OUTSIDE the per-evaluator
+    # try/except — if MULTIVON_CALIBRATION_VERSION points at a missing
+    # label, the user wants to know now, not in a silent provenance
+    # field. None when no calibration data is shipped at all.
+    try:
+        from .calibration import effective_calibration_version
+        active_calibration_version: str | None = effective_calibration_version()
+    except FileNotFoundError:
+        # Re-raise — pinning to an unshipped version is a configuration
+        # bug, not a soft failure. The lock builder is allowed to
+        # propagate this.
+        raise
+    except Exception:
+        active_calibration_version = None
     manifest = {
         "library_version": __version__,
         "suite_name": suite.name,
         "evaluators": [asdict(e) for e in eval_fps],
         "case_count": len(suite._cases),
         "cases_hash": cases_hash,
+        "calibration_version": active_calibration_version,
     }
     return SuiteLock(
         library_version=__version__,
@@ -359,6 +383,7 @@ def build_suite_lock(suite: "EvalSuite") -> SuiteLock:
         case_count=len(suite._cases),
         cases_hash=cases_hash,
         run_config=None,
+        calibration_version=active_calibration_version,
         extra={},
     )
 

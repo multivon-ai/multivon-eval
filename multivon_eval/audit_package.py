@@ -104,13 +104,22 @@ def _read_calibration_data(label: str | None = None) -> tuple[str, bytes]:
 
 def _calibration_version_from_log(log_bytes: bytes) -> str | None:
     """Extract the calibration version label from the FIRST audit record's
-    ``provenance.suite_lock.evaluators[*].calibration.version`` field.
+    provenance block.
+
+    Lookup order (first match wins):
+      1. ``provenance.suite_lock.calibration_version`` — suite-level field,
+         populated by ``build_suite_lock`` from the active calibration
+         label. Recorded even when no evaluator has a matching
+         calibration entry, so this is the authoritative source.
+      2. ``provenance.suite_lock.evaluators[*].calibration.version`` —
+         per-evaluator fallback for forward-compat / older 0.7 prereleases
+         that didn't have the suite-level field.
 
     Returns ``None`` if:
       - the log has no records,
       - the first record predates 0.7.0 provenance (legacy),
       - the suite_lock is absent / serialization failed,
-      - no evaluator has a calibration entry with a ``version`` key.
+      - neither path is populated.
 
     The first-record convention is fine because suite_lock is stable
     within a session; if a user mid-stream switches calibration versions
@@ -128,6 +137,11 @@ def _calibration_version_from_log(log_bytes: bytes) -> str | None:
         lock = prov.get("suite_lock") or {}
         if not isinstance(lock, dict):
             return None
+        # 1) Suite-level field (authoritative).
+        suite_level = lock.get("calibration_version")
+        if isinstance(suite_level, str) and suite_level:
+            return suite_level
+        # 2) Per-evaluator fallback.
         for ev in lock.get("evaluators", []) or []:
             cal = (ev or {}).get("calibration") or {}
             ver = cal.get("version")

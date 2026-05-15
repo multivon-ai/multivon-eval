@@ -261,3 +261,165 @@ def test_audit_package_unknown_calibration_version_in_log_raises(tmp_path):
             framework="eu-ai-act",
             out_path=out,
         )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Codex round-2 issues: suite-level pinning + unshipped-label propagation
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_suite_lock_records_calibration_version_at_top_level(monkeypatch):
+    """Codex round-2 ISSUE 1: the version must land in the suite lock
+    even when NO evaluator has a calibration entry — e.g., a suite of
+    only deterministic evaluators (WordCount, Contains). Without this
+    the audit log records no version and the package falls back to the
+    default."""
+    from multivon_eval.evaluators import WordCount
+    from multivon_eval.suite import EvalSuite
+    monkeypatch.setenv("MULTIVON_CALIBRATION_VERSION", "v1")
+    load_calibration(reload=True)
+
+    suite = EvalSuite("no-judge-suite")
+    suite.add_case(EvalCase("q", expected_output="ans"))
+    suite.add_evaluator(WordCount(min_words=1))
+    lock = suite.lock()
+    assert lock.calibration_version == "v1", (
+        "suite-level field must be populated regardless of evaluator coverage"
+    )
+
+
+def test_suite_lock_serializes_calibration_version(monkeypatch):
+    """The suite-level field must survive ``to_dict`` / ``from_dict``
+    so it lands in the audit log provenance block."""
+    from multivon_eval.evaluators import WordCount
+    from multivon_eval.suite import EvalSuite
+    monkeypatch.setenv("MULTIVON_CALIBRATION_VERSION", "v1")
+    load_calibration(reload=True)
+
+    suite = EvalSuite("round-trip")
+    suite.add_case(EvalCase("q", expected_output="a"))
+    suite.add_evaluator(WordCount(min_words=1))
+    lock = suite.lock()
+    serialized = lock.to_dict()
+    assert serialized["calibration_version"] == "v1"
+
+    from multivon_eval.lockfile import SuiteLock
+    restored = SuiteLock.from_dict(serialized)
+    assert restored.calibration_version == "v1"
+
+
+def test_build_suite_lock_propagates_unshipped_version_error(monkeypatch):
+    """Codex round-2 ISSUE 2: an unknown env-var label must raise during
+    lock construction, NOT silently leave the field None. Otherwise the
+    user thinks they're pinned but the audit log records nothing."""
+    from multivon_eval.evaluators import WordCount
+    from multivon_eval.suite import EvalSuite
+
+    monkeypatch.setenv("MULTIVON_CALIBRATION_VERSION", "v_does_not_exist")
+    # Clear the cache so the bad label is actually probed.
+    from multivon_eval.calibration import _TABLE_CACHE
+    _TABLE_CACHE.pop("v_does_not_exist", None)
+
+    suite = EvalSuite("broken")
+    suite.add_case(EvalCase("q", expected_output="a"))
+    suite.add_evaluator(WordCount(min_words=1))
+    with pytest.raises(FileNotFoundError):
+        suite.lock()
+
+
+def test_audit_package_uses_suite_level_version_over_per_evaluator(tmp_path):
+    """Codex round-2: when both fields are set and DIFFER (which can
+    happen if the per-evaluator field is stale), the suite-level field
+    wins because it reflects what the loader actually returned at lock
+    build time."""
+    logs_dir = tmp_path / "audit-logs"
+    logs_dir.mkdir(parents=True, exist_ok=True)
+    log_path = logs_dir / "mixed-suite.audit.ndjson"
+    record = {
+        "record_hash": "z" * 64,
+        "chain_version": 1,
+        "prev_hash": "0" * 64,
+        "provenance": {
+            "suite_lock": {
+                "calibration_version": "v1",   # authoritative
+                "evaluators": [
+                    {"name": "faithfulness", "calibration": {"version": "v2"}},
+                ],
+            },
+        },
+    }
+    log_path.write_text(json.dumps(record) + "\n", encoding="utf-8")
+
+    out = tmp_path / "mixed.zip"
+    build_audit_package(
+        logs_dir=logs_dir,
+        suite_name="mixed-suite",
+        framework="eu-ai-act",
+        out_path=out,
+    )
+    with zipfile.ZipFile(out) as zf:
+        manifest_path = next(n for n in zf.namelist() if n.endswith("/manifest.json"))
+        manifest = json.loads(zf.read(manifest_path).decode("utf-8"))
+        assert manifest["calibration_version"] == "v1"
+        names = zf.namelist()
+        assert any("calibration_v1.json" in n for n in names)
+        assert not any("calibration_v2.json" in n for n in names)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# End-to-end: real suite.run → ComplianceReporter.record → audit-package
+# Codex round-2 ISSUE 3: handwritten provenance blocks bypass the real
+# fingerprint → suite_lock → record flow. Cover it for real.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_e2e_v1_pin_round_trip_through_audit_package(tmp_path, monkeypatch):
+    """Real end-to-end: pin to v1, run a suite, record via the reporter,
+    package, verify the bundle holds v1."""
+    from multivon_eval.evaluators import WordCount
+    from multivon_eval.suite import EvalSuite
+
+    monkeypatch.setenv("MULTIVON_CALIBRATION_VERSION", "v1")
+    load_calibration(reload=True)
+
+    logs_dir = tmp_path / "audit-logs"
+    logs_dir.mkdir(parents=True, exist_ok=True)
+
+    suite = EvalSuite("e2e-v1-suite")
+    suite.add_case(EvalCase("hello", expected_output="hello world"))
+    suite.add_evaluator(WordCount(min_words=1, max_words=10))
+
+    def fn(_input: str) -> str:  # deterministic, no judge needed
+        return "hello world"
+
+    report = suite.run(fn)
+    assert report.suite_lock is not None
+    assert report.suite_lock.calibration_version == "v1"
+
+    reporter = ComplianceReporter(
+        framework="eu-ai-act",
+        output_dir=str(logs_dir),
+    )
+    reporter.record(report)
+
+    # Inspect the on-disk log: the suite-level version made it into the
+    # provenance block.
+    log_path = logs_dir / "e2e-v1-suite.audit.ndjson"
+    first_record = json.loads(log_path.read_text().splitlines()[0])
+    prov = first_record["provenance"]
+    assert prov["suite_lock"]["calibration_version"] == "v1"
+
+    # Package and verify v1 calibration is what's bundled.
+    out = tmp_path / "e2e.zip"
+    build_audit_package(
+        logs_dir=logs_dir,
+        suite_name=suite.name,
+        framework="eu-ai-act",
+        out_path=out,
+    )
+    with zipfile.ZipFile(out) as zf:
+        manifest = json.loads(
+            zf.read(next(n for n in zf.namelist() if n.endswith("manifest.json")))
+            .decode("utf-8")
+        )
+        assert manifest["calibration_version"] == "v1"
+        assert manifest["calibration_source"] == "logged"
+        assert any("calibration_v1.json" in n for n in zf.namelist())
