@@ -260,6 +260,9 @@ _KNOWN_UNHANDLED = frozenset({
     "CodeInterpreterCallItem",
     "ImageGenerationCallItem",
     "LocalShellCallItem",
+    # Conversation compaction (long agent run → SDK summarizes earlier
+    # turns to fit context). Per SDK RunItem union docs.
+    "CompactionItem",
 })
 
 

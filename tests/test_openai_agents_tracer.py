@@ -277,22 +277,25 @@ def test_reasoning_item_with_real_sdk_shape_summary():
 
 def test_known_unhandled_items_preserved_as_markers():
     """Codex cycle 5 ISSUE 2: known SDK item classes like
-    ``ToolSearchCallItem`` / ``ToolApprovalItem`` / MCP items shouldn't
-    silently disappear from the trace. They're marked in step.output
-    until the parser learns to model them fully."""
+    ``ToolSearchCallItem`` / ``ToolApprovalItem`` / MCP items /
+    ``CompactionItem`` shouldn't silently disappear from the trace.
+    They're marked in step.output until the parser learns to model
+    them fully."""
     class ToolApprovalItem(SimpleNamespace): pass
     class ToolSearchCallItem(SimpleNamespace): pass
+    class CompactionItem(SimpleNamespace): pass
     items = [
         _msg("Looking things up."),
         ToolSearchCallItem(),
         _msg("Found it."),
         ToolApprovalItem(),
+        CompactionItem(),
     ]
     steps = _items_to_steps(items)
-    # Step 1 has the search marker; final step has the approval marker.
     flat_output = " ".join(s.output or "" for s in steps)
     assert "ToolSearchCallItem" in flat_output
     assert "ToolApprovalItem" in flat_output
+    assert "CompactionItem" in flat_output
 
 
 def test_merge_is_idempotent():
