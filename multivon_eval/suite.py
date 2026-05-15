@@ -42,6 +42,22 @@ class EvalSuite:
         self._cases: list[EvalCase] = []
         self._evaluators: list[Evaluator] = []
 
+    @property
+    def evaluators(self) -> list[Evaluator]:
+        """Public read-only view of the suite's evaluators.
+
+        Use this to introspect what's configured. Returns a copy so
+        callers can iterate without risk of mutating internal state.
+        Add evaluators via :meth:`add_evaluator` / :meth:`add_evaluators` /
+        :meth:`add_check`, not by appending to this list.
+        """
+        return list(self._evaluators)
+
+    @property
+    def cases(self) -> list[EvalCase]:
+        """Public read-only view of the suite's test cases."""
+        return list(self._cases)
+
     def add_case(self, case: EvalCase) -> "EvalSuite":
         self._cases.append(case)
         return self

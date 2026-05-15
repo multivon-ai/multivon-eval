@@ -11,23 +11,29 @@
 
 Run structured evals over your AI outputs — from simple string checks to LLM-as-judge scoring to agent trace validation — with a clean Python API, beautiful terminal reports, and CI/CD integration out of the box.
 
-## Quickstart
+## Quickstart — 30 seconds, no API key
 
 ```bash
 pip install multivon-eval
-
-# Scaffold a runnable eval project in under 5 minutes
-multivon-eval init --template rag --dir my-eval
+python -m multivon_eval                       # runs a demo eval — no setup
+multivon-eval init -t quickstart -d my-eval   # scaffold your own (offline)
 cd my-eval && python eval.py
 ```
 
-Or try a self-contained demo with no setup:
+That's it. The `quickstart` template uses only deterministic evaluators (`NotEmpty`, `Contains`, `WordCount`) so the first eval runs without an API key.
 
-```bash
-pip install multivon-eval && python -m multivon_eval
-```
+### Pick your path
 
-LLM-judge evaluators are added automatically if `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or a local server (Ollama on `:11434`, LM Studio on `:1234`, or `OPENAI_BASE_URL`) is detected.
+| You're… | Run this | Needs API key? |
+|---|---|---|
+| Brand new — just kicking the tires | `python -m multivon_eval` | No (LLM judges activate if a key is set) |
+| Beginner writing your first eval | `multivon-eval init -t quickstart` | **No** — fully offline |
+| Building an agent (tool-calling) | `multivon-eval init -t agent` | **No** for default eval, optional for richer judging |
+| Building a RAG / QA system | `multivon-eval init -t rag` | Yes (or local Ollama) |
+| Working a regulated domain | `multivon-eval init -t regulated` | Yes (or local Ollama) |
+| Multi-turn dialogue eval | `multivon-eval init -t conversation` | Yes (or local Ollama) |
+
+LLM-judge evaluators auto-activate when `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or a local server (Ollama on `:11434`, LM Studio on `:1234`, or `OPENAI_BASE_URL`) is detected — but every template runs without one in some form.
 
 ## What's new in 0.7.0
 

@@ -603,6 +603,11 @@ class CheckEvaluator(Evaluator):
         self._used_fallback = used_fallback
 
     @property
+    def criterion(self) -> str:
+        """The plain-English check this evaluator was configured with."""
+        return self._criterion
+
+    @property
     def resolved_questions(self) -> list[str] | None:
         """Questions used for scoring, or None if prepare() hasn't been called yet."""
         if self._questions is None:

@@ -69,6 +69,44 @@ class AgentTracer(ABC):
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         pass
 
+    @staticmethod
+    def format_trace(steps: "list[AgentStep] | None") -> str:
+        """Pretty-print a trace as plain-text. Returns the formatted
+        string so callers can print, log, or attach it to a report.
+
+        Use to debug what your agent actually did:
+
+            tracer = HandRolledTracer()
+            report = suite.run(my_agent, tracer=tracer)
+            for cr in report.case_results:
+                if not cr.passed:
+                    print(f"--- {cr.case_input!r} ---")
+                    print(AgentTracer.format_trace(cr.agent_trace))
+        """
+        if not steps:
+            return "(no trace captured)"
+        lines: list[str] = []
+        for i, step in enumerate(steps, 1):
+            lines.append(f"Step {i}:")
+            if getattr(step, "thought", None):
+                lines.append(f"  thought: {step.thought}")
+            for tc in getattr(step, "tool_calls", []) or []:
+                args = tc.arguments if isinstance(tc.arguments, dict) else {}
+                args_str = ", ".join(f"{k}={v!r}" for k, v in args.items())
+                lines.append(f"  → {tc.name}({args_str})")
+                if tc.result is not None:
+                    lines.append(f"    = {tc.result!r}")
+            if getattr(step, "output", None):
+                lines.append(f"  output: {step.output}")
+        return "\n".join(lines)
+
+    def print_trace(self, steps: "list[AgentStep] | None" = None) -> None:
+        """Print the trace to stdout. With no argument, prints the
+        tracer's own captured steps (useful during interactive
+        debugging in a notebook). Pass ``cr.agent_trace`` to print a
+        specific case's trace from a report."""
+        print(self.format_trace(steps if steps is not None else self.get_trace()))
+
 
 class CallbackTracer(AgentTracer, ABC):
     """

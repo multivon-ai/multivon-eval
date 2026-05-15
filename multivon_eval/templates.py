@@ -304,15 +304,18 @@ python eval.py
 # Template: agent — tool-calling with AgentTracer + agent evaluators
 # ─────────────────────────────────────────────────────────────────────────────
 _AGENT_EVAL = '''\
-"""Agent eval — toy support agent with ToolCallAccuracy + TrajectoryEfficiency.
+"""Agent eval — toy support agent with ToolCallAccuracy.
 
 The agent has 2 tools (lookup_order, refund_order). Cases assert which
 tools the agent SHOULD call. AgentTracer captures the call sequence.
 
-Needs ANTHROPIC_API_KEY or OPENAI_API_KEY for the judge.
+DEFAULT MODE: runs OFFLINE with the deterministic ``ToolCallAccuracy``
+evaluator only — no API key required. Set ANTHROPIC_API_KEY or
+OPENAI_API_KEY to ALSO enable richer LLM-judge evaluators
+(ToolArgumentAccuracy, TrajectoryEfficiency, TaskCompletion). The
+script will tell you which ones it activated.
 """
 import os
-import sys
 
 try:
     from dotenv import load_dotenv
@@ -323,18 +326,40 @@ except ImportError:
 from multivon_eval import (
     EvalSuite, EvalCase, JudgeConfig, configure,
     AgentTracer, AgentStep, ToolCall,
-    ToolCallAccuracy, ToolArgumentAccuracy, TrajectoryEfficiency,
+    ToolCallAccuracy,
 )
 
 
-def _auto_judge() -> JudgeConfig:
-    if os.getenv("ANTHROPIC_API_KEY", "").startswith("sk-ant-") and \\
-       "..." not in os.getenv("ANTHROPIC_API_KEY", ""):
-        return JudgeConfig(provider="anthropic", model="claude-haiku-4-5", temperature=0.0)
-    return JudgeConfig(provider="openai", model="gpt-4o-mini", temperature=0.0)
+def _have_judge() -> bool:
+    """True if any LLM judge is reachable. Used to opt-in to the
+    judge-based evaluators without making the offline path fail.
 
-
-configure(_auto_judge())
+    Checks (in order): valid-looking Anthropic key, valid-looking
+    OpenAI key, locally-running Ollama on :11434, OPENAI_BASE_URL
+    override (any OpenAI-compatible endpoint)."""
+    ak = os.getenv("ANTHROPIC_API_KEY", "")
+    ok = os.getenv("OPENAI_API_KEY", "")
+    if ak.startswith("sk-ant-") and "..." not in ak:
+        configure(JudgeConfig(provider="anthropic", model="claude-haiku-4-5", temperature=0.0))
+        return True
+    if ok.startswith("sk-") and "..." not in ok:
+        configure(JudgeConfig(provider="openai", model="gpt-4o-mini", temperature=0.0))
+        return True
+    # Local LLM fallback. Probe Ollama's tags endpoint with a short
+    # timeout so a missing daemon doesn't block startup.
+    base = os.getenv("OPENAI_BASE_URL", "http://localhost:11434/v1")
+    try:
+        import urllib.request
+        # Ollama responds at /api/tags on the same host:port as /v1.
+        probe = base.rstrip("/").rsplit("/v1", 1)[0] + "/api/tags"
+        with urllib.request.urlopen(probe, timeout=0.5):
+            pass
+    except Exception:
+        return False
+    os.environ.setdefault("OPENAI_API_KEY", "ollama-local-no-auth")
+    configure(JudgeConfig(provider="openai", model="llama3",
+                          base_url=base, temperature=0.0))
+    return True
 
 
 # ── Tools the agent could call ──
@@ -408,42 +433,94 @@ cases = [
 tracer = HandRolledTracer()
 suite = EvalSuite("support-agent")
 suite.add_cases(cases)
-suite.add_evaluators(
-    ToolCallAccuracy(),
-    ToolArgumentAccuracy(),
-    TrajectoryEfficiency(),
-)
+
+# Tier 1 — always on, deterministic, no API key needed.
+suite.add_evaluator(ToolCallAccuracy())
+
+# Tier 2 — LLM-judge evaluators, auto-activated when a key is detected.
+# These check tool ARGUMENTS, trajectory efficiency, and task
+# completion against the user's stated goal. Skipped silently when no
+# judge is reachable so the offline run still produces a clean report.
+if _have_judge():
+    from multivon_eval import (
+        ToolArgumentAccuracy, TrajectoryEfficiency, TaskCompletion,
+    )
+    suite.add_evaluators(
+        ToolArgumentAccuracy(),
+        TrajectoryEfficiency(),
+        TaskCompletion(),
+    )
+    print("[multivon-eval] LLM judge detected — enabling argument / trajectory / "
+          "completion evaluators.")
+else:
+    print("[multivon-eval] Running offline (no judge detected). For richer eval, "
+          "set ANTHROPIC_API_KEY or OPENAI_API_KEY and re-run.")
 
 
 if __name__ == "__main__":
     import os
-    report = suite.run(support_agent, tracer=tracer, fail_threshold=0.7)
+    # We deliberately do NOT pass fail_threshold here — this is a
+    # starter template, not a hardened CI gate. With a stale/revoked
+    # API key, judge-based evaluators would push pass_rate below the
+    # threshold and EvalGateFailure would be raised BEFORE save_json
+    # runs, eating the report. Add `fail_threshold=...` once you have
+    # a reliable judge configured.
+    report = suite.run(support_agent, tracer=tracer)
     os.makedirs("eval-reports", exist_ok=True)
     report.save_json("eval-reports/agent.json")
+    print(f"Saved report to eval-reports/agent.json")
+    print(f"  multivon-eval view eval-reports/agent.json   # interactive HTML")
 '''
 
 _AGENT_README = """\
 # multivon-eval — Agent template
 
-Tool-calling agent eval with `ToolCallAccuracy`, `ToolArgumentAccuracy`, and `TrajectoryEfficiency`.
+Tool-calling agent eval. Runs **offline by default** with the
+deterministic `ToolCallAccuracy` evaluator — no API key needed for
+your first run. LLM-judge evaluators auto-activate when a key is set.
 
-## 3-command flow
+## 2-command flow (offline, no API key)
 
 ```bash
 pip install -r requirements.txt
-cp .env.example .env && edit .env   # add ANTHROPIC_API_KEY or OPENAI_API_KEY
 python eval.py
 ```
 
+Expected output:
+
+```
+[multivon-eval] Running offline (no judge detected). For richer eval,
+set ANTHROPIC_API_KEY or OPENAI_API_KEY and re-run.
+
+──────────────────────────── support-agent ────────────────────────────
+  #  Input                       Output                Score  Status
+  1  Where is order O-101?       Order O-101 is...      1.00   PASS
+  2  Refund order O-101.         Refund R-O-101...      1.00   PASS
+
+Saved report to eval-reports/agent.json
+  multivon-eval view eval-reports/agent.json   # interactive HTML
+```
+
+## Add LLM-judge evaluators (optional)
+
+```bash
+cp .env.example .env   # add ANTHROPIC_API_KEY or OPENAI_API_KEY
+python eval.py
+```
+
+This activates `ToolArgumentAccuracy` (was each tool called with sensible args?),
+`TrajectoryEfficiency` (did the agent meander?), and `TaskCompletion`
+(did the final answer fulfil the user's request?).
+
 ## What this template demonstrates
 
-- **Hand-rolled tracer** (`HandRolledTracer`) — implements `AgentTracer.instrument`, so any agent loop (LangChain, AutoGen, custom) can be evaluated without framework lock-in.
+- **Hand-rolled tracer** (`HandRolledTracer`) — implements `AgentTracer.instrument`, so any agent loop (LangChain, AutoGen, OpenAI Agents SDK, custom) can be evaluated without framework lock-in.
 - **`expected_tool_calls`** on each `EvalCase` — declares which tools the agent *should* call. `ToolCallAccuracy` scores actual vs expected.
-- **`TrajectoryEfficiency`** — judges whether the agent took the optimal number of steps and recovered from any failed tool calls.
+- **Tiered eval design** — deterministic checks first, LLM-judge checks layered on when a key is available. Same pattern works in CI.
 
 ## Next steps
 
-- Replace the toy `support_agent` with your real loop (LangChain `Runnable`, AutoGen `Agent`, etc.).
+- Replace the toy `support_agent` with your real loop (LangChain `Runnable`, OpenAI Agents SDK, AutoGen `Agent`, etc.).
 - Add `TaskCompletion` to score the final output, not just the trajectory.
 - Add `AgentMemoryEval` for multi-session memory tests — see `multivon-eval --help` and the docs.
 """
@@ -483,10 +560,29 @@ from multivon_eval import (
 
 
 def _auto_judge() -> JudgeConfig:
-    if os.getenv("ANTHROPIC_API_KEY", "").startswith("sk-ant-") and \\
-       "..." not in os.getenv("ANTHROPIC_API_KEY", ""):
+    """Anthropic key → OpenAI key → local Ollama on :11434. Returns the
+    first reachable config. Ollama is probed with a 0.5s timeout so a
+    missing daemon doesn't block startup."""
+    ak = os.getenv("ANTHROPIC_API_KEY", "")
+    ok = os.getenv("OPENAI_API_KEY", "")
+    if ak.startswith("sk-ant-") and "..." not in ak:
         return JudgeConfig(provider="anthropic", model="claude-haiku-4-5", temperature=0.0)
-    return JudgeConfig(provider="openai", model="gpt-4o-mini", temperature=0.0)
+    if ok.startswith("sk-") and "..." not in ok:
+        return JudgeConfig(provider="openai", model="gpt-4o-mini", temperature=0.0)
+    base = os.getenv("OPENAI_BASE_URL", "http://localhost:11434/v1")
+    try:
+        import urllib.request
+        probe = base.rstrip("/").rsplit("/v1", 1)[0] + "/api/tags"
+        with urllib.request.urlopen(probe, timeout=0.5):
+            pass
+        os.environ.setdefault("OPENAI_API_KEY", "ollama-local-no-auth")
+        return JudgeConfig(provider="openai", model="llama3",
+                           base_url=base, temperature=0.0)
+    except Exception:
+        # Fall back to OpenAI; will raise JudgeUnavailable with a
+        # plain-language setup hint at suite.run() time if neither
+        # key is set. See multivon_eval/judge.py _setup_hint.
+        return JudgeConfig(provider="openai", model="gpt-4o-mini", temperature=0.0)
 
 
 configure(_auto_judge())
@@ -602,10 +698,28 @@ from multivon_eval import (
 
 
 def _auto_judge() -> JudgeConfig:
-    if os.getenv("ANTHROPIC_API_KEY", "").startswith("sk-ant-") and \\
-       "..." not in os.getenv("ANTHROPIC_API_KEY", ""):
+    """Anthropic key → OpenAI key → local Ollama → OpenAI fallback.
+
+    Ollama is probed with a 0.5s timeout. JudgeUnavailable with a
+    plain-language setup hint surfaces if nothing is reachable.
+    """
+    ak = os.getenv("ANTHROPIC_API_KEY", "")
+    ok = os.getenv("OPENAI_API_KEY", "")
+    if ak.startswith("sk-ant-") and "..." not in ak:
         return JudgeConfig(provider="anthropic", model="claude-haiku-4-5", temperature=0.0)
-    return JudgeConfig(provider="openai", model="gpt-4o-mini", temperature=0.0)
+    if ok.startswith("sk-") and "..." not in ok:
+        return JudgeConfig(provider="openai", model="gpt-4o-mini", temperature=0.0)
+    base = os.getenv("OPENAI_BASE_URL", "http://localhost:11434/v1")
+    try:
+        import urllib.request
+        probe = base.rstrip("/").rsplit("/v1", 1)[0] + "/api/tags"
+        with urllib.request.urlopen(probe, timeout=0.5):
+            pass
+        os.environ.setdefault("OPENAI_API_KEY", "ollama-local-no-auth")
+        return JudgeConfig(provider="openai", model="llama3",
+                           base_url=base, temperature=0.0)
+    except Exception:
+        return JudgeConfig(provider="openai", model="gpt-4o-mini", temperature=0.0)
 
 
 configure(_auto_judge())
