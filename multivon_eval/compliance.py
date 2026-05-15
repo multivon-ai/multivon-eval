@@ -40,14 +40,80 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import platform
+import shutil
+import subprocess
+import sys
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Literal
 
+from . import __version__
 from .exceptions import ComplianceError
 from .result import EvalReport
+
+
+def _package_git_info() -> dict | None:
+    """Best-effort capture of the multivon-eval git state at record time.
+
+    Returns ``{"sha": "<40-hex>", "dirty": <bool>}`` when the package is
+    being run from a git checkout (development install). Production
+    installs from PyPI return ``None`` — the audit consumer should read
+    ``package_version`` for those. Never raises.
+
+    The ``dirty`` flag matters for audit: a HEAD SHA without it can point
+    to code that doesn't match what actually ran (e.g., uncommitted
+    local changes). Codex review caught this.
+    """
+    if not shutil.which("git"):
+        return None
+    pkg_dir = Path(__file__).resolve().parent
+    try:
+        rev = subprocess.run(
+            ["git", "-C", str(pkg_dir), "rev-parse", "HEAD"],
+            capture_output=True, text=True, timeout=2,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        return None
+    if rev.returncode != 0:
+        return None
+    sha = rev.stdout.strip()
+    if not sha:
+        return None
+    dirty = False
+    try:
+        status = subprocess.run(
+            ["git", "-C", str(pkg_dir), "status", "--porcelain"],
+            capture_output=True, text=True, timeout=2,
+        )
+        # Non-empty output → uncommitted or untracked changes present.
+        if status.returncode == 0 and status.stdout.strip():
+            dirty = True
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        pass
+    return {"sha": sha, "dirty": dirty}
+
+
+def _package_git_sha() -> str | None:
+    """Back-compat: just the SHA without the dirty marker."""
+    info = _package_git_info()
+    return info["sha"] if info else None
+
+
+def _host_info() -> dict[str, str]:
+    """Reproducibility metadata about the runtime environment.
+
+    Captured at audit-record time so an auditor knows the OS and Python
+    version that produced the eval. Stripped of anything user-identifying
+    (no hostname, no username).
+    """
+    return {
+        "python": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
+        "platform": platform.system().lower(),
+        "machine": platform.machine(),
+    }
 
 if TYPE_CHECKING:
     from .suite import EvalSuite
@@ -458,15 +524,25 @@ class ComplianceReporter:
     def _record_summary(self, report: EvalReport, tags: dict[str, str] | None) -> str:
         summary = self._build_summary(report, tags)
         evaluator_results = self._build_evaluator_results(report)
+        provenance = self._build_provenance(report)
         record_id, record_hash = self._append_record(
             report,
             record_type="summary",
-            extra={"summary": summary, "evaluator_results": evaluator_results},
+            extra={
+                "summary": summary,
+                "evaluator_results": evaluator_results,
+                "provenance": provenance,
+            },
         )
         self._call_anchor(record_hash)
         return record_id
 
     def _record_per_case(self, report: EvalReport, tags: dict[str, str] | None) -> list[str]:
+        # Compute provenance ONCE — it's run-level, not case-level. Embedding
+        # it on every per-case record would bloat the log without adding
+        # information (and would technically allow it to drift, which we don't
+        # want — the suite_lock is the same for every case in one run).
+        provenance = self._build_provenance(report)
         record_ids: list[str] = []
         last_hash = ""
         for idx, case_result in enumerate(report.case_results):
@@ -474,7 +550,7 @@ class ComplianceReporter:
             record_id, record_hash = self._append_record(
                 report,
                 record_type="case",
-                extra={"case": case_payload},
+                extra={"case": case_payload, "provenance": provenance},
             )
             record_ids.append(record_id)
             last_hash = record_hash
@@ -489,6 +565,12 @@ class ComplianceReporter:
             "total": report.total,
             "passed": report.passed,
             "failed": report.failed,
+            # 0.7.0: separate quality outcomes from infrastructure errors so
+            # an auditor sees the full picture (errors aren't quality fails).
+            "evaluated": report.evaluated,
+            "errors": report.errors,
+            "errors_by_kind": report.errors_by_kind,
+            "skipped": report.skipped,
             "pass_rate": round(report.pass_rate, 4),
             "avg_score": round(report.avg_score, 4),
             "runs_per_case": report.runs_per_case,
@@ -496,6 +578,54 @@ class ComplianceReporter:
             "stability_score": round(report.stability_score, 4),
             "tags": tags or {},
         }
+
+    def _build_provenance(self, report: EvalReport) -> dict:
+        """Build the per-record provenance manifest.
+
+        Captures the exact runtime + suite + evaluator state that drove
+        this eval run. Marcus's compliance ask: enough metadata that an
+        auditor can reproduce the decisions offline, plus identify when
+        any one of (judge, prompt, threshold, dataset, library version)
+        changed between runs.
+
+        Includes:
+          - ``package_version`` / ``package_git_sha`` — code identity.
+          - ``host`` — Python version, OS, machine (no PII).
+          - ``suite_lock`` — full :class:`SuiteLock` dict if the report
+            was produced by ``EvalSuite.run`` (carries evaluator
+            fingerprints incl. resolved judge configs, calibration
+            entries used, and the cases hash).
+          - ``schema_version`` — bump on any breaking change so
+            consumers can route accordingly.
+        """
+        prov: dict = {
+            "schema_version": 1,
+            "package_version": __version__,
+            "host": _host_info(),
+        }
+        git = _package_git_info()
+        if git:
+            prov["package_git_sha"] = git["sha"]
+            # Surface dirty=True so the auditor sees that the recorded
+            # SHA doesn't fully describe the running code. dirty=False
+            # is the happy path and is also surfaced explicitly.
+            prov["package_git_dirty"] = git["dirty"]
+        # Embed the SuiteLock for full reproducibility. ``suite_lock`` is
+        # ``None`` for reports built outside ``EvalSuite.run`` (e.g.,
+        # synthesized for testing); the provenance is still meaningful
+        # without it, just less complete. The status field tells the
+        # auditor WHY the lock is missing (synthesized vs failed) instead
+        # of silently omitting it.
+        if getattr(report, "suite_lock", None) is None:
+            prov["suite_lock_status"] = "absent"
+        else:
+            try:
+                prov["suite_lock"] = report.suite_lock.to_dict()
+                prov["suite_lock_status"] = "ok"
+            except Exception as exc:
+                prov["suite_lock_status"] = "serialization_failed"
+                prov["suite_lock_error_type"] = type(exc).__name__
+        return prov
 
     def _build_evaluator_results(self, report: EvalReport) -> list[dict]:
         results: list[dict] = []

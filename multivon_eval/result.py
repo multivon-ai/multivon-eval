@@ -276,6 +276,11 @@ class EvalReport:
     model_id: str = ""
     judge_reliability: float | None = None
     costs: Any = None  # multivon_eval.costs.Costs or None; populated by suite.run()
+    # Content-addressed fingerprint of the suite that produced this report.
+    # Populated by ``EvalSuite.run`` at run-time so audit log records can
+    # capture the EXACT evaluator + case state that drove the decisions.
+    # See :class:`multivon_eval.lockfile.SuiteLock` for the schema.
+    suite_lock: Any = None  # SuiteLock | None — Any avoids the circular import
 
     @property
     def total(self) -> int:

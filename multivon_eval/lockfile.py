@@ -159,6 +159,18 @@ class SuiteLock:
             for fld in ("threshold", "prompt_hash", "judge", "calibration", "version"):
                 if getattr(cur, fld) != getattr(saved, fld):
                     diffs.append(f"evaluator {k[1]}.{fld}: {getattr(cur, fld)!r} vs {getattr(saved, fld)!r}")
+            # Compare per-evaluator config dict — catches changes to
+            # `Contains.substrings`, `WordCount.min_words`, etc. that
+            # would otherwise produce a different suite_hash with no
+            # visible explanation in the diff output.
+            cur_cfg = (cur.extra or {}).get("config", {})
+            saved_cfg = (saved.extra or {}).get("config", {})
+            for cfg_key in sorted(set(cur_cfg) | set(saved_cfg)):
+                if cur_cfg.get(cfg_key) != saved_cfg.get(cfg_key):
+                    diffs.append(
+                        f"evaluator {k[1]}.config.{cfg_key}: "
+                        f"{cur_cfg.get(cfg_key)!r} vs {saved_cfg.get(cfg_key)!r}"
+                    )
         return diffs
 
 
@@ -253,6 +265,47 @@ def _evaluator_calibration_fingerprint(evaluator: "Evaluator") -> dict[str, Any]
         return None
 
 
+def _evaluator_config_fingerprint(evaluator: "Evaluator") -> dict[str, Any]:
+    """Capture JSON-safe public configuration knobs an evaluator was built with.
+
+    Critical for reproducibility: ``Contains.substrings``, ``WordCount.min_words``,
+    ``RegexMatch.pattern``, ``BLEU.n``, ``BERTScore.model`` — anything that
+    changes a decision — must be in the fingerprint. Otherwise two suites
+    with different config but the same name + threshold + judge would share
+    a ``suite_hash`` and an audit replay would diverge silently.
+
+    Conservative rules:
+      - Public attributes only (no leading underscore).
+      - Skip attributes already captured by other fingerprint fields
+        (name, threshold, judge — those have dedicated slots).
+      - Skip non-serializable values (callables, classes, complex objects)
+        rather than failing — we err on the side of keeping the lock
+        builder non-fatal.
+      - Compiled regex patterns are rendered as their source pattern so
+        the fingerprint stays stable across runs.
+    """
+    import re
+
+    _SKIP_FIELDS = {"name", "threshold", "judge"}
+    out: dict[str, Any] = {}
+    for attr_name in sorted(vars(evaluator)):
+        if attr_name.startswith("_") or attr_name in _SKIP_FIELDS:
+            continue
+        value = getattr(evaluator, attr_name)
+        # Render regex objects as their source so the fingerprint is portable.
+        if isinstance(value, re.Pattern):
+            out[attr_name] = {"_kind": "regex", "pattern": value.pattern, "flags": value.flags}
+            continue
+        # Probe JSON-serializability — anything we can't round-trip is
+        # silently skipped (better to miss a field than to crash the lock).
+        try:
+            json.dumps(value)
+        except (TypeError, ValueError):
+            continue
+        out[attr_name] = value
+    return out
+
+
 def fingerprint_evaluator(evaluator: "Evaluator") -> EvaluatorFingerprint:
     return EvaluatorFingerprint(
         name=getattr(evaluator, "name", type(evaluator).__name__),
@@ -261,7 +314,8 @@ def fingerprint_evaluator(evaluator: "Evaluator") -> EvaluatorFingerprint:
         prompt_hash=_evaluator_prompt_hash(evaluator),
         judge=_evaluator_judge_fingerprint(evaluator),
         calibration=_evaluator_calibration_fingerprint(evaluator),
-        version="1",  # bump when we change the fingerprint format
+        version="2",  # bumped from 1 — config dict is now in `extra`
+        extra={"config": _evaluator_config_fingerprint(evaluator)},
     )
 
 

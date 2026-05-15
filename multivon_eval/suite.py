@@ -313,6 +313,7 @@ class EvalSuite:
             model_id=self.model_id,
             judge_reliability=judge_reliability,
             costs=cost_tracker.snapshot(),
+            suite_lock=_safe_lock(self),
         )
 
         if verbose:
@@ -630,6 +631,7 @@ class EvalSuite:
             suite_name=self.name,
             case_results=case_results,
             model_id=self.model_id,
+            suite_lock=_safe_lock(self),
         )
 
         if verbose:
@@ -1303,6 +1305,7 @@ class EvalSuite:
             model_id=self.model_id,
             judge_reliability=judge_reliability,
             costs=cost_tracker.snapshot(),
+            suite_lock=_safe_lock(self),
         )
 
         if verbose:
@@ -1316,6 +1319,20 @@ class EvalSuite:
             )
 
         return report
+
+
+def _safe_lock(suite: "EvalSuite") -> "Any":
+    """Compute the suite's SuiteLock; swallow any failure.
+
+    Used inside the suite.run hot path to attach reproducibility metadata
+    to the report without ever letting the lockfile machinery crash a
+    successful eval run. If fingerprinting fails for any reason, we'd
+    rather ship a report without a lock than no report at all.
+    """
+    try:
+        return suite.lock()
+    except Exception:
+        return None
 
 
 def _aggregate_runs(case: EvalCase, single_runs: list[CaseResult]) -> CaseResult:
