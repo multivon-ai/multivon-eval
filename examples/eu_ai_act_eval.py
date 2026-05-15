@@ -74,14 +74,13 @@ def main() -> int:
     log_path.write_text("\n".join(lines) + "\n")
 
     print("\nVerifying audit chain (after tampering with record 1):")
-    try:
-        reporter.verify(suite.name)
+    # verify() returns False (and prints diagnostics) on a broken chain.
+    # Returning False is the contract; the caller decides how to react.
+    if reporter.verify(suite.name):
         print("  WARNING: verifier did not detect the tamper — bug!")
         return 1
-    except Exception as exc:
-        # Expected — the verifier raises ComplianceError on a broken chain.
-        print(f"  ✓ Tamper detected: {type(exc).__name__}: {exc}")
-        return 0
+    print("  ✓ Tamper detected — verifier returned False as expected")
+    return 0
 
 
 if __name__ == "__main__":

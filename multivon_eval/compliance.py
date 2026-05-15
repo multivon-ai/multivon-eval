@@ -40,14 +40,59 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import platform
+import shutil
+import subprocess
+import sys
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Literal
 
+from . import __version__
 from .exceptions import ComplianceError
 from .result import EvalReport
+
+
+def _package_git_sha() -> str | None:
+    """Best-effort capture of the multivon-eval git SHA at record time.
+
+    Only returns a value when the package is being run from a git
+    checkout (development install). Production installs from PyPI return
+    ``None`` — the audit consumer should read ``package_version`` for
+    those. Never raises; if anything goes wrong we ship without the SHA.
+    """
+    if not shutil.which("git"):
+        return None
+    pkg_dir = Path(__file__).resolve().parent
+    try:
+        # Quick rev-parse from within the package directory. The .git
+        # marker is on the repo root, which `git rev-parse` finds.
+        res = subprocess.run(
+            ["git", "-C", str(pkg_dir), "rev-parse", "HEAD"],
+            capture_output=True, text=True, timeout=2,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        return None
+    if res.returncode != 0:
+        return None
+    sha = res.stdout.strip()
+    return sha if sha else None
+
+
+def _host_info() -> dict[str, str]:
+    """Reproducibility metadata about the runtime environment.
+
+    Captured at audit-record time so an auditor knows the OS and Python
+    version that produced the eval. Stripped of anything user-identifying
+    (no hostname, no username).
+    """
+    return {
+        "python": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
+        "platform": platform.system().lower(),
+        "machine": platform.machine(),
+    }
 
 if TYPE_CHECKING:
     from .suite import EvalSuite
@@ -458,15 +503,25 @@ class ComplianceReporter:
     def _record_summary(self, report: EvalReport, tags: dict[str, str] | None) -> str:
         summary = self._build_summary(report, tags)
         evaluator_results = self._build_evaluator_results(report)
+        provenance = self._build_provenance(report)
         record_id, record_hash = self._append_record(
             report,
             record_type="summary",
-            extra={"summary": summary, "evaluator_results": evaluator_results},
+            extra={
+                "summary": summary,
+                "evaluator_results": evaluator_results,
+                "provenance": provenance,
+            },
         )
         self._call_anchor(record_hash)
         return record_id
 
     def _record_per_case(self, report: EvalReport, tags: dict[str, str] | None) -> list[str]:
+        # Compute provenance ONCE — it's run-level, not case-level. Embedding
+        # it on every per-case record would bloat the log without adding
+        # information (and would technically allow it to drift, which we don't
+        # want — the suite_lock is the same for every case in one run).
+        provenance = self._build_provenance(report)
         record_ids: list[str] = []
         last_hash = ""
         for idx, case_result in enumerate(report.case_results):
@@ -474,7 +529,7 @@ class ComplianceReporter:
             record_id, record_hash = self._append_record(
                 report,
                 record_type="case",
-                extra={"case": case_payload},
+                extra={"case": case_payload, "provenance": provenance},
             )
             record_ids.append(record_id)
             last_hash = record_hash
@@ -489,6 +544,12 @@ class ComplianceReporter:
             "total": report.total,
             "passed": report.passed,
             "failed": report.failed,
+            # 0.7.0: separate quality outcomes from infrastructure errors so
+            # an auditor sees the full picture (errors aren't quality fails).
+            "evaluated": report.evaluated,
+            "errors": report.errors,
+            "errors_by_kind": report.errors_by_kind,
+            "skipped": report.skipped,
             "pass_rate": round(report.pass_rate, 4),
             "avg_score": round(report.avg_score, 4),
             "runs_per_case": report.runs_per_case,
@@ -496,6 +557,45 @@ class ComplianceReporter:
             "stability_score": round(report.stability_score, 4),
             "tags": tags or {},
         }
+
+    def _build_provenance(self, report: EvalReport) -> dict:
+        """Build the per-record provenance manifest.
+
+        Captures the exact runtime + suite + evaluator state that drove
+        this eval run. Marcus's compliance ask: enough metadata that an
+        auditor can reproduce the decisions offline, plus identify when
+        any one of (judge, prompt, threshold, dataset, library version)
+        changed between runs.
+
+        Includes:
+          - ``package_version`` / ``package_git_sha`` — code identity.
+          - ``host`` — Python version, OS, machine (no PII).
+          - ``suite_lock`` — full :class:`SuiteLock` dict if the report
+            was produced by ``EvalSuite.run`` (carries evaluator
+            fingerprints incl. resolved judge configs, calibration
+            entries used, and the cases hash).
+          - ``schema_version`` — bump on any breaking change so
+            consumers can route accordingly.
+        """
+        prov: dict = {
+            "schema_version": 1,
+            "package_version": __version__,
+            "host": _host_info(),
+        }
+        sha = _package_git_sha()
+        if sha:
+            prov["package_git_sha"] = sha
+        # Embed the SuiteLock for full reproducibility. ``suite_lock`` is
+        # ``None`` for reports built outside ``EvalSuite.run`` (e.g.,
+        # synthesized for testing); the provenance is still meaningful
+        # without it, just less complete.
+        if getattr(report, "suite_lock", None) is not None:
+            try:
+                prov["suite_lock"] = report.suite_lock.to_dict()
+            except Exception:
+                # Don't let a serialization edge-case kill the record.
+                pass
+        return prov
 
     def _build_evaluator_results(self, report: EvalReport) -> list[dict]:
         results: list[dict] = []
