@@ -160,14 +160,17 @@ def _is_retryable(exc: Exception) -> bool:
     return type(exc).__name__ in _RETRYABLE_EXC_NAMES
 
 
+# Conservative whitelist of provider-SDK exception NAMES that almost
+# always mean "auth missing / wrong key / can't reach the server."
+# Generic names like ``BadRequestError`` or ``APIError`` are deliberately
+# excluded — they routinely fire for prompt-too-long, invalid model
+# id, or unsupported params, and drowning those real bugs in setup
+# advice is worse than no hint at all. Codex D15 round-1 finding.
 _AUTH_HINT_EXC_NAMES = {
-    "AuthenticationError",     # OpenAI / Anthropic
-    "PermissionDeniedError",   # Anthropic
-    "BadRequestError",         # often "no auth"
-    "APIConnectionError",      # local server down
-    "APIError",                # generic — still likely missing env
-    "ConnectError",            # httpx
-    "ConnectionError",
+    "AuthenticationError",     # OpenAI / Anthropic — clear auth fail
+    "PermissionDeniedError",   # Anthropic — clear permission fail
+    "APIConnectionError",      # local server down / DNS / unreachable
+    "ConnectError",            # httpx — connection-specific
 }
 
 
@@ -176,10 +179,16 @@ def _looks_like_auth_or_connection_error(exc: Exception) -> bool:
     if name in _AUTH_HINT_EXC_NAMES:
         return True
     msg = str(exc).lower()
+    # Message-content sigs are targeted: "api_key" / "unauthorized" /
+    # "401" / "could not connect" / "name or service not known" are
+    # auth-and-connectivity-specific. We do NOT include "missing" or
+    # "not found" — those false-positive on legitimate prompt and
+    # model lookup errors.
     return any(
         sig in msg for sig in
-        ("api_key", "api key", "unauthorized", "401", "missing", "not found",
-         "connection", "could not connect", "name or service not known")
+        ("api_key", "api key", "unauthorized", "401",
+         "could not connect", "connection refused",
+         "name or service not known", "no such host")
     )
 
 

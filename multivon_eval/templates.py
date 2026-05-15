@@ -332,7 +332,11 @@ from multivon_eval import (
 
 def _have_judge() -> bool:
     """True if any LLM judge is reachable. Used to opt-in to the
-    judge-based evaluators without making the offline path fail."""
+    judge-based evaluators without making the offline path fail.
+
+    Checks (in order): valid-looking Anthropic key, valid-looking
+    OpenAI key, locally-running Ollama on :11434, OPENAI_BASE_URL
+    override (any OpenAI-compatible endpoint)."""
     ak = os.getenv("ANTHROPIC_API_KEY", "")
     ok = os.getenv("OPENAI_API_KEY", "")
     if ak.startswith("sk-ant-") and "..." not in ak:
@@ -341,7 +345,21 @@ def _have_judge() -> bool:
     if ok.startswith("sk-") and "..." not in ok:
         configure(JudgeConfig(provider="openai", model="gpt-4o-mini", temperature=0.0))
         return True
-    return False
+    # Local LLM fallback. Probe Ollama's tags endpoint with a short
+    # timeout so a missing daemon doesn't block startup.
+    base = os.getenv("OPENAI_BASE_URL", "http://localhost:11434/v1")
+    try:
+        import urllib.request
+        # Ollama responds at /api/tags on the same host:port as /v1.
+        probe = base.rstrip("/").rsplit("/v1", 1)[0] + "/api/tags"
+        with urllib.request.urlopen(probe, timeout=0.5):
+            pass
+    except Exception:
+        return False
+    os.environ.setdefault("OPENAI_API_KEY", "ollama-local-no-auth")
+    configure(JudgeConfig(provider="openai", model="llama3",
+                          base_url=base, temperature=0.0))
+    return True
 
 
 # ── Tools the agent could call ──
@@ -441,7 +459,13 @@ else:
 
 if __name__ == "__main__":
     import os
-    report = suite.run(support_agent, tracer=tracer, fail_threshold=0.7)
+    # We deliberately do NOT pass fail_threshold here — this is a
+    # starter template, not a hardened CI gate. With a stale/revoked
+    # API key, judge-based evaluators would push pass_rate below the
+    # threshold and EvalGateFailure would be raised BEFORE save_json
+    # runs, eating the report. Add `fail_threshold=...` once you have
+    # a reliable judge configured.
+    report = suite.run(support_agent, tracer=tracer)
     os.makedirs("eval-reports", exist_ok=True)
     report.save_json("eval-reports/agent.json")
     print(f"Saved report to eval-reports/agent.json")
@@ -536,10 +560,29 @@ from multivon_eval import (
 
 
 def _auto_judge() -> JudgeConfig:
-    if os.getenv("ANTHROPIC_API_KEY", "").startswith("sk-ant-") and \\
-       "..." not in os.getenv("ANTHROPIC_API_KEY", ""):
+    """Anthropic key → OpenAI key → local Ollama on :11434. Returns the
+    first reachable config. Ollama is probed with a 0.5s timeout so a
+    missing daemon doesn't block startup."""
+    ak = os.getenv("ANTHROPIC_API_KEY", "")
+    ok = os.getenv("OPENAI_API_KEY", "")
+    if ak.startswith("sk-ant-") and "..." not in ak:
         return JudgeConfig(provider="anthropic", model="claude-haiku-4-5", temperature=0.0)
-    return JudgeConfig(provider="openai", model="gpt-4o-mini", temperature=0.0)
+    if ok.startswith("sk-") and "..." not in ok:
+        return JudgeConfig(provider="openai", model="gpt-4o-mini", temperature=0.0)
+    base = os.getenv("OPENAI_BASE_URL", "http://localhost:11434/v1")
+    try:
+        import urllib.request
+        probe = base.rstrip("/").rsplit("/v1", 1)[0] + "/api/tags"
+        with urllib.request.urlopen(probe, timeout=0.5):
+            pass
+        os.environ.setdefault("OPENAI_API_KEY", "ollama-local-no-auth")
+        return JudgeConfig(provider="openai", model="llama3",
+                           base_url=base, temperature=0.0)
+    except Exception:
+        # Fall back to OpenAI; will raise JudgeUnavailable with a
+        # plain-language setup hint at suite.run() time if neither
+        # key is set. See multivon_eval/judge.py _setup_hint.
+        return JudgeConfig(provider="openai", model="gpt-4o-mini", temperature=0.0)
 
 
 configure(_auto_judge())
@@ -655,10 +698,28 @@ from multivon_eval import (
 
 
 def _auto_judge() -> JudgeConfig:
-    if os.getenv("ANTHROPIC_API_KEY", "").startswith("sk-ant-") and \\
-       "..." not in os.getenv("ANTHROPIC_API_KEY", ""):
+    """Anthropic key → OpenAI key → local Ollama → OpenAI fallback.
+
+    Ollama is probed with a 0.5s timeout. JudgeUnavailable with a
+    plain-language setup hint surfaces if nothing is reachable.
+    """
+    ak = os.getenv("ANTHROPIC_API_KEY", "")
+    ok = os.getenv("OPENAI_API_KEY", "")
+    if ak.startswith("sk-ant-") and "..." not in ak:
         return JudgeConfig(provider="anthropic", model="claude-haiku-4-5", temperature=0.0)
-    return JudgeConfig(provider="openai", model="gpt-4o-mini", temperature=0.0)
+    if ok.startswith("sk-") and "..." not in ok:
+        return JudgeConfig(provider="openai", model="gpt-4o-mini", temperature=0.0)
+    base = os.getenv("OPENAI_BASE_URL", "http://localhost:11434/v1")
+    try:
+        import urllib.request
+        probe = base.rstrip("/").rsplit("/v1", 1)[0] + "/api/tags"
+        with urllib.request.urlopen(probe, timeout=0.5):
+            pass
+        os.environ.setdefault("OPENAI_API_KEY", "ollama-local-no-auth")
+        return JudgeConfig(provider="openai", model="llama3",
+                           base_url=base, temperature=0.0)
+    except Exception:
+        return JudgeConfig(provider="openai", model="gpt-4o-mini", temperature=0.0)
 
 
 configure(_auto_judge())

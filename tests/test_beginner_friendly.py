@@ -93,6 +93,38 @@ def test_looks_like_auth_does_not_match_real_quality_bugs():
     )
 
 
+def test_looks_like_auth_does_not_match_generic_api_errors():
+    """Codex round-1: BadRequestError and APIError used to trigger the
+    auth hint by NAME alone. But those classes fire for prompt-too-long,
+    invalid model id, unsupported params, schema errors, etc. — real
+    bugs the user needs to see UNADORNED, not drowned in 'check your
+    key' advice. Narrow the whitelist."""
+    BadRequest = type("BadRequestError", (Exception,), {})
+    api_err = type("APIError", (Exception,), {})
+    # Plain class-name match no longer counts.
+    assert not _looks_like_auth_or_connection_error(
+        BadRequest("Invalid 'model': unknown model id 'gpt-5'")
+    )
+    assert not _looks_like_auth_or_connection_error(
+        api_err("Prompt length exceeds 128k token limit")
+    )
+    # ...but if the same exception's MESSAGE explicitly mentions auth,
+    # we still surface the hint — content-based signals are targeted.
+    assert _looks_like_auth_or_connection_error(BadRequest("api_key not set"))
+
+
+def test_looks_like_auth_does_not_match_missing_or_not_found_in_message():
+    """Codex round-1: 'missing' / 'not found' in a message are NOT
+    auth-specific — they fire for missing keys in JSON, file-not-found,
+    etc. Removed from the message-content signature."""
+    assert not _looks_like_auth_or_connection_error(
+        KeyError("missing required field 'context' in case")
+    )
+    assert not _looks_like_auth_or_connection_error(
+        FileNotFoundError("eval-reports/baseline.json: not found")
+    )
+
+
 def test_wrap_provider_error_includes_setup_hint_on_auth():
     """Auth-shaped exception wrapped as JudgeUnavailable carries a
     concrete next-step block in its message."""
