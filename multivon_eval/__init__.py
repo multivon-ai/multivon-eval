@@ -93,6 +93,7 @@ from .result import (
 from .calibration import (
     calibrated_threshold, threshold_table,
     calibration_provenance, load_calibration, CalibrationEntry,
+    calibration_versions,
 )
 from .evaluators import (
     # Deterministic
@@ -140,7 +141,7 @@ __all__ = [
     "EvalGateFailure",
     # Calibration
     "calibrated_threshold", "threshold_table",
-    "calibration_provenance", "load_calibration", "CalibrationEntry",
+    "calibration_provenance", "load_calibration", "calibration_versions", "CalibrationEntry",
     # Secrets
     "SecretsResolver", "EnvResolver", "ChainedResolver", "StaticResolver",
     "get_secret", "set_resolver", "get_resolver", "reset_resolver",
