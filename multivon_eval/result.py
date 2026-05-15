@@ -673,6 +673,16 @@ class EvalReport:
         with open(path, "w") as f:
             f.write(self.to_json())
 
+    def compare(self, other: "EvalReport") -> "Any":
+        """Diff this report (as baseline) against ``other`` (proposal).
+
+        Returns a :class:`multivon_eval.compare.ReportDiff` with pass-rate
+        and avg-score deltas, per-case regressions / improvements
+        (paired by ``case_input``), and a McNemar p-value over paired
+        cases. See ``multivon_eval.compare`` for the full API."""
+        from .compare import compare_reports
+        return compare_reports(self, other)
+
     def to_html(self) -> str:
         """Return a self-contained HTML report string."""
         from .reporters.html import to_html as _to_html

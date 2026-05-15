@@ -54,6 +54,7 @@ from .lockfile import (
 from .costs import Costs, CostTracker, ProviderUsage, ModelPricing, register_pricing
 from .audit_package import build_audit_package
 from .retry import JudgeRetry
+from .compare import CaseDiff, ReportDiff, compare_reports
 
 # Pytest plugin: pytest is an optional dependency. Guard the import so a
 # user who installs multivon-eval without pytest can still `import multivon_eval`.
@@ -125,6 +126,8 @@ __all__ = [
     "EvalSuite", "EvalCase", "AgentStep", "ToolCall",
     "JudgeConfig", "configure",
     "JudgeRetry",
+    # Compare two runs
+    "CaseDiff", "ReportDiff", "compare_reports",
     "ModelAdapter", "OpenAIAdapter", "AnthropicAdapter", "LiteLLMAdapter",
     # Integrations
     "AgentTracer", "CaseImporter",

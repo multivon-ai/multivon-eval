@@ -376,6 +376,22 @@ def main():
     audit_p.add_argument("--period", default=None,
                          help='Human label like "2026-Q2" (default: today)')
 
+    # compare — diff two eval report JSONs
+    cmp_p = sub.add_parser(
+        "compare",
+        help="Compare two eval report JSONs (pass-rate delta, regressions, McNemar p)",
+    )
+    cmp_p.add_argument("baseline", help="Baseline report JSON")
+    cmp_p.add_argument("proposal", help="Proposal report JSON to compare")
+    cmp_p.add_argument("--regressions-only", action="store_true",
+                       help="Hide improvements section (good for CI summaries)")
+    cmp_p.add_argument("--markdown", action="store_true",
+                       help="Emit GitHub-flavored Markdown (PR comment style)")
+    cmp_p.add_argument("--json", action="store_true",
+                       help="Emit the diff as JSON")
+    cmp_p.add_argument("--fail-on-regression", action="store_true",
+                       help="Exit 1 if any regressions are detected")
+
     args = parser.parse_args()
 
     if args.command == "init":
@@ -396,6 +412,15 @@ def main():
             "--logs", args.logs, "--suite", args.suite,
             "--framework", args.framework, "--out", args.out,
             *(["--period", args.period] if args.period else []),
+        ]))
+    elif args.command == "compare":
+        from . import compare as _cmp
+        sys.exit(_cmp._cli([
+            args.baseline, args.proposal,
+            *(["--regressions-only"] if args.regressions_only else []),
+            *(["--markdown"] if args.markdown else []),
+            *(["--json"] if args.json else []),
+            *(["--fail-on-regression"] if args.fail_on_regression else []),
         ]))
     else:
         parser.print_help()
