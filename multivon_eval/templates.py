@@ -574,6 +574,142 @@ python verify.py   # exits 0 if every file's hash matches and the chain is intac
 # Registry — what `--template` accepts
 # ─────────────────────────────────────────────────────────────────────────────
 
+_CONVERSATION_EVAL = '''\
+"""Conversation eval — multi-turn dialogue quality with QAG judges.
+
+Tests a customer-support chatbot across a realistic 3-turn dialogue.
+ConversationRelevance + KnowledgeRetention + TurnConsistency catch the
+common failure modes: drifting off-topic, forgetting earlier facts,
+contradicting an earlier response.
+
+Needs ANTHROPIC_API_KEY or OPENAI_API_KEY.
+"""
+from __future__ import annotations
+
+import os
+import sys
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
+from multivon_eval import (
+    EvalSuite, EvalCase, JudgeConfig, configure,
+    ConversationRelevance, KnowledgeRetention, TurnConsistency,
+)
+
+
+def _auto_judge() -> JudgeConfig:
+    if os.getenv("ANTHROPIC_API_KEY", "").startswith("sk-ant-") and \\
+       "..." not in os.getenv("ANTHROPIC_API_KEY", ""):
+        return JudgeConfig(provider="anthropic", model="claude-haiku-4-5", temperature=0.0)
+    return JudgeConfig(provider="openai", model="gpt-4o-mini", temperature=0.0)
+
+
+configure(_auto_judge())
+
+
+# A realistic multi-turn case. The ``conversation`` field is the
+# history; ``input`` is the final user turn; the model output is the
+# assistant's response. Evaluators inspect the FULL conversation.
+cases = [
+    EvalCase(
+        input="Will it ship by Friday?",
+        conversation=[
+            {"role": "user", "content": "I ordered SKU-12 yesterday — order O-451."},
+            {"role": "assistant", "content": "I see order O-451 with SKU-12. Standard shipping takes 3-5 business days."},
+            {"role": "user", "content": "Will it ship by Friday?"},
+        ],
+        tags=["shipping"],
+    ),
+    EvalCase(
+        input="So I should return the broken one and you'll refund the second?",
+        conversation=[
+            {"role": "user", "content": "My headphones (order O-789) broke after one week."},
+            {"role": "assistant", "content": "Sorry to hear that. We can either replace order O-789 free of charge or refund you."},
+            {"role": "user", "content": "Send a replacement please."},
+            {"role": "assistant", "content": "Got it — replacement for O-789 is on its way; tracking will arrive in your inbox."},
+            {"role": "user", "content": "So I should return the broken one and you'll refund the second?"},
+        ],
+        tags=["returns"],
+    ),
+]
+
+
+# Stub model — replace with your real chatbot. The signature is still
+# str → str (the latest user turn); evaluators see the full conversation
+# via case.conversation.
+def chatbot(latest_user_turn: str) -> str:
+    if "ship by friday" in latest_user_turn.lower():
+        return (
+            "Standard shipping is 3-5 business days from yesterday, so "
+            "your order O-451 should arrive by Friday."
+        )
+    if "return the broken" in latest_user_turn.lower():
+        return (
+            "No — keep the broken pair; you'll have it picked up by our "
+            "carrier. We're sending a replacement (no refund) for O-789."
+        )
+    return "Could you clarify what you'd like me to help with?"
+
+
+suite = EvalSuite("conversation-eval")
+suite.add_cases(cases)
+suite.add_evaluators(
+    ConversationRelevance(),
+    KnowledgeRetention(),
+    TurnConsistency(),
+)
+
+
+if __name__ == "__main__":
+    report = suite.run(chatbot, fail_threshold=0.7)
+
+    try:
+        report.assert_budget(
+            max_total_cost_usd=0.10,
+            max_avg_cost_per_case_usd=0.05,
+        )
+    except SystemExit as exc:
+        print(f"\\n[BUDGET GATE FAILED] {exc}", file=sys.stderr)
+        raise
+
+    os.makedirs("eval-reports", exist_ok=True)
+    report.save_json("eval-reports/conversation.json")
+'''
+
+_CONVERSATION_README = """\
+# multivon-eval — Conversation template
+
+Multi-turn dialogue eval with `ConversationRelevance`, `KnowledgeRetention`, and `TurnConsistency`.
+
+## 3-command flow
+
+```bash
+pip install -r requirements.txt
+cp .env.example .env   # add ANTHROPIC_API_KEY or OPENAI_API_KEY
+python eval.py
+```
+
+## What this template demonstrates
+
+- **Multi-turn `EvalCase`** — the `conversation` field carries the dialogue history (`[{"role": "user|assistant", "content": "..."}]`). Evaluators inspect the whole transcript, not just the last response.
+- **Three conversation evaluators:**
+  - `ConversationRelevance` flags responses that ignore the prior context.
+  - `KnowledgeRetention` catches forgetting facts established earlier (the order ID, the customer's choice).
+  - `TurnConsistency` flags self-contradictions across turns.
+- **Budget gate** — same `report.assert_budget(...)` pattern as the other templates.
+
+## Next steps
+
+- Swap `chatbot()` for your real implementation. The signature stays `str → str` (the latest user turn); evaluators see the full conversation via `case.conversation`.
+- Add `ConversationCompleteness` to assert the user's overall goal was addressed by the end of the dialogue.
+- For more elaborate scenarios: `multivon-eval simulate_users` (programmatic synthetic dialogues).
+"""
+
+
 TEMPLATES: dict[str, dict[str, str]] = {
     "quickstart": {
         "eval.py": _QUICKSTART_EVAL,
@@ -595,6 +731,13 @@ TEMPLATES: dict[str, dict[str, str]] = {
         ".env.example": _DOTENV_EXAMPLE,
         ".gitignore": _GITIGNORE,
     },
+    "conversation": {
+        "eval.py": _CONVERSATION_EVAL,
+        "README.md": _CONVERSATION_README,
+        "requirements.txt": _requirements(),
+        ".env.example": _DOTENV_EXAMPLE,
+        ".gitignore": _GITIGNORE,
+    },
     "regulated": {
         "eval.py": _REGULATED_EVAL,
         "README.md": _REGULATED_README,
@@ -607,7 +750,7 @@ TEMPLATES: dict[str, dict[str, str]] = {
 
 def list_templates() -> list[str]:
     """Return the available template names in display order."""
-    return ["quickstart", "rag", "agent", "regulated"]
+    return ["quickstart", "rag", "agent", "conversation", "regulated"]
 
 
 def render(template: str, *, with_ci: str | None = None) -> dict[str, str]:
