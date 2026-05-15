@@ -97,9 +97,12 @@ def test_pill_skipped_uses_skipped_class():
 
 
 def test_pill_flaky_takes_precedence_over_quality_outcome():
-    """A flaky case is more actionable than its final majority-vote
-    outcome — show the FLAKY badge regardless of whether the majority
-    passed or failed."""
+    """A flaky case is more actionable than the quality-outcome it
+    would otherwise carry. Because :class:`CaseResult.passed` requires
+    ``pass_count == runs``, any flaky case is ``FAILED_QUALITY`` at
+    the status level — but the pill should still surface FLAKY, not
+    FAIL, so the reader sees the inconsistency rather than a stale
+    one-shot verdict."""
     cr = _make_case(
         results=[EvalResult("e", 1.0, True)],
         runs=5,
@@ -107,9 +110,10 @@ def test_pill_flaky_takes_precedence_over_quality_outcome():
     )
     html = _status_pill(cr)
     assert ">FLAKY<" in html
-    # Not classified as a passing case visually even though majority-vote
-    # is "passed=True" on the aggregate per-evaluator row.
+    # Despite the per-evaluator EvalResult carrying passed=True, the
+    # pill must not render as PASS — flaky dominates the quality outcome.
     assert "pill pass" not in html
+    assert ">FAIL<" not in html
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -191,16 +195,21 @@ def test_pill_infra_error_dominates_flaky_in_multirun():
     assert cr.status == EvalStatus.JUDGE_ERROR
 
 
-def test_pill_flaky_still_wins_over_pass_when_no_errors():
-    """Flakiness still dominates pass/fail in the absence of an error,
-    because a passing-on-average flaky case is the actionable signal."""
+def test_pill_flaky_with_majority_pass_count_still_renders_flaky():
+    """Even when the run majority passed (pass_count=3/5), the case is
+    still flaky and the pill must say FLAKY in the absence of an error.
+    Codex round-3 noted that a flaky case can never be ``PASSED`` at the
+    CaseResult level (that requires ``pass_count == runs``), so this
+    is really 'flaky dominates the majority-pass quality outcome', which
+    is what is actually being verified here."""
     cr = _make_case(
         results=[EvalResult("e", 1.0, True)],
         runs=5,
-        pass_count=3,   # majority pass, but not consistent
+        pass_count=3,   # majority pass, but not consistent — still flaky
     )
     html = _status_pill(cr)
     assert ">FLAKY<" in html
+    assert "pill pass" not in html
 
 
 def test_pill_has_aria_label_for_screen_readers():
