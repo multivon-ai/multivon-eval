@@ -31,7 +31,9 @@ _CSS = """
   --accent-lt: #a78bfa;
   --green:     #22c55e;
   --yellow:    #f59e0b;
+  --orange:    #fb923c;   /* infra errors — distinct from quality failures */
   --red:       #ef4444;
+  --slate:     #94a3b8;   /* skipped cases — neutral, not a failure */
   --radius:    10px;
 }
 
@@ -155,9 +157,14 @@ tr.case-row:hover td { background: rgba(255,255,255,0.025); }
   font-weight: 600;
   letter-spacing: .04em;
 }
-.pill.pass  { background: rgba(34,197,94,.15);  color: var(--green); }
-.pill.fail  { background: rgba(239,68,68,.15);  color: var(--red); }
-.pill.flaky { background: rgba(245,158,11,.15); color: var(--yellow); }
+.pill.pass    { background: rgba(34,197,94,.15);  color: var(--green); }
+.pill.fail    { background: rgba(239,68,68,.15);  color: var(--red); }
+.pill.flaky   { background: rgba(245,158,11,.15); color: var(--yellow); }
+/* 0.7.0 — infra errors are NOT quality failures; distinct color so the
+   reader doesn't confuse a transient outage with a model regression. */
+.pill.error   { background: rgba(251,146,60,.18); color: var(--orange); }
+.pill.skipped { background: rgba(148,163,184,.18); color: var(--slate); }
+.pill[title]  { cursor: help; border-bottom: 1px dotted currentColor; }
 
 /* ── Detail rows ─────────────────────────────────────────── */
 tr.detail-row td {
@@ -271,11 +278,42 @@ def _score_class(score: float) -> str:
 
 
 def _status_pill(cr: "CaseResult") -> str:
+    """Render a status badge for one case.
+
+    Surfaces the 0.7.0 EvalStatus enum so a reader sees at a glance
+    whether a case PASSED, failed on QUALITY (a real model regression
+    to investigate), errored on infrastructure (judge outage, model
+    crash — retry-class, not a quality issue), or was deliberately
+    skipped. Flakiness is its own badge regardless of status because
+    it's a property of the multi-run dimension, not the run outcome.
+    """
+    from ..result import EvalStatus
+
+    # Flakiness takes the slot for cases that completed evaluation but
+    # were inconsistent across runs. Surface BEFORE the status so it's
+    # the dominant signal — a flaky case is more actionable than its
+    # final majority-vote outcome.
     if cr.is_flaky:
-        return '<span class="pill flaky">FLAKY</span>'
-    if cr.passed:
+        return '<span class="pill flaky" title="Case passed inconsistently across runs">FLAKY</span>'
+
+    status = cr.status
+    if status == EvalStatus.PASSED:
         return '<span class="pill pass">PASS</span>'
-    return '<span class="pill fail">FAIL</span>'
+    if status == EvalStatus.FAILED_QUALITY:
+        return '<span class="pill fail">FAIL</span>'
+    if status == EvalStatus.SKIPPED:
+        return '<span class="pill skipped" title="Case was deliberately skipped">SKIPPED</span>'
+    # All remaining values are error statuses — show the specific kind
+    # in the badge text (MODEL ERR / JUDGE ERR / EVAL ERR / TIMEOUT) so
+    # the reader knows which subsystem to investigate.
+    label_map = {
+        EvalStatus.MODEL_ERROR: ("MODEL ERR", "Your model_fn raised — not a quality issue"),
+        EvalStatus.JUDGE_ERROR: ("JUDGE ERR", "Judge call failed (transient/auth) — not a quality issue"),
+        EvalStatus.EVALUATOR_ERROR: ("EVAL ERR", "An evaluator itself crashed — likely a bug to file"),
+        EvalStatus.TIMEOUT: ("TIMEOUT", "Case timed out"),
+    }
+    label, tooltip = label_map.get(status, (status.value.upper(), "infrastructure error"))
+    return f'<span class="pill error" title="{_h(tooltip)}">{label}</span>'
 
 
 def _h(text: str) -> str:
@@ -322,6 +360,19 @@ def to_html(report: "EvalReport") -> str:
         card(pr_pct, "Pass Rate", pr_cls),
         card(avg, "Avg Score", f"c-accent score {avg_cls}"),
     ]
+    # 0.7.0 — surface infrastructure errors as a separate count whenever
+    # any are present, so readers can't conflate them with quality
+    # failures. Tooltip explains how the count maps to status kinds.
+    if report.errors:
+        kinds = ", ".join(f"{n} {k.replace('_', ' ')}" for k, n in report.errors_by_kind.items())
+        tooltip = f"Infrastructure failures (not quality): {kinds}"
+        cards.append(
+            f'<div class="card c-warn" title="{_h(tooltip)}">'
+            f'<span class="val">{report.errors}</span>'
+            f'<span class="lbl">Errors</span></div>'
+        )
+    if report.skipped:
+        cards.append(card(str(report.skipped), "Skipped"))
     if multi_run:
         stab_cls = "c-pass" if report.stability_score >= 0.9 else "c-warn" if report.stability_score >= 0.7 else "c-fail"
         cards.append(card(f"{report.stability_score:.0%}", "Stability", stab_cls))
