@@ -80,6 +80,12 @@ class CalibrationTable:
     generated_at: str
     methodology: str
     entries: list[CalibrationEntry]
+    # The label this table was loaded under ("v1", "v2", …). Critical for
+    # audit-package replay: the audit log records this label so the package
+    # bundles the matching JSON file, not whatever happens to be the default
+    # when the package is built. Empty string for tables built without a
+    # label (e.g. constructed directly in tests).
+    version_label: str = ""
 
     def lookup(self, evaluator: str, judge_model: str) -> CalibrationEntry | None:
         for entry in self.entries:
@@ -194,8 +200,21 @@ def load_calibration(reload: bool = False, *, version: str | None = None) -> Cal
     cached = _TABLE_CACHE.get(label)
     if cached is not None:
         return cached
-    _TABLE_CACHE[label] = _parse_table(_read_data_file(f"{label}.json"))
+    parsed = _parse_table(_read_data_file(f"{label}.json"))
+    parsed.version_label = label
+    _TABLE_CACHE[label] = parsed
     return _TABLE_CACHE[label]
+
+
+def effective_calibration_version(*, version: str | None = None) -> str:
+    """Return the label that would be loaded for ``version`` (or the
+    default if ``None``). Cheap; loads the table to honor the cache.
+
+    Used by the lockfile fingerprint and the audit-package builder so
+    "which calibration drove these decisions" is recorded explicitly
+    rather than inferred from a dataset hash.
+    """
+    return load_calibration(version=version).version_label
 
 
 def calibrated_threshold(

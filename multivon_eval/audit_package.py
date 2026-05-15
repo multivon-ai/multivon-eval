@@ -65,25 +65,76 @@ def _read_audit_log(logs_dir: Path, suite_name: str) -> bytes:
     return log_path.read_bytes()
 
 
-def _read_calibration_data() -> tuple[str, bytes]:
-    """Return (version_label, raw JSON) for the calibration table actually in use.
+def _read_calibration_data(label: str | None = None) -> tuple[str, bytes]:
+    """Return ``(version_label, raw JSON)`` for the calibration table to bundle.
 
-    Prefers v2 (the current shipped table) and falls back to v1 — matching
-    the loader precedence in :mod:`multivon_eval.calibration`. Returning the
-    version label lets the caller name the bundled file appropriately so an
-    auditor sees which calibration drove the evaluator decisions.
+    If ``label`` is given (typically extracted from the audit log's
+    provenance block), reads that exact version. Otherwise falls back to
+    the loader's default preference order (v2 → v1) — matches
+    :mod:`multivon_eval.calibration`.
+
+    Pinning to the version recorded in the log is critical for replay:
+    bundling a different calibration than the one that drove the
+    threshold decisions would mean the f1/dataset_hash numbers in the
+    package don't match the audit's decisions. A regulator running the
+    verifier would get a green light even though the evidence is
+    technically inconsistent.
     """
     from importlib import resources
     pkg = resources.files("multivon_eval._calibration_data")
-    for version in ("v2", "v1"):
+    candidates = [label] if label else ["v2", "v1"]
+    for version in candidates:
+        if not version:
+            continue
         try:
             data = pkg.joinpath(f"{version}.json").read_bytes()
             return version, data
         except FileNotFoundError:
             continue
+    if label:
+        raise FileNotFoundError(
+            f"Calibration version {label!r} requested by the audit log is not shipped "
+            f"with the installed multivon-eval. Install the version that produced these "
+            f"records, or rebuild the audit log against a shipped calibration."
+        )
     raise FileNotFoundError(
         "No calibration data shipped with multivon_eval (looked for v2.json, v1.json)"
     )
+
+
+def _calibration_version_from_log(log_bytes: bytes) -> str | None:
+    """Extract the calibration version label from the FIRST audit record's
+    ``provenance.suite_lock.evaluators[*].calibration.version`` field.
+
+    Returns ``None`` if:
+      - the log has no records,
+      - the first record predates 0.7.0 provenance (legacy),
+      - the suite_lock is absent / serialization failed,
+      - no evaluator has a calibration entry with a ``version`` key.
+
+    The first-record convention is fine because suite_lock is stable
+    within a session; if a user mid-stream switches calibration versions
+    they should be writing to a fresh log file anyway.
+    """
+    for raw in log_bytes.splitlines():
+        raw = raw.strip()
+        if not raw:
+            continue
+        try:
+            rec = json.loads(raw)
+        except (ValueError, TypeError):
+            continue
+        prov = rec.get("provenance") or {}
+        lock = prov.get("suite_lock") or {}
+        if not isinstance(lock, dict):
+            return None
+        for ev in lock.get("evaluators", []) or []:
+            cal = (ev or {}).get("calibration") or {}
+            ver = cal.get("version")
+            if isinstance(ver, str) and ver:
+                return ver
+        return None
+    return None
 
 
 def _verifier_script() -> bytes:
@@ -260,7 +311,12 @@ def build_audit_package(
 
     # ── gather files in memory so we can hash them deterministically ──
     audit_log = _read_audit_log(logs_dir, suite_name)
-    calibration_version, calibration_json = _read_calibration_data()
+    # Prefer the calibration version recorded in the log itself — that's
+    # the version the decisions were actually made against. Fall back to
+    # the shipped default only when the log doesn't say (legacy records
+    # without provenance, or evaluators without calibration).
+    logged_version = _calibration_version_from_log(audit_log)
+    calibration_version, calibration_json = _read_calibration_data(logged_version)
     calibration_filename = f"calibration_{calibration_version}.json"
     coverage_md = _coverage_report_for(framework, suite_name).encode("utf-8")
     verifier_py = _verifier_script()
@@ -290,6 +346,12 @@ def build_audit_package(
         "period": period_label,
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "audit_log": "audit_log.ndjson",
+        # Recorded explicitly so the verifier can confirm the bundled
+        # calibration JSON matches the version recorded in the log's
+        # provenance block. "logged" means we read it from the audit log;
+        # "default" means we fell back because the log didn't specify.
+        "calibration_version": calibration_version,
+        "calibration_source": "logged" if logged_version else "default",
         "files": [
             {"path": name, "sha256": _sha256_bytes(blob), "bytes": len(blob)}
             for name, blob in sorted(files.items())

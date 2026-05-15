@@ -249,10 +249,15 @@ def _evaluator_calibration_fingerprint(evaluator: "Evaluator") -> dict[str, Any]
     if judge is None or not getattr(judge, "model", ""):
         return None
     try:
-        from .calibration import calibration_provenance
+        from .calibration import calibration_provenance, effective_calibration_version
         entry = calibration_provenance(getattr(evaluator, "name", ""), judge)
         if entry is None:
             return None
+        # version_label is recorded so the audit-package builder can pull
+        # the EXACT calibration JSON the audit was decided against — not
+        # whatever the default is when the package is built. Critical
+        # when MULTIVON_CALIBRATION_VERSION is in play, or after a
+        # forthcoming v3 ships and the default shifts.
         return {
             "dataset": entry.dataset,
             "dataset_hash": entry.dataset_hash,
@@ -260,6 +265,7 @@ def _evaluator_calibration_fingerprint(evaluator: "Evaluator") -> dict[str, Any]
             "f1": entry.f1,
             "measured_at": entry.measured_at,
             "threshold": entry.threshold,
+            "version": effective_calibration_version(),
         }
     except Exception:
         return None
