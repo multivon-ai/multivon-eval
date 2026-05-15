@@ -35,20 +35,39 @@ def _trace_str(trace: list[AgentStep]) -> str:
 
 class ToolCallAccuracy(Evaluator):
     """
-    Evaluates whether the agent called the right tools in the right order.
+    Evaluates whether the agent called the right tools.
 
     Checks:
     - Were all expected tools called?
-    - Were they called in the correct order (if order matters)?
+    - Were they called in the correct order (if ``require_order``)?
     - Were any unexpected tools called?
+
+    Scoring (codex D16 cycle 5 finding):
+
+      - ``penalize_unexpected=False`` (default, backward-compat): score
+        is the fraction of expected tools called; unexpected tools are
+        reported but don't drop the score. This lets a case assert
+        "the agent must call lookup_order" without forbidding other
+        tools.
+      - ``penalize_unexpected=True``: score = matched / (expected ∪ unexpected).
+        Every unexpected tool drags the score down. Use this for
+        negative cases like "the agent must NOT call refund_order
+        on an already-refunded order."
 
     Requires case.agent_trace and case.expected_tool_calls.
     """
     name = "tool_call_accuracy"
 
-    def __init__(self, require_order: bool = False, threshold: float = 0.7):
+    def __init__(
+        self,
+        require_order: bool = False,
+        threshold: float = 0.7,
+        *,
+        penalize_unexpected: bool = False,
+    ):
         super().__init__(threshold)
         self.require_order = require_order
+        self.penalize_unexpected = penalize_unexpected
 
     def evaluate(self, case: EvalCase, output: str) -> EvalResult:
         if not case.agent_trace:
@@ -78,11 +97,25 @@ class ToolCallAccuracy(Evaluator):
             missing = list(expected_set - called_set)
             unexpected = list(called_set - expected_set)
 
+        # Strict mode: penalize every unexpected tool by recomputing
+        # score = matched / (expected ∪ unexpected). Lets negative
+        # cases like "agent must NOT call refund_order" actually fail.
+        if self.penalize_unexpected and unexpected:
+            denom = len(set(expected) | set(actual_calls))
+            if denom > 0:
+                # Count matches the same way each branch does above.
+                if self.require_order:
+                    score = matches / denom
+                else:
+                    score = len(matched) / denom
+
         reasons = [f"Called: {actual_calls}", f"Expected: {expected}"]
         if missing:
             reasons.append(f"Missing tools: {missing}")
         if unexpected:
             reasons.append(f"Unexpected tools: {unexpected}")
+        if self.penalize_unexpected:
+            reasons.append("(strict mode: unexpected tools penalized)")
 
         return self._result(score, "\n".join(reasons))
 

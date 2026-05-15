@@ -83,6 +83,46 @@ class TestToolCallAccuracy:
         assert not result.passed
         assert result.score == 0.0
 
+    # ── Codex D16 cycle 5 ISSUE 1: penalize_unexpected ─────────────
+
+    def test_default_mode_does_not_penalize_extra_tools(self):
+        """Default behavior (back-compat): if the expected tool is
+        called AND extras are called too, score is still 1.0 because
+        the case asserted what MUST be called, not what mustn't."""
+        steps = [AgentStep(tool_calls=[
+            ToolCall(name="lookup_order"),
+            ToolCall(name="refund_order"),
+        ])]
+        case = make_case(steps=steps, expected_tool_calls=["lookup_order"])
+        result = ToolCallAccuracy().evaluate(case, "done")
+        assert result.score == 1.0
+        # Unexpected is REPORTED, just not penalized.
+        assert "Unexpected tools" in result.reason
+        assert "refund_order" in result.reason
+
+    def test_strict_mode_penalizes_unexpected_tools(self):
+        """penalize_unexpected=True drops the score when the agent
+        called extras. This is what the framework templates'
+        negative cases ("don't refund a processing order") need."""
+        steps = [AgentStep(tool_calls=[
+            ToolCall(name="lookup_order"),
+            ToolCall(name="refund_order"),
+        ])]
+        case = make_case(steps=steps, expected_tool_calls=["lookup_order"])
+        result = ToolCallAccuracy(penalize_unexpected=True).evaluate(case, "done")
+        # matched=1 (lookup), denom=2 (lookup ∪ refund) → 0.5
+        assert result.score == 0.5
+        assert not result.passed
+        assert "strict mode" in result.reason.lower()
+
+    def test_strict_mode_unchanged_when_no_extras(self):
+        """If only the expected tools fired, strict mode == default."""
+        steps = [AgentStep(tool_calls=[ToolCall(name="lookup_order")])]
+        case = make_case(steps=steps, expected_tool_calls=["lookup_order"])
+        result = ToolCallAccuracy(penalize_unexpected=True).evaluate(case, "done")
+        assert result.score == 1.0
+        assert result.passed
+
 
 class TestToolArgumentAccuracy:
     @patch("multivon_eval.evaluators.agent._judge_call", side_effect=["Yes", "Yes"])

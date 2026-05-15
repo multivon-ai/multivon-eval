@@ -165,23 +165,43 @@ class OpenAIAgentsTracer(AgentTracer):
             async def on_tool_start(
                 self, context: Any, agent: Any, tool: Any,
             ) -> None:  # type: ignore[override]
-                # Some SDK versions surface args here as a serialized
-                # JSON string on the tool object. Capture pre-emptively.
-                args = _extract_tool_args(tool, context)
-                name = getattr(tool, "name", None) or getattr(tool, "__name__", "tool")
-                key = getattr(tool, "call_id", None) or id(tool)
+                # Codex D16 cycle 5 finding: prefer the SDK's
+                # context.tool_call_id / tool_name / tool_arguments
+                # over id(tool). Two parallel calls to the SAME tool
+                # would share id() but have distinct tool_call_ids.
+                call_id = (
+                    _attr_or_key(context, "tool_call_id")
+                    or getattr(tool, "call_id", None)
+                )
+                name = (
+                    _attr_or_key(context, "tool_name")
+                    or getattr(tool, "name", None)
+                    or getattr(tool, "__name__", "tool")
+                )
+                args_raw = _attr_or_key(context, "tool_arguments")
+                args = _coerce_args(args_raw) if args_raw else _extract_tool_args(tool, context)
+                key = call_id or id(tool)
                 self._pending[key] = ToolCall(name=str(name), arguments=args)
 
             async def on_tool_end(
                 self, context: Any, agent: Any, tool: Any, result: Any,
             ) -> None:  # type: ignore[override]
-                key = getattr(tool, "call_id", None) or id(tool)
+                call_id = (
+                    _attr_or_key(context, "tool_call_id")
+                    or getattr(tool, "call_id", None)
+                )
+                key = call_id or id(tool)
                 tool_call = self._pending.pop(key, None)
                 if tool_call is None:
-                    name = getattr(tool, "name", None) or getattr(tool, "__name__", "tool")
+                    name = (
+                        _attr_or_key(context, "tool_name")
+                        or getattr(tool, "name", None)
+                        or getattr(tool, "__name__", "tool")
+                    )
+                    args_raw = _attr_or_key(context, "tool_arguments")
                     tool_call = ToolCall(
                         name=str(name),
-                        arguments=_extract_tool_args(tool, context),
+                        arguments=_coerce_args(args_raw) if args_raw else _extract_tool_args(tool, context),
                     )
                 tool_call.result = _stringify(result)
                 if not self.steps:
@@ -196,20 +216,51 @@ class OpenAIAgentsTracer(AgentTracer):
 
     def merge(self, hooks: Any) -> None:
         """Fold a live ``run_hooks()`` instance's private buffer into
-        this tracer's trace.
+        this tracer's trace, then clear the buffer.
 
-        Call after ``Runner.run(...)`` completes. Idempotent on the
-        same hooks (the buffer is cleared by the SDK after the run).
+        Idempotent: a second merge of the same hooks is a no-op
+        because the first call clears ``hooks.steps``. Codex D16
+        cycle 5 finding — without the clear, two ``merge`` calls
+        duplicated the trace.
         """
         buffered = getattr(hooks, "steps", None)
-        if buffered:
-            self._steps.extend(buffered)
+        if not buffered:
+            return
+        self._steps.extend(buffered)
+        # Clear so a second merge is a no-op. We assign to the
+        # attribute rather than mutating in place — the caller may
+        # still hold a reference to the OLD list and check it
+        # separately.
+        try:
+            hooks.steps = []
+        except (AttributeError, TypeError):
+            # Read-only hook implementation — best effort.
+            pass
 
 
 # ── helpers (module-level for testability) ─────────────────────────────
 
 
 _MESSAGE_LIKE = frozenset({"MessageOutputItem", "ReasoningItem"})
+
+# Known SDK item types we don't fully model yet but want to PRESERVE
+# as visible markers rather than silently drop. Codex D16 cycle 5
+# finding: the SDK ships ToolSearchCallItem / ToolSearchOutputItem /
+# ToolApprovalItem / MCPApprovalRequestItem / etc., and an eval that
+# silently ignored them would mask real agent behavior.
+_KNOWN_UNHANDLED = frozenset({
+    "ToolSearchCallItem",
+    "ToolSearchOutputItem",
+    "ToolApprovalItem",
+    "MCPApprovalRequestItem",
+    "MCPApprovalResponseItem",
+    "MCPListToolsItem",
+    "ComputerCallItem",
+    "ComputerCallOutputItem",
+    "CodeInterpreterCallItem",
+    "ImageGenerationCallItem",
+    "LocalShellCallItem",
+})
 
 
 def _items_to_steps(items: list[Any]) -> list[AgentStep]:
@@ -248,16 +299,16 @@ def _items_to_steps(items: list[Any]) -> list[AgentStep]:
         cls = type(item).__name__
         if cls in _MESSAGE_LIKE:
             text = _extract_item_text(item)
-            # Open a NEW step ONLY if the previous item was a tool
-            # boundary (call/output) — otherwise this is the same turn
-            # and we append/concat. Adjacent reasoning+message within
-            # one turn merge into one step.
-            if last_kind in (None, "ToolCallOutputItem", "ToolCallItem",
-                             "HandoffCallItem", "HandoffOutputItem"):
+            # Open a NEW step UNLESS the previous item was ALSO
+            # message-like (reasoning+message in the same turn merges
+            # into one step). Anything else — tool calls, handoffs,
+            # known-unhandled items, truly unknown items — is a turn
+            # boundary.
+            if last_kind in _MESSAGE_LIKE and steps:
+                step = steps[-1]
+            else:
                 step = AgentStep()
                 steps.append(step)
-            else:
-                step = steps[-1]
             # Concat text fields when appending to an existing step.
             joined = (step.thought + " " + text).strip() if step.thought else text
             step.thought = joined
@@ -290,6 +341,16 @@ def _items_to_steps(items: list[Any]) -> list[AgentStep]:
         elif cls in ("HandoffCallItem", "HandoffOutputItem"):
             step = _current()
             step.output = (step.output or "") + f"\n[handoff: {cls}]"
+        elif cls in _KNOWN_UNHANDLED:
+            # Preserve as a marker so a reviewer can see something
+            # happened, instead of silently dropping the item.
+            # Tracked as future v2 work.
+            step = _current()
+            step.output = (step.output or "") + f"\n[{cls}]"
+        # Truly unknown classes (custom subclasses, future SDK types
+        # we haven't catalogued) ARE silently skipped — the alternative
+        # is noisy markers in every trace. Codex cycle 5 documented
+        # the trade-off.
         last_kind = cls
 
     # Any orphan outputs that never matched a call become synthetic
@@ -445,6 +506,31 @@ def _extract_response_text(response: Any) -> str:
         if parts:
             return " ".join(parts).strip()
     return ""
+
+
+def _coerce_args(args_raw: Any) -> dict[str, Any]:
+    """Coerce a tool's argument blob (JSON string or dict) to a dict.
+
+    The SDK's hook context typically surfaces ``tool_arguments`` as a
+    JSON string; some shapes already pre-parse to a dict."""
+    import json
+    if args_raw is None:
+        return {}
+    if isinstance(args_raw, dict):
+        return args_raw
+    if isinstance(args_raw, str):
+        s = args_raw.strip()
+        if not s:
+            return {}
+        if s.startswith("{") and s.endswith("}"):
+            try:
+                parsed = json.loads(s)
+                if isinstance(parsed, dict):
+                    return parsed
+            except (ValueError, TypeError):
+                pass
+        return {"input": args_raw}
+    return {"input": str(args_raw)}
 
 
 def _extract_tool_args(tool: Any, context: Any) -> dict[str, Any]:

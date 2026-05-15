@@ -973,7 +973,11 @@ cases = [
 
 suite = EvalSuite("langgraph-support-agent")
 suite.add_cases(cases)
-suite.add_evaluator(ToolCallAccuracy())
+# ``penalize_unexpected=True`` makes the negative cases (e.g. already
+# refunded, processing) actually fail when the agent calls refund_order
+# anyway. Without it, ToolCallAccuracy only checks "did the expected
+# tools fire" and ignores extras — a real false-positive risk.
+suite.add_evaluator(ToolCallAccuracy(penalize_unexpected=True))
 
 
 if __name__ == "__main__":
@@ -1206,7 +1210,11 @@ cases = [
 
 suite = EvalSuite("openai-agents-support")
 suite.add_cases(cases)
-suite.add_evaluator(ToolCallAccuracy())
+# ``penalize_unexpected=True`` makes the negative cases (already
+# refunded, processing) actually fail when the agent calls refund_order
+# anyway. Without it, an over-eager agent could refund both
+# already-refunded AND processing orders and still score 100%.
+suite.add_evaluator(ToolCallAccuracy(penalize_unexpected=True))
 
 
 if __name__ == "__main__":

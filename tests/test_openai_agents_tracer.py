@@ -222,22 +222,29 @@ def test_orphan_output_with_no_matching_call_becomes_synthetic_at_end():
     assert found[0].result == "orphan"
 
 
-def test_other_item_types_are_skipped_silently():
-    """Unrecognized item types (e.g. RawResponsesStreamEvent) don't
-    crash the parser AND don't break turn-merging. Strengthened from
-    codex D16 cycle 4 — must assert exact step count + merge, not
-    just that thoughts are non-empty."""
+def test_other_item_types_are_skipped_silently_but_act_as_turn_boundary():
+    """Truly unknown item types (custom subclasses, undocumented SDK
+    types we haven't catalogued) don't crash and don't appear in the
+    output. They DO act as turn boundaries — a subsequent message
+    starts a new step rather than merging — because an unknown event
+    might be a turn separator we just don't recognize. Codex D16
+    cycle 5 raised this precise design question and we picked
+    'unknown = turn boundary' over 'unknown = ignored'."""
     class _Unknown(SimpleNamespace): pass
     items = [
         _msg("hi"),
-        _Unknown(),                  # silently skipped
-        _msg("bye"),                 # same turn (no tool between)
+        _Unknown(),                  # silently skipped, BUT closes turn
+        _msg("bye"),                 # NEW step
     ]
     steps = _items_to_steps(items)
-    assert len(steps) == 1, (
-        f"expected ONE merged step (unknowns don't break the turn), got {len(steps)}"
+    assert len(steps) == 2, (
+        f"unknown items must act as turn boundaries, got {len(steps)}"
     )
-    assert "hi" in steps[0].thought and "bye" in steps[0].thought
+    assert "hi" in steps[0].thought
+    assert "bye" in steps[1].thought
+    # And the unknown itself does NOT leak into the trace text.
+    flat = " ".join(s.thought + " " + (s.output or "") for s in steps)
+    assert "_Unknown" not in flat
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -262,6 +269,59 @@ def test_reasoning_item_with_real_sdk_shape_summary():
     assert "Step 1: think." in steps[0].thought
     assert "Step 2: respond." in steps[0].thought
     assert "Done thinking." in steps[0].thought
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Codex D16 cycle 5 — adversarial findings
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_known_unhandled_items_preserved_as_markers():
+    """Codex cycle 5 ISSUE 2: known SDK item classes like
+    ``ToolSearchCallItem`` / ``ToolApprovalItem`` / MCP items shouldn't
+    silently disappear from the trace. They're marked in step.output
+    until the parser learns to model them fully."""
+    class ToolApprovalItem(SimpleNamespace): pass
+    class ToolSearchCallItem(SimpleNamespace): pass
+    items = [
+        _msg("Looking things up."),
+        ToolSearchCallItem(),
+        _msg("Found it."),
+        ToolApprovalItem(),
+    ]
+    steps = _items_to_steps(items)
+    # Step 1 has the search marker; final step has the approval marker.
+    flat_output = " ".join(s.output or "" for s in steps)
+    assert "ToolSearchCallItem" in flat_output
+    assert "ToolApprovalItem" in flat_output
+
+
+def test_merge_is_idempotent():
+    """Codex cycle 5 ISSUE 4: merge() must clear hooks.steps so a
+    second call is a no-op, instead of duplicating the trace."""
+    pytest.importorskip("agents")
+    tracer = OpenAIAgentsTracer()
+    hooks = tracer.run_hooks()
+    hooks.steps.append(AgentStep(thought="once"))
+    tracer.merge(hooks)
+    assert len(tracer.get_trace()) == 1
+    # Second merge of the same hooks → still 1, not 2.
+    tracer.merge(hooks)
+    assert len(tracer.get_trace()) == 1, (
+        "merge() duplicated trace on second call — must clear hooks.steps"
+    )
+
+
+def test_coerce_args_handles_json_dict_and_garbage():
+    """Codex cycle 5 ISSUE 3: the new _coerce_args helper underlies
+    RunHooks args extraction. It must handle JSON strings, plain
+    strings, dicts, and None."""
+    from multivon_eval.integrations.openai_agents import _coerce_args
+    assert _coerce_args('{"a": 1}') == {"a": 1}
+    assert _coerce_args({"a": 1}) == {"a": 1}
+    assert _coerce_args(None) == {}
+    assert _coerce_args("") == {}
+    assert _coerce_args("not json") == {"input": "not json"}
+    assert _coerce_args(42) == {"input": "42"}
 
 
 def test_tool_call_with_dict_shaped_raw_item():
