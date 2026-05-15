@@ -1322,15 +1322,25 @@ class EvalSuite:
 
 
 def _safe_lock(suite: "EvalSuite") -> "Any":
-    """Compute the suite's SuiteLock; swallow any failure.
+    """Compute the suite's SuiteLock; swallow most failures.
 
     Used inside the suite.run hot path to attach reproducibility metadata
     to the report without ever letting the lockfile machinery crash a
     successful eval run. If fingerprinting fails for any reason, we'd
     rather ship a report without a lock than no report at all.
+
+    Exception: ``FileNotFoundError`` from an unshipped calibration
+    version (``MULTIVON_CALIBRATION_VERSION=v_unshipped``) is re-raised.
+    Silently degrading there would defeat the whole point of pinning —
+    the user thinks they're pinned to a known version, but the audit
+    log would record no version and audit-package would fall back to
+    the shipped default. Better to fail loudly at run time so the user
+    fixes the config. Codex D12 round-2 finding.
     """
     try:
         return suite.lock()
+    except FileNotFoundError:
+        raise
     except Exception:
         return None
 
