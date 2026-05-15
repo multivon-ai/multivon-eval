@@ -371,6 +371,27 @@ def test_audit_package_uses_suite_level_version_over_per_evaluator(tmp_path):
 # fingerprint → suite_lock → record flow. Cover it for real.
 # ─────────────────────────────────────────────────────────────────────────────
 
+def test_suite_run_propagates_unshipped_calibration_pin(monkeypatch):
+    """Codex round-2 ISSUE 1 (follow-up): the safe-lock wrapper in
+    ``suite.run`` must still propagate ``FileNotFoundError`` from an
+    unshipped calibration label. Otherwise a misconfigured pin gets
+    swallowed in the hot path (suite_lock=None → audit log empty →
+    audit-package falls back to default), defeating the pin silently."""
+    from multivon_eval.evaluators import WordCount
+    from multivon_eval.suite import EvalSuite
+    from multivon_eval.calibration import _TABLE_CACHE
+
+    monkeypatch.setenv("MULTIVON_CALIBRATION_VERSION", "v_does_not_exist")
+    _TABLE_CACHE.pop("v_does_not_exist", None)
+
+    suite = EvalSuite("propagate-test")
+    suite.add_case(EvalCase("q", expected_output="a"))
+    suite.add_evaluator(WordCount(min_words=1))
+
+    with pytest.raises(FileNotFoundError):
+        suite.run(lambda _: "a", verbose=False)
+
+
 def test_e2e_v1_pin_round_trip_through_audit_package(tmp_path, monkeypatch):
     """Real end-to-end: pin to v1, run a suite, record via the reporter,
     package, verify the bundle holds v1."""
