@@ -1,0 +1,158 @@
+---
+title: Compliance Bundle — Early Access
+description: What the paid Compliance Bundle adds on top of the open-source library, what it does not include today, and how to engage.
+---
+
+The multivon-eval library is open source under Apache 2.0 and will remain that way. It provides the mechanical compliance plumbing — chained audit logs, Article-level control mappings, calibrated judge thresholds, an auditor-attachable evidence package — that a regulated team can deploy themselves.
+
+The **Compliance Bundle** is a paid subscription that wraps the OSS with services that require ongoing human work: maintenance of framework mappings as regulations move, calibration of judge thresholds against new model releases, a customer-branded auditor template, a named technical contact with a written response time, and a methodology attestation reviewed by counsel in the customer's jurisdiction. The Bundle is in **early access**. This page is the current scope.
+
+<Note>
+The Bundle is currently sales-led: the first few customer engagements shape which services move from roadmap to default. Pricing is not yet a public price list — each engagement is sized against scope. If the services below match your need, the first step is a 30-minute scoping call — see [How to engage](#how-to-engage).
+</Note>
+
+## What the OSS already covers
+
+If you have not read the [Compliance Overview](/compliance/overview), do that first. The library, free under Apache 2.0, produces:
+
+- A tamper-evident SHA-256-chained NDJSON audit log via `ComplianceReporter`
+- Evaluator → control mappings for **EU AI Act** (5 measurable + 5 process controls — Art. 9(2)(b), 10(2)(f-g), 10(5), 15(1), 15(2) measurable; Art. 11, 12, 13, 14, 15(4-5) process), **NIST AI RMF 1.0** (5 measurable + 5 process subcategories), **HIPAA Security Rule + Privacy Rule Safe Harbor** (4 + 4 controls). See [`compliance.py:163–337`](https://github.com/multivon-ai/multivon-eval/blob/main/multivon_eval/compliance.py#L163-L337) for the exact mapping dictionaries
+- Pre-flight `coverage()` report identifying which framework controls a suite exercises and which are gaps
+- Per-(judge × evaluator) calibrated thresholds with provenance (dataset hash, N, F1, measurement date) in [`_calibration_data/v2.json`](https://github.com/multivon-ai/multivon-eval/blob/main/multivon_eval/_calibration_data/v2.json)
+- `audit-package` CLI bundling log + verifier + calibration + manifest into an auditor-attachable zip
+- Optional anchoring of the chain tip to GitHub Actions output, or your own callback for S3 Object Lock / Sigstore / internal ledger
+
+The mechanical compliance plumbing — evidence production, audit log, framework mapping, calibrated thresholds, coverage analysis — is open source. The Bundle covers the ongoing human work around it: tracking regulatory drift, recalibrating against new judge releases, providing a named contact, and reviewing the methodology attestation with counsel.
+
+## What the Compliance Bundle adds
+
+### 1. Quarterly framework-mapping updates
+
+Frameworks move. The EU AI Act has Member-State implementing acts and Commission guidelines that re-interpret Article scope. NIST AI RMF receives crosswalks (e.g., to ISO/IEC 42001). HIPAA receives OCR guidance. The Bundle includes a quarterly review by a compliance-fluent maintainer of:
+
+- EU AI Act (Regulation (EU) 2024/1689 + delegated acts + Commission guidelines + relevant ENISA outputs and AI Office publications; EDPB outputs are tracked only where they directly bear on Art. 10(5) personal-data processing)
+- NIST AI RMF 1.0 (and its companion playbooks / crosswalks)
+- HIPAA Security Rule (45 CFR Part 164) + Safe Harbor de-identification guidance
+- ISO/IEC 42001 mappings (roadmap, see below)
+
+When a framework reference changes, we update [`compliance.py`'s catalog](https://github.com/multivon-ai/multivon-eval/blob/main/multivon_eval/compliance.py#L163-L348), ship a new release, and notify Bundle subscribers via webhook or email so you can re-run `audit-package` against the new mapping. Subscribers receive a per-quarter changelog with the regulator citation that drove each change.
+
+### 2. Calibrated threshold packs per new judge model
+
+When a new judge model from a supported provider ships (next-generation Claude, GPT, or Gemini releases — examples only, not yet-released specific products), we re-run the calibration benchmark against the same human-labeled datasets and publish an updated [`_calibration_data/v*.json`](https://github.com/multivon-ai/multivon-eval/blob/main/multivon_eval/_calibration_data/v2.json) with new thresholds + provenance (dataset hash, N, measured F1, measurement date).
+
+OSS users get the threshold pack with the next library release; Bundle subscribers receive the pack ahead of release plus a written attestation of the calibration methodology, the human-labeled reference set used, and the F1 confidence interval. This is the bit your internal compliance officer needs to defend the choice of threshold during an audit.
+
+### 3. Auditor-facing report template with your branding
+
+The OSS `audit-package` zip ships with a generic `README.md` cover and a `manifest.json` listing files. The Bundle includes a customer-branded template:
+
+- Cover page with your organization's letterhead
+- Maintainer-signed methodology statement (PDF) bound into the zip
+- "About this report" page tuned to your jurisdiction (EU vs. US vs. UK)
+- Direct citations from the framework documents the auditor will be checking against
+
+This is template work, not policy work. We provide the template once, you populate it per-audit.
+
+### 4. Threshold + framework drift alerts
+
+A subscriber webhook (or email, or Slack) fires when:
+
+- A framework mapping in the catalog changes (e.g., Commission guidance reinterprets Art. 9(2)(b) scope)
+- A judge model you previously calibrated against is deprecated by the upstream vendor
+- The threshold pack for an evaluator × judge pair you use moves outside its prior 95% CI
+- A regulator publishes guidance with a citation we mapped to
+
+Implementation: the webhook is built on the same `anchor_fn` pattern the OSS already supports — see [Audit trail / external anchoring](/compliance/audit-trail#external-anchoring). The Bundle service runs the watch loop.
+
+### 5. 48h business-hours support SLA
+
+A named technical contact at Multivon responds within 48 business hours to:
+
+- Custom calibration runs against your dataset
+- Mapping questions ("does Evaluator X count as evidence for Control Y under our specific deployment context?")
+- Audit-package customizations
+- Integration with your specific CI / artifact store / log archive
+
+This is not 24/7 incident response — it is best-effort engineering support. If you need 24/7, the Enterprise tier (see below) applies.
+
+### 6. Methodology attestation letter
+
+A PDF signed by Multivon's named technical lead that states:
+
+- The methodology multivon-eval uses (QAG scoring, hash-chain audit, per-judge calibration with named human-labeled reference datasets)
+- The limits of that methodology (no real-time monitoring, no conformity assessment, no regulator-issued certification, no warranty of audit outcome)
+- Maintenance commitments (quarterly framework review cadence, calibration packs published per new judge release)
+- Citations to the specific source-code revisions and calibration files the methodology relies on
+
+The letter is reviewed by counsel in the customer's jurisdiction. The current model is a **template review batched per jurisdiction** (EU, US, UK so far), with per-customer customization for the named scope. We will not represent that the letter is a regulator-issued certificate or that it constitutes a conformity-assessment opinion under Art. 43 of the EU AI Act — those representations are explicitly excluded from the letter's text.
+
+The first customer engagement in a new jurisdiction triggers a full counsel review for that jurisdiction; subsequent customers in the same jurisdiction receive the reviewed template with their specific scope inserted.
+
+## What we are NOT including today
+
+Honest list of items that are *not* in the Bundle as currently scoped:
+
+1. **SOC 2 attestation.** multivon-eval is a library that runs in your environment; we are not the data processor. A SOC 2 audit of Multivon would not cover the workflow your auditor cares about. If your procurement requires SOC 2 of all suppliers including library vendors, we can supply a written security-posture statement that addresses the same controls; we cannot supply a SOC 2 Type II report.
+2. **A notified-body conformity assessment under Article 43.** That is a regulator-recognized process and is not within the scope of a library + bundle.
+3. **A guarantee that your deployment is compliant.** No vendor can credibly make this guarantee. We provide the evidence; you and your counsel argue conformance from the evidence.
+4. **24/7 incident response.** Best-effort 48h business-hours response is in scope. 24/7 paging is Enterprise.
+5. **Member-State-specific transposition layers.** EU AI Act is Union-level; Member States are implementing it with national specifics (Spain's AESIA, France's ANSSI guidance, Germany's BSI). Quarterly review tracks the major Member States in the catalog; per-Member-State transposition layers are Enterprise.
+
+## Enterprise tier (custom)
+
+For organizations that need more than the Bundle, the Enterprise tier (priced individually) typically includes:
+
+- SAML/SSO + audit-log ingest from cloud judges
+- On-premises threshold calibration service so ground-truth labels never leave your environment
+- A dedicated technical-account-manager + quarterly customer review
+- 24/7 paging via PagerDuty / Opsgenie integration
+- Custom evaluator development against your specific use case
+- DPA, DPIA support letters, SCC review, and security-questionnaire turnaround
+- Member-State-specific EU AI Act transposition tracking
+
+Enterprise engagements typically start with a 60-90 minute scoping conversation. There is no public price; deals are sized against the team and use case.
+
+## Roadmap (subject to change based on early-access feedback)
+
+Items below are dependencies-on-customer-commitment, not calendar promises. We move forward when 2–3 customers have signed scopes that depend on a given item.
+
+| Tranche | Item |
+|---|---|
+| **Bundle MVP** | Framework changelog feed; calibration-pack release flow; branded template; attestation letter (legal review batched per jurisdiction; EU, US, UK on day one) |
+| **After 3 customers** | Drift webhook service (currently customer rolls own via `anchor_fn`); ISO/IEC 42001 mapping catalog; UK AI Regulation Bill mapping (when enacted) |
+| **After ~10 customers** | On-prem calibration service; per-jurisdiction EU AI Act transposition layers for the largest Member-State markets |
+| **Speculative** | Domain-specialist judges (medical, legal, code) — 1–3B parameter models distilled against the relevant calibration corpora, runnable on-prem |
+
+The "specific calendar quarter" framing is deliberately absent because compliance buyers prefer ship-when-ready commitments to dated-and-slipped commitments.
+
+The roadmap is intentionally calibrated against the OSS adoption curve. We are not building the Enterprise tier on speculation — items move forward when we have at least 2-3 customer commitments that depend on them.
+
+## How to engage
+
+Two paths, depending on where you are:
+
+### "We're evaluating multivon-eval and want to know if the OSS is enough."
+
+Read the [Overview](/compliance/overview), [EU AI Act](/compliance/eu-ai-act), and [Audit trail](/compliance/audit-trail) pages. Run `multivon-eval init -t regulated -d my-eval && cd my-eval && python eval.py`. Inspect the produced `audit-package`. If it covers what you need, ship.
+
+### "We need the Bundle services described above — let's talk."
+
+Email **[hello@multivon.ai](mailto:hello@multivon.ai)** with:
+
+- Your industry and regulatory exposure (healthcare / financial services / public sector / other)
+- The frameworks you're working against (EU AI Act, NIST AI RMF, HIPAA, SOC 2 mappings, ISO/IEC 42001 …)
+- Your approximate team size and AI-system maturity (pre-production, in production, in audit, post-audit)
+- A rough timeline for when you'd want the Bundle live
+
+We respond within 1 business day with either a 30-minute scoping slot or — if there isn't a fit yet — a brief response explaining what would change that.
+
+There is no signup form. Early-access engagements are deliberately gated to a conversation so we can match scope to roadmap rather than collect intent in a database.
+
+## See also
+
+- [Compliance Overview](/compliance/overview) — what multivon-eval is and is not, mechanically
+- [EU AI Act coverage](/compliance/eu-ai-act) — Article-by-Article scope
+- [Audit trail](/compliance/audit-trail) — hash chain, verifier, external anchoring
+- [Sample audit-package zip](https://github.com/multivon-ai/multivon-eval/raw/main/docs/sample-audit-package.zip) — what an auditor actually receives
+- [Security & data handling](https://multivon.ai/security) — data flow, telemetry stance, vulnerability reporting

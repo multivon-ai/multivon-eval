@@ -1,0 +1,137 @@
+---
+title: Compliance — Overview
+description: What multivon-eval is and is not in compliance terms. Frameworks mapped today, what an auditor receives, and where organizational measures take over.
+---
+
+multivon-eval is an **evaluation library that produces evidence**. It is not a compliance certification, and it does not absolve the deploying organization of any obligation. When configured against a regulated framework, its output is the kind of record an auditor can use to assess conformance with the EU AI Act, NIST AI RMF, or HIPAA Security Rule technical safeguards.
+
+This page is the scope statement. The pages that follow ([EU AI Act](/compliance/eu-ai-act), [Audit trail](/compliance/audit-trail), [Compliance Bundle](/compliance/bundle)) get specific.
+
+## What multivon-eval is, mechanically
+
+When you call `ComplianceReporter.record(report)`, the library appends a JSON record to a local NDJSON file. The record contains:
+
+| Field | What it captures |
+|---|---|
+| `record_id` | 12-char hex ID (truncated from a UUID4) — sufficient for cross-referencing within a suite's log; pair with `timestamp` and `suite_name` for global uniqueness |
+| `timestamp` | UTC ISO-8601 at record time |
+| `framework` | `"eu-ai-act"` / `"nist-ai-rmf"` / `"hipaa"` / `"none"` |
+| `chain_version` | Format version of the chained payload (currently 1) |
+| `prev_hash` | SHA-256 of the previous record's payload (or 64 zeros for the first) |
+| `summary` | Pass/fail counts, error counts, pass rate, stability score, your tags |
+| `evaluator_results` | Per-evaluator avg score + pass rate + control mappings |
+| `provenance` | Package version, git SHA (with dirty flag), Python + OS, full `SuiteLock` with evaluator fingerprints, judge configs used, calibration entries hit, and the cases hash |
+| `record_hash` | SHA-256 of the entire payload above (excluding this field) |
+
+Source: [`multivon_eval/compliance.py:563–642`](https://github.com/multivon-ai/multivon-eval/blob/main/multivon_eval/compliance.py#L563-L642).
+
+The records are linked into a hash chain — deleting or editing any record mid-log invalidates every subsequent record's `prev_hash`. [See the audit-trail page](/compliance/audit-trail) for the algorithm and the verifier.
+
+## Data flow — where bytes go
+
+```
+┌──────────────────────────────────────────┐
+│  YOUR INFRASTRUCTURE  (data controller   │
+│                       + data processor)  │
+│                                          │
+│   eval cases  ──┐                        │
+│                 ├──► model_fn ──► output │
+│                 │       (your model)     │
+│                 │                        │
+│                 └──► evaluator ──► score │
+│                       │                  │
+│                       ▼                  │
+│           ┌──────────────────────┐       │
+│           │ LLM judge (optional) │ ───── │ ──► judge provider API
+│           └──────────────────────┘       │     (Anthropic / OpenAI / Google /
+│                       │                  │      your on-prem endpoint)
+│                       ▼                  │
+│              ComplianceReporter          │
+│                       │                  │
+│                       ▼                  │
+│              ./audit-logs/*.ndjson  ◄─── │  multivon-eval ends here.
+└──────────────────────────────────────────┘
+```
+
+multivon-eval is a Python library that runs **in your process**, on **your infrastructure**. It writes audit logs to **your filesystem**. Multivon (the company) is not in the data path — it never receives your eval inputs, outputs, or audit records. The library has no telemetry; there is no opt-out toggle because there is nothing to opt out of.
+
+The one place data leaves your environment is the **LLM judge call** — and only if you configure one. The judge endpoint is whatever you pass to `JudgeConfig`: Anthropic, OpenAI, Google, an on-prem vLLM/Ollama instance, or any OpenAI-compatible URL. If your DPIA precludes cloud judges, point `JudgeConfig` at a local model and no judge data leaves either.
+
+**Implication for your DPIA / RoPA:** for the eval workflow, your organization is both the data controller *and* the data processor. Multivon is not a sub-processor. If you use a cloud LLM judge, that vendor is the sub-processor for the judge call only; the rest of the eval (cases, outputs, audit log) never reaches them.
+
+## Frameworks mapped today
+
+| Framework | Measurable controls | Process controls | Source |
+|---|---:|---:|---|
+| **EU AI Act** (Regulation (EU) 2024/1689) | 5 (Art. 9(2)(b), 10(2)(f-g), 10(5), 15(1), 15(2)) | 5 (Art. 11, 12, 13, 14, 15(4-5)) | [`compliance.py:163–180`](https://github.com/multivon-ai/multivon-eval/blob/main/multivon_eval/compliance.py#L163-L180) |
+| **NIST AI RMF 1.0** | 5 (MEASURE 2.3, 2.5, 2.6, 2.10, 2.11) | 5 (GOVERN 1.1, MEASURE 2.7, 2.8, 2.9, MANAGE 4.1) | [`compliance.py:231–245`](https://github.com/multivon-ai/multivon-eval/blob/main/multivon_eval/compliance.py#L231-L245) |
+| **HIPAA Security Rule** (45 CFR §164.312) + **Privacy Rule** (§164.514(b)(2) Safe Harbor) | 4 — three Security Rule technical safeguards (§164.312(a), (b), (c)) + one Privacy Rule de-identification standard (§164.514(b)(2)) | 4 (§164.308, §164.310, §164.316, BAA) | [`compliance.py:299–316`](https://github.com/multivon-ai/multivon-eval/blob/main/multivon_eval/compliance.py#L299-L316) |
+
+**Measurable controls** are the ones evaluator output can directly provide evidence for. **Process controls** require organizational measures — policies, governance, training records, business associate agreements — and are surfaced in the coverage report so you can see them, not so you can mark them satisfied.
+
+When you instantiate a `ComplianceReporter`, every evaluator result gets annotated with the controls it provides evidence for. The mappings are in [`_EU_AI_ACT_BY_EVALUATOR`](https://github.com/multivon-ai/multivon-eval/blob/main/multivon_eval/compliance.py#L184-L228), [`_NIST_BY_EVALUATOR`](https://github.com/multivon-ai/multivon-eval/blob/main/multivon_eval/compliance.py#L247-L291), and [`_HIPAA_BY_EVALUATOR`](https://github.com/multivon-ai/multivon-eval/blob/main/multivon_eval/compliance.py#L321-L337) — these dictionaries are auditable in the source. We list an evaluator against a control only when its output is direct evidence for that control; an auditor can re-derive every claim by reading the mapping tables and the evaluator implementations they reference.
+
+## Pre-flight coverage analysis
+
+Before you run an eval suite against a regulated system, call `reporter.coverage(suite)` to see exactly which controls your evaluators exercise:
+
+```python
+from multivon_eval import EvalSuite, ComplianceReporter, Faithfulness, PIIEvaluator
+
+suite = EvalSuite("triage-bot")
+suite.add_evaluators(Faithfulness(), PIIEvaluator(jurisdiction="hipaa"))
+
+reporter = ComplianceReporter("./audit-logs", framework="eu-ai-act")
+print(reporter.coverage(suite))
+```
+
+Output (illustrative):
+
+```
+eu-ai-act coverage for suite 'triage-bot'
+─────────────────────────────────────────
+  [ ] Art. 9(2)(b)    Foreseeable misuse risk identification  ← gap
+  [ ] Art. 10(2)(f-g) Examination and mitigation of possible biases  ← gap
+  [x] Art. 10(5)      Processing of personal data
+      covered by: pii_detection
+  [x] Art. 15(1)      Accuracy
+      covered by: faithfulness
+  [ ] Art. 15(2)      Robustness  ← gap
+
+  Process controls (not satisfiable by evaluators alone):
+      Art. 11        Technical documentation
+      Art. 12        Record-keeping (ComplianceReporter produces logs at this granularity)
+      Art. 13        Transparency and information to deployers
+      Art. 14        Human oversight
+      Art. 15(4-5)   Cybersecurity and resilience
+
+  Coverage: 2/5 measurable controls exercised.
+  Gaps: Art. 9(2)(b), Art. 10(2)(f-g), Art. 15(2)
+```
+
+The coverage report is meant to surface what's missing *before* an auditor finds it. Implementation: [`compliance.py:791–821`](https://github.com/multivon-ai/multivon-eval/blob/main/multivon_eval/compliance.py#L791-L821).
+
+## What multivon-eval does NOT do
+
+We are explicit about scope so a compliance buyer doesn't discover the boundary in the middle of an audit.
+
+- **No certification.** multivon-eval produces evidence; auditors decide whether evidence is sufficient. We do not issue certificates of conformity.
+- **No legal opinion.** The Article and subcategory mappings are our best reading of the published frameworks. We are not a law firm. A regulatory question about your specific deployment should go to your legal counsel.
+- **No organizational governance.** The process controls in each framework (training records, role assignments, incident response, third-party risk management, business associate agreements) require organizational measures — multivon-eval cannot produce them.
+- **No real-time monitoring.** A `ComplianceReporter` records eval runs as you trigger them. Post-deployment monitoring (NIST MANAGE 4.1) requires you to call it from a scheduled job or production loop — the library doesn't pull metrics itself.
+- **No PHI / PII handling promise beyond evaluator output.** `PIIEvaluator(jurisdiction="hipaa")` regex-matches 13 of the 18 HIPAA Safe Harbor identifiers (MRN, NPI, DEA, license, device IDs, account numbers, certificate numbers, health-plan numbers, VINs, admission/discharge dates, fax, URLs). The 5 that regex cannot reliably detect — personal names, geographic subdivisions smaller than state, full-face photos, biometric identifiers, and arbitrary unique identifying numbers/characteristics — require upstream de-identification or human review. The evaluator does **not** redact PHI in transit, encrypt at rest, or enforce access control. Those are infrastructure concerns owned by the deploying team.
+- **No vendor-of-record relationship for the cloud judges.** If you configure an OpenAI judge, OpenAI is your sub-processor for the judge call. multivon-eval does not proxy or wrap that relationship.
+- **No telemetry, no account, no callback.** The library does not phone home. There is no cloud component.
+
+## When the Compliance Bundle helps
+
+Everything described above is in the open-source library, free under Apache 2.0. The [Compliance Bundle](/compliance/bundle) adds the *human* services around it: framework-mapping updates as regulations change, calibrated judge threshold packs per new model release, customer-branded auditor templates, a named technical contact with an SLA, and a legally reviewed attestation letter you can include in your compliance file. It is in early access; the page describes what it does and does not include today.
+
+## Quick links
+
+- [EU AI Act — Article-by-article coverage](/compliance/eu-ai-act)
+- [Audit trail — Hash chain mechanics + verifier](/compliance/audit-trail)
+- [Compliance Bundle — Scope + early-access status](/compliance/bundle)
+- [Sample audit package zip (5.5 KB)](https://github.com/multivon-ai/multivon-eval/raw/main/docs/sample-audit-package.zip) — what an auditor actually receives
+- [Security & data handling](https://multivon.ai/security)
+- [`multivon_eval/compliance.py`](https://github.com/multivon-ai/multivon-eval/blob/main/multivon_eval/compliance.py) — full source for the reporter, control catalog, and verifier

@@ -70,7 +70,7 @@ We're not better at everything. If your priority is —
 
 - **Trust the score**: QAG + calibrated thresholds + multi-run flakiness detection means a single number from `pass_rate` survives scrutiny.
 - **CI/CD on every PR**: `multivon-eval init --ci github` ships the workflow. Distinct exit codes for quality vs infra failures.
-- **Regulated AI**: hash-chained NDJSON audit logs with paragraph-accurate EU AI Act / NIST AI RMF / HIPAA mappings. `audit-package` produces an auditor-attachable zip — [download a real sample (5.5 KB)](https://github.com/multivon-ai/multivon-eval/raw/main/docs/sample-audit-package.zip).
+- **Regulated AI**: hash-chained NDJSON audit logs with Article-level EU AI Act / NIST AI RMF / HIPAA mappings. `audit-package` produces an auditor-attachable zip — [download a real sample (5.5 KB)](https://github.com/multivon-ai/multivon-eval/raw/main/docs/sample-audit-package.zip).
 - **Agent-native**: tool-call accuracy, trajectory efficiency, step faithfulness — framework-agnostic via `AgentTracer`.
 - **First-class multi-judge support**: ship with `anthropic`, `openai`, `google`, and `litellm` providers, plus any OpenAI-compatible endpoint (Ollama, vLLM, LM Studio, Azure, Bedrock via LiteLLM). Threshold packs calibrated per (judge × evaluator) so you can swap providers without re-tuning.
 

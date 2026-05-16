@@ -184,7 +184,7 @@ Cache speedup on the rep-1→rep-2 transition: **2,271×**. Cache hits also prod
 
 **Agent trajectory evaluation** — Beyond "did the task complete?": evaluate whether tool calls were necessary, whether the agent took the optimal number of steps, and whether it recovered correctly from tool failures. Plus `AgentMemoryEval` for multi-session agents.
 
-**Local-first compliance** — `PIIEvaluator` detects PII in outputs using local regex patterns (zero API calls). `SchemaEvaluator` validates structured outputs against Pydantic models or JSON Schema with per-field failure breakdowns. `ComplianceReporter` writes hash-chained, tamper-evident NDJSON audit trails with paragraph-accurate EU AI Act mappings (Art. 9(2)(b), 10, 15) and NIST AI RMF controls. Use `EvalSuite.eu_ai_act_high_risk()` for an auditor-ready suite and `reporter.coverage(suite)` to surface control gaps before you ship.
+**Local-first compliance** — `PIIEvaluator` detects PII in outputs using local regex patterns (zero API calls). `SchemaEvaluator` validates structured outputs against Pydantic models or JSON Schema with per-field failure breakdowns. `ComplianceReporter` writes hash-chained, tamper-evident NDJSON audit trails with Article-level EU AI Act mappings (Art. 9(2)(b), 10, 15) and NIST AI RMF controls. Use `EvalSuite.eu_ai_act_high_risk()` for an auditor-ready suite and `reporter.coverage(suite)` to surface control gaps before you ship.
 
 **Experiment tracking** — Record every run, compare across model versions, catch regressions before they reach users. p-values, confidence intervals, and power hints included.
 
@@ -474,7 +474,7 @@ reporter.record(report, tags={"system": "triage-bot", "version": "1.0"})
 reporter.verify(suite.name)
 ```
 
-Produces an append-only NDJSON log where each record links to the previous via `prev_hash`, forming a SHA-256 chain that's tamper-evident end-to-end. Each evaluator result is annotated with paragraph-accurate EU AI Act controls (Art. 9(2)(b) foreseeable misuse, Art. 10 data governance & bias, Art. 15 accuracy & robustness) or NIST AI RMF subcategories. Process controls (Art. 11/12/13/14/15(4-5)) are surfaced separately in the coverage report — they require organizational measures beyond evaluation.
+Produces an append-only NDJSON log where each record links to the previous via `prev_hash`, forming a SHA-256 chain that's tamper-evident end-to-end. Each evaluator result is annotated with Article-level EU AI Act controls (Art. 9(2)(b) foreseeable misuse, Art. 10 data governance & bias, Art. 15 accuracy & robustness) or NIST AI RMF subcategories. Process controls (Art. 11/12/13/14/15(4-5)) are surfaced separately in the coverage report — they require organizational measures beyond evaluation.
 
 ---
 

@@ -145,7 +145,7 @@ This is valid — the schema evaluator strips the fence before parsing.
 
 ## Compliance Audit Trail
 
-`ComplianceReporter` writes a hash-chained, tamper-evident NDJSON log of every eval run, with paragraph-accurate regulatory control annotations on each evaluator result.
+`ComplianceReporter` writes a hash-chained, tamper-evident NDJSON log of every eval run, with Article-level regulatory control annotations on each evaluator result.
 
 ### Basic usage
 
@@ -224,7 +224,7 @@ outside of model evaluation; the reporter surfaces them so you don't mistake
 ### Framework mappings
 
 ```python
-ComplianceReporter(framework="eu-ai-act")    # paragraph-accurate EU AI Act controls
+ComplianceReporter(framework="eu-ai-act")    # Article-level EU AI Act controls
 ComplianceReporter(framework="nist-ai-rmf")  # NIST AI RMF subcategories
 ComplianceReporter(framework="none")         # raw scores only
 ```

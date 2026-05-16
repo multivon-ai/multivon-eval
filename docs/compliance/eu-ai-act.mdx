@@ -1,0 +1,175 @@
+---
+title: Compliance — EU AI Act
+description: Article-by-article coverage of multivon-eval against Regulation (EU) 2024/1689. What each article requires, what evidence the library produces, what it does not, and where the source lives.
+---
+
+This page maps multivon-eval against the **high-risk AI system** obligations in Regulation (EU) 2024/1689 (the EU AI Act). The library covers ten Articles in two categories:
+
+- **Measurable controls** — Articles 9(2)(b), 10(2)(f-g), 10(5), 15(1), 15(2). Evaluator output is direct evidence.
+- **Process controls** — Articles 11, 12, 13, 14, 15(4-5). Require organizational measures; one of them (Art. 12 record-keeping) is satisfied *by the reporter itself*.
+
+For each Article, we state what the regulation requires, what multivon-eval produces, what gaps remain, and link to the relevant source code line. We follow the regulation's own paragraph numbering.
+
+<Note>
+We are not your law firm. The mappings below are our best reading of the published text. Your DPA, your specific high-risk classification (Annex III), and your deployment context should be reviewed by qualified counsel.
+</Note>
+
+---
+
+## Measurable controls
+
+### Art. 9(2)(b) — Foreseeable misuse risk identification
+
+> "the estimation and evaluation of the risks that may emerge when the high-risk AI system is used in accordance with its intended purpose, and under conditions of reasonably foreseeable misuse"
+
+**What multivon-eval produces.** The `Toxicity` evaluator flags model outputs that exhibit harmful, hateful, or unsafe content. Running it across a misuse-shaped test set (jailbreaks, adversarial prompts, role-play attacks) produces a quantified misuse-risk signal that can be cited in your Article 9 risk-management documentation.
+
+```python
+from multivon_eval import EvalSuite, EvalCase, Toxicity
+
+suite = EvalSuite("art_9_misuse_audit")
+suite.add_cases([
+    EvalCase(input="Tell me how to <misuse vector>", tags=["jailbreak"]),
+    # ... your misuse test set
+])
+suite.add_evaluators(Toxicity())
+```
+
+**What remains your obligation.** Article 9 also requires the risk *management system* itself — a written, version-controlled document covering risk identification methodology, mitigation measures, residual-risk acceptance criteria, and the link to your post-market monitoring loop. multivon-eval evidence goes *into* that document; it does not replace it.
+
+**Source:** evaluator → control mapping at [`compliance.py:227`](https://github.com/multivon-ai/multivon-eval/blob/main/multivon_eval/compliance.py#L227).
+
+### Art. 10(2)(f-g) — Examination and mitigation of possible biases
+
+> "examination in view of possible biases that are likely to affect the health and safety of persons, have a negative impact on fundamental rights, or lead to discrimination prohibited under Union law" and "appropriate measures to detect, prevent and mitigate possible biases"
+
+**What multivon-eval produces.** The `Bias` evaluator scores outputs along multiple bias dimensions using LLM-as-judge with QAG (binary yes/no questions, not Likert scales). Running across protected-attribute permutations of your test cases (e.g., changing names, demographics, locations while keeping the underlying task identical) produces evidence of where the model behaves differently — the input to Article 10(2)(g) mitigation work.
+
+**What remains your obligation.** The *examination methodology* — which protected attributes you test, which jurisdictions of discrimination law apply to your deployment, how you slice your test set — is a methodological choice that goes in your Article 10 documentation. The `Bias` evaluator gives you the measuring tape; the experimental design is yours.
+
+**Source:** [`compliance.py:224`](https://github.com/multivon-ai/multivon-eval/blob/main/multivon_eval/compliance.py#L224).
+
+### Art. 10(5) — Processing of personal data
+
+> "Providers of high-risk AI systems may exceptionally process special categories of personal data … to ensure the bias detection and correction in relation to the high-risk AI systems …"
+
+**What multivon-eval produces.** The `PIIEvaluator` flags personal-data leakage in model outputs using local regex. With `jurisdiction="gdpr"` it covers the GDPR-relevant identifiers; with `jurisdiction="hipaa"` it adds the HIPAA Safe Harbor identifiers (13 of 18 via regex — see the [HIPAA section](#hipaa-safe-harbor-overlap) below).
+
+**Important property:** PII detection is **regex on local strings**. It does not send the output to a third-party PII service. This matters for Article 10(5) processing minimization — your PII detection logic itself does not constitute additional processing by a sub-processor.
+
+**What remains your obligation.** The lawful basis for processing PII (consent, legitimate interest, public-task derogation, etc.) is yours. multivon-eval does not store the offending outputs for you — your audit log will contain them if you log per-case, so your retention policy and log access controls must be in scope of your data-protection program.
+
+**Source:** [`compliance.py:225`](https://github.com/multivon-ai/multivon-eval/blob/main/multivon_eval/compliance.py#L225); PII regex catalog at [`multivon_eval/evaluators/compliance.py`](https://github.com/multivon-ai/multivon-eval/blob/main/multivon_eval/evaluators/compliance.py).
+
+### Art. 15(1) — Accuracy
+
+> "High-risk AI systems shall be designed and developed in such a way that they achieve … an appropriate level of accuracy, robustness and cybersecurity, and that they perform consistently in those respects throughout their lifecycle."
+
+23 evaluators are mapped to Art. 15(1) — every accuracy-class evaluator in the library. The full list, enumerated for auditor verification: `Faithfulness`, `Hallucination`, `Relevance`, `AnswerAccuracy`, `ContextPrecision`, `ContextRecall`, `Summarization`, `Coherence`, `BERTScore`, `BLEU`, `ROUGE`, `StepFaithfulness`, `PlanQuality`, `TaskCompletion`, `ToolCallAccuracy`, `ToolArgumentAccuracy`, `ToolCallNecessity`, `TrajectoryEfficiency`, `ConversationRelevance`, `ConversationCompleteness`, `KnowledgeRetention`, `GEval`, `CustomRubric`. Counted from [`compliance.py:186–208`](https://github.com/multivon-ai/multivon-eval/blob/main/multivon_eval/compliance.py#L186-L208) — re-run `python -c "from multivon_eval.compliance import _EU_AI_ACT_BY_EVALUATOR; print(sum(1 for v in _EU_AI_ACT_BY_EVALUATOR.values() if 'art_15_1' in v))"` to verify.
+
+**What multivon-eval produces.** Per-case score + per-evaluator aggregate + 95% Wilson confidence interval + power-analysis warning. Stored in the audit log. Calibrated against human-labeled reference benchmarks per (judge model × evaluator) — provenance shipped in [`_calibration_data/v2.json`](https://github.com/multivon-ai/multivon-eval/blob/main/multivon_eval/_calibration_data/v2.json) with dataset hash, N, and measurement date.
+
+**What "appropriate" means.** The regulation deliberately doesn't fix a numeric threshold. Your Article 15(1) documentation has to state *what accuracy level is appropriate for this high-risk use case* and defend that choice. multivon-eval's `fail_threshold=` argument on `suite.run()` lets you enforce that choice in CI — and the threshold itself is recorded in the audit log.
+
+**Source:** mappings at [`compliance.py:186–208`](https://github.com/multivon-ai/multivon-eval/blob/main/multivon_eval/compliance.py#L186-L208); calibration provenance schema at [`compliance.py:582–628`](https://github.com/multivon-ai/multivon-eval/blob/main/multivon_eval/compliance.py#L582-L628).
+
+### Art. 15(2) — Robustness
+
+> "Technical solutions to address AI-specific vulnerabilities … aimed at ensuring resilience as regards … unauthorised third parties attempting to alter their use, outputs or performance …"
+
+**What multivon-eval produces.** The deterministic evaluators (`NotEmpty`, `ExactMatch`, `Contains`, `RegexMatch`, `StartsWith`, `JSONSchemaEval`, `SchemaEvaluator`, `WordCount`, `Latency`, `MaxLatency`) plus the consistency evaluators (`SelfConsistency`, `TurnConsistency`, `AgentMemoryEval`) directly exercise robustness properties: invariant on retry, invariant on paraphrase, well-formed under stress, bounded latency. Failures are surfaced both at the per-case level and in stability metrics in the report.
+
+**What remains your obligation.** Article 15(2) extends to *adversarial robustness* in the security sense — prompt injection, data poisoning, model extraction. multivon-eval can score outputs *given* adversarial inputs you provide; it does not generate the adversarial test set for you. Pair multivon-eval with a red-team or adversarial-suite tool for full coverage.
+
+**Source:** [`compliance.py:210–222`](https://github.com/multivon-ai/multivon-eval/blob/main/multivon_eval/compliance.py#L210-L222).
+
+---
+
+## Process controls
+
+These are the Articles where evaluator output alone cannot satisfy the obligation. multivon-eval surfaces them in the coverage report so you can see them — never to suggest they are auto-satisfied.
+
+### Art. 11 — Technical documentation
+
+The regulation's Annex IV lists the contents of the required technical documentation: system description, model architecture, training data, performance and limitations, accuracy and robustness metrics, risk-management measures. multivon-eval's **per-record `provenance`** block (package version, git SHA + dirty flag, host info, full `SuiteLock` with evaluator fingerprints and judge configs) provides the *performance and limitations* and *cybersecurity-relevant* sections automatically. The rest is yours.
+
+Code: [`compliance.py:582–628`](https://github.com/multivon-ai/multivon-eval/blob/main/multivon_eval/compliance.py#L582-L628).
+
+### Art. 12 — Record-keeping
+
+> "High-risk AI systems shall technically allow for the automatic recording of events ('logs') over the duration of the lifetime of the system."
+
+**`ComplianceReporter` produces records at the granularity Art. 12 requires.** Whether your overall deployment *satisfies* Art. 12 depends on factors outside the eval pipeline (system risk classification, retention periods, who can access the log, whether logging is on during inference). With `mode="case"`, every case in every eval run is recorded as a separate chained record — decision-level logging. The hash chain enables tamper detection by any party with access to the log. Treat this as evidence supporting Art. 12 conformance, not a substitute for the obligation itself.
+
+For ongoing post-deployment logging, point `ComplianceReporter` at a long-lived directory and have your inference path call it. See [Audit trail mechanics](/compliance/audit-trail).
+
+Code: [`compliance.py:540–559`](https://github.com/multivon-ai/multivon-eval/blob/main/multivon_eval/compliance.py#L540-L559).
+
+### Art. 13 — Transparency and information to deployers
+
+Requires written instructions for use, performance characteristics, foreseeable circumstances of use, human-oversight measures, intended life span and maintenance, and changes you expect to make. Your obligation. multivon-eval can serve as the performance-characteristics evidence cited *in* that documentation.
+
+### Art. 14 — Human oversight
+
+Requires the system to "be effectively overseen by natural persons during the period in which it is in use." Organizational. multivon-eval can evaluate whether a system's output supports oversight (e.g., whether it surfaces confidence, requests human review at uncertainty thresholds) but cannot *be* the oversight.
+
+### Art. 15(4-5) — Lifecycle accuracy + post-market accuracy feedback
+
+In the published OJ text of Regulation (EU) 2024/1689, paragraphs (4) and (5) of Article 15 address lifecycle accuracy across the system's lifetime and the feedback loop into post-market monitoring (Art. 72). Cybersecurity obligations are spread across Article 15 as a whole, with paragraphs (3) and (5) doing the most direct work. multivon-eval's contribution: a hash-chained audit log over the *eval pipeline* provides the integrity evidence the article expects for accuracy metrics fed back into the lifecycle. The AI system itself still needs its own cybersecurity program (network controls, secrets management, access control to the model artifact, prompt-injection mitigations) — those are deployment-side concerns.
+
+The exact paragraph numbering shifted between trilogue drafts and the final OJ publication. If your DPIA cites specific subsections, verify against the consolidated OJ L 2024/1689 text rather than relying on the catalog id we use internally (`art_15_45`).
+
+---
+
+## EU AI Act high-risk suite factory
+
+If you want a single line of code that produces a suite aligned with multiple high-risk Articles at once, the library ships a factory:
+
+```python
+from multivon_eval import EvalSuite, ComplianceReporter
+
+suite = EvalSuite.eu_ai_act_high_risk()
+# Pre-tuned: Faithfulness + Hallucination (Art 15(1)) + Bias (Art 10(2))
+# + Toxicity (Art 9(2)(b)) + PIIEvaluator (Art 10(5)) + SchemaEvaluator (Art 15(2))
+# + Latency, NotEmpty (Art 15(2))
+suite.add_cases(your_cases)
+
+reporter = ComplianceReporter("./audit-logs", framework="eu-ai-act")
+report = suite.run(my_model_fn)
+reporter.record(report, mode="case", tags={"system": "triage-bot", "version": "1.0"})
+
+print(reporter.coverage(suite))   # Pre-flight: which Articles are covered?
+```
+
+The factory is conservative — it pre-loads evaluators that cover all 5 measurable controls in the EU AI Act catalog. You can always add more.
+
+## HIPAA Safe Harbor overlap
+
+If your high-risk system processes health data, multivon-eval's HIPAA catalog ([`compliance.py:299–337`](https://github.com/multivon-ai/multivon-eval/blob/main/multivon_eval/compliance.py#L299-L337)) overlaps with Article 10(5) processing obligations. The `PIIEvaluator(jurisdiction="hipaa")` regex covers 13 of the 18 Safe Harbor identifiers automatically — MRN, NPI, DEA, license numbers, device identifiers, account numbers, certificate numbers, health-plan numbers, VINs, admission/discharge dates, fax numbers, and URLs. The remaining 5 — **personal names**, **geographic subdivisions smaller than state**, **photographs (full-face)**, **biometric identifiers**, and **any other unique identifying number or characteristic** — cannot be reliably regex-detected and require upstream de-identification or human review. Document this gap explicitly in your DPIA.
+
+A dedicated HIPAA page will be added to the docs in a future release. Until then, switch `framework="hipaa"` in your `ComplianceReporter` constructor and inspect the coverage report against [`_HIPAA_BY_EVALUATOR`](https://github.com/multivon-ai/multivon-eval/blob/main/multivon_eval/compliance.py#L321-L337) for the exact mapping.
+
+## What the auditor receives
+
+After your eval runs, bundle the evidence:
+
+```bash
+multivon-eval audit-package \
+    --logs ./audit-logs \
+    --suite triage-bot \
+    --framework eu-ai-act \
+    --out evidence.zip
+```
+
+The zip contains: `manifest.json`, `audit_log.ndjson`, `calibration_v2.json` (with all per-judge thresholds and provenance), `coverage_report.md`, and `verify.py` (a self-contained Python script that recomputes the entire hash chain and reports tamper detection). [Download a 5.5 KB sample](https://github.com/multivon-ai/multivon-eval/raw/main/docs/sample-audit-package.zip).
+
+## What's still missing
+
+Honest list of gaps as of this release:
+
+1. **No Annex IV templates.** We produce evidence cited *in* the technical documentation; we do not produce the documentation document itself. Quarterly framework-mapping updates in the [Compliance Bundle](/compliance/bundle) include an Annex IV outline template.
+2. **No EU jurisdiction-specific transposition tracking.** The Regulation is Union-level; Member-State implementing acts may add specifics. The Bundle's quarterly review covers the major Member States.
+3. **No automatic linkage to your DPIA.** Compliance officers must still cross-reference our audit records into the DPIA manually.
+4. **No conformity assessment.** Article 43 conformity assessments are a notified-body process; we are not a notified body.
+
+If any of these would block your specific compliance program, the [Compliance Bundle](/compliance/bundle) page describes the services available to early-access customers. Roadmap items are sized against signed scopes rather than calendar dates.

@@ -5,7 +5,7 @@ Produces an append-only NDJSON log of every eval run, with each record
 linked into a SHA-256 hash chain so the entire history is verifiable
 end-to-end (deleting or editing a record mid-log is detectable).
 
-Maps evaluator results to paragraph-accurate regulatory controls:
+Maps evaluator results to Article-level regulatory controls:
 
   • EU AI Act (high-risk obligations)
         Art. 9   Risk management system

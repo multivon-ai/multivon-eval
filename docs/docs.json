@@ -36,6 +36,15 @@
             "pages": ["introduction", "quickstart", "why-multivon-eval"]
           },
           {
+            "group": "Compliance",
+            "pages": [
+              "compliance/overview",
+              "compliance/eu-ai-act",
+              "compliance/audit-trail",
+              "compliance/bundle"
+            ]
+          },
+          {
             "group": "Evaluators",
             "pages": [
               "evaluators/deterministic",

@@ -1,0 +1,206 @@
+---
+title: Compliance — Audit trail
+description: The hash-chain algorithm, how the verifier proves integrity end-to-end, what the auditor zip contains, and how to anchor the chain tip to an external witness.
+---
+
+multivon-eval's audit trail is a SHA-256-chained NDJSON log. Every `ComplianceReporter.record(...)` call appends one record. Each record references the previous record's hash. Tampering with any record invalidates the chain from that point forward — `verify()` walks the log and reports the first inconsistency.
+
+This page is the mechanical specification. Anyone reproducing or auditing the chain (without the multivon-eval library installed, even) can do so from the description below.
+
+## The record format
+
+Each NDJSON line is one record. Fields:
+
+```json
+{
+  "record_id": "a3f9c2b18e4d",
+  "suite_name": "triage-bot",
+  "model_id": "claude-3-5-sonnet-20241022",
+  "timestamp": "2026-05-16T14:32:11.482000+00:00",
+  "framework": "eu-ai-act",
+  "chain_version": 1,
+  "prev_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+  "record_type": "summary",
+  "summary": { /* ... */ },
+  "evaluator_results": [ /* ... */ ],
+  "provenance": { /* ... */ },
+  "record_hash": "8b1c…d4e2"
+}
+```
+
+- `record_id` — 12-character hex (truncated from `uuid4().hex`). Sufficient for cross-referencing within a single suite's log; use it together with `timestamp` and `suite_name` for global uniqueness. Not a UUID — calling it a UUID would be inaccurate.
+- `timestamp` — UTC ISO-8601 captured at record append time.
+- `chain_version` — Currently `1`. Bumped only on a breaking change to the canonical serialization.
+- `prev_hash` — SHA-256 of the previous record's payload (excluding the previous record's `record_hash` field). For the first record in a chain, it is 64 zeros — the genesis sentinel.
+- `record_type` — `"summary"` for aggregate-per-run records, `"case"` for decision-level records (Art. 12 satisfies).
+- `record_hash` — SHA-256 of *this* record's payload (excluding the `record_hash` field itself).
+
+Source: [`compliance.py:680–718`](https://github.com/multivon-ai/multivon-eval/blob/main/multivon_eval/compliance.py#L680-L718).
+
+## The hash algorithm
+
+The canonical hash of a payload is:
+
+```python
+import hashlib, json
+
+def _hash_payload(payload: dict) -> str:
+    sanitized = {k: v for k, v in payload.items() if k != "record_hash"}
+    encoded = json.dumps(sanitized, separators=(",", ":"), sort_keys=False).encode()
+    return hashlib.sha256(encoded).hexdigest()
+```
+
+Three properties matter for reproducibility:
+
+1. **`separators=(",", ":")`** — no whitespace. Two records that differ only in whitespace would otherwise hash differently.
+2. **`sort_keys=False`** — the field order in the source record is part of the hash. We preserve Python dict insertion order, which is deterministic from Python 3.7 onward. This is conservative: if you ever need to verify a chain *without* the library, replicating the exact insertion order is the verification contract.
+3. **`record_hash` is excluded.** The hash covers the payload, then is appended to the payload before serialization to the log line.
+
+Source: [`compliance.py:849–853`](https://github.com/multivon-ai/multivon-eval/blob/main/multivon_eval/compliance.py#L849-L853).
+
+The full canonical payload sequence (in order) is:
+
+```
+record_id, suite_name, model_id, timestamp, framework,
+chain_version, prev_hash, record_type, [type-specific fields],
+provenance, record_hash
+```
+
+For `record_type="summary"` the type-specific fields are `summary` then `evaluator_results`. For `record_type="case"` it is `case`. Source: [`compliance.py:694–706`](https://github.com/multivon-ai/multivon-eval/blob/main/multivon_eval/compliance.py#L694-L706).
+
+## The chain
+
+The first record's `prev_hash` is the genesis sentinel — 64 zero characters. Every subsequent record's `prev_hash` is the previous record's `record_hash`. This means:
+
+- **Deleting a record** breaks the chain at the deletion point.
+- **Editing a record** changes that record's recomputed hash, breaking the chain at the *next* record.
+- **Reordering records** breaks the chain at the first out-of-order record.
+- **Inserting a record** breaks the chain at the next genuine record.
+
+The chain is append-only by construction. There is no "edit" operation in the API. If you need to correct a record, append a correction record that references the prior record's id in `tags`.
+
+## Verifying the chain
+
+The library's `verify()` walks the log line by line, recomputing each hash and checking the chain link:
+
+```python
+from multivon_eval import ComplianceReporter
+
+reporter = ComplianceReporter("./audit-logs", framework="eu-ai-act")
+ok = reporter.verify("triage-bot")   # True if every record + chain link is intact
+```
+
+Output format:
+
+```
+  OK            a3f9c2b18e4d  2026-05-16T14:32:11
+  OK            b1d8e3c9f042  2026-05-16T14:35:47
+  TAMPERED      c4e2a78b1f93  2026-05-16T14:39:18   ← someone edited this record
+  CHAIN BROKEN  d5f6e9a0c821  2026-05-16T14:42:55   ← descendants invalidated
+
+  Verification: FAIL — issues detected
+```
+
+- **TAMPERED** — record's stored hash doesn't match recomputed hash. The record itself was modified.
+- **CHAIN BROKEN** — the `prev_hash` doesn't match what the previous record's recomputed hash should be. The record itself is intact, but the chain link to the past is wrong (a record was likely deleted or reordered).
+- **OK (legacy)** — record predates `chain_version=1` (no `chain_version` field). Verified standalone — chain link is not checked because the legacy format didn't include `prev_hash`. Surfaced explicitly so the auditor knows the chain coverage is partial.
+
+Source: [`compliance.py:730–787`](https://github.com/multivon-ai/multivon-eval/blob/main/multivon_eval/compliance.py#L730-L787).
+
+## Reproducing the verifier without the library
+
+The verifier is also bundled into the `audit-package` zip as a standalone `verify.py` (no `multivon-eval` import required). An auditor with only Python's standard library can run:
+
+```bash
+python verify.py
+```
+
+…and get the same OK/TAMPERED/CHAIN BROKEN output. The script is short (~80 lines) and depends only on `hashlib`, `json`, and `pathlib`. A consequence: an auditor can verify the chain even without the multivon-eval library installed, which is the standard expectation for vendor-supplied audit evidence.
+
+The zip's contents:
+
+```
+compliance-evidence-2026-05-16/
+├── README.md            ← orientation for the auditor
+├── manifest.json        ← framework, suite name, generation timestamp,
+│                          multivon-eval version, file checksums
+├── audit_log.ndjson     ← the chained log
+├── calibration_v2.json  ← per-(judge × evaluator) thresholds with provenance
+├── coverage_report.md   ← which framework controls are exercised + gaps
+└── verify.py            ← self-contained chain verifier
+```
+
+[Download a 5.5 KB real sample](https://github.com/multivon-ai/multivon-eval/raw/main/docs/sample-audit-package.zip).
+
+## External anchoring
+
+A chain that lives only on your filesystem can be rewritten by anyone with write access. For high-stakes deployments, anchor the chain tip to an **external** immutable witness. The library supports this via the `anchor_fn` parameter:
+
+```python
+from multivon_eval import ComplianceReporter, github_actions_anchor
+
+reporter = ComplianceReporter(
+    "./audit-logs",
+    framework="eu-ai-act",
+    anchor_fn=github_actions_anchor,   # built-in: writes tip to $GITHUB_OUTPUT
+)
+```
+
+After every `record(...)` call, the tip hash is appended to `$GITHUB_OUTPUT` and is captured by GitHub Actions as a workflow output. A workflow run's output is immutable within GitHub's platform retention and access-control policies — sufficient for most audit purposes, but not a cryptographic guarantee. Even if a future attacker rewrites your filesystem audit log, the historical GitHub Actions run record still witnesses the original tip *as long as the run record itself has not been deleted by an actor with admin access to your GitHub organization*. For higher-assurance anchoring, see the alternatives below.
+
+The `anchor_fn` signature is `Callable[[str], None]`. Anchor targets the library does not ship out of the box but that customers commonly implement:
+
+- **AWS S3 with Object Lock + retention** (compliance-mode bucket; the tip object becomes immutable for the retention period).
+- **Sigstore / Rekor** (a public transparency-log entry produces a cryptographic timestamp witnessed by an external service).
+- **AWS QLDB** or another internal append-only ledger (Datadog log archive in immutable mode; Kafka topic with retention enforced by topic config).
+- **An RFC 3161 trusted-timestamp authority** when a qualified timestamp is required (e.g., for European eIDAS qualified-electronic-signature workflows).
+
+The library does not ship S3 or Sigstore integrations by default — these are commonly enterprise-policy-dependent. The `github_actions_anchor` is included because CI integration is the most common path and is trivial to implement.
+
+Source: [`compliance.py:860–891`](https://github.com/multivon-ai/multivon-eval/blob/main/multivon_eval/compliance.py#L860-L891).
+
+## Per-case vs summary recording
+
+Use `mode="summary"` for one chained record per `report` (one row per eval run). Use `mode="case"` for one chained record per *case* (one row per AI decision):
+
+```python
+reporter.record(report, mode="summary")   # default, one record per run
+reporter.record(report, mode="case")      # decision-level, one record per case
+```
+
+Per-case mode produces longer logs and writes one record per AI-driven decision — the granularity Art. 12 of the EU AI Act asks for in its "automatic recording of events" obligation. Whether this constitutes Art. 12 conformance for your deployment depends on system risk classification, retention, access control, and whether logging is on during inference — operational decisions outside the eval pipeline. Per-case records carry the full case input, model output, every evaluator's score with its mapped controls, and the same per-record `provenance` block.
+
+Source: [`compliance.py:540–559`](https://github.com/multivon-ai/multivon-eval/blob/main/multivon_eval/compliance.py#L540-L559).
+
+## Provenance
+
+Every record carries a `provenance` block so an auditor reading the log a year from now can answer "what code, judge, calibration, and cases produced this score?":
+
+| Field | Contents |
+|---|---|
+| `schema_version` | Currently `1`. Bumped on breaking changes to the provenance shape. |
+| `package_version` | `multivon_eval.__version__` at record time. |
+| `package_git_sha` | If running from a git checkout, the HEAD SHA. Absent for PyPI installs. |
+| `package_git_dirty` | If running from a git checkout, whether the working tree had uncommitted changes. A SHA without this flag could point at code that doesn't fully describe what ran. |
+| `host` | Python version, OS, machine architecture. No hostname, no username. |
+| `suite_lock` | The full `SuiteLock` (evaluator fingerprints, resolved judge configs, calibration entries used, cases hash) when the report was produced by `EvalSuite.run`. |
+| `suite_lock_status` | `"ok"` / `"absent"` / `"serialization_failed"`. Explicit, so the auditor knows *why* a `suite_lock` is missing rather than guessing. |
+
+Source: [`compliance.py:582–628`](https://github.com/multivon-ai/multivon-eval/blob/main/multivon_eval/compliance.py#L582-L628).
+
+The `suite_lock` is the primary artifact establishing reproducibility. Two records that share a `suite_lock` were produced by the same evaluator set with the same judge configs against the same case hashes — so any score difference between those records is attributable to the model under test, not to drift in the test infrastructure.
+
+## What we are NOT claiming
+
+- **Not a notarization service.** Local hash chains prove tamper-evidence; they do not prove *when* a record was written. If you need wall-clock attestation, anchor to a service that does (Sigstore Rekor, AWS QLDB, a trusted timestamp authority).
+- **Not zero-knowledge.** The log contains your eval data. If the data is sensitive, the log itself is sensitive. Apply access control accordingly.
+- **Not perpetually backward-compatible.** If `chain_version` ever bumps to `2`, the new verifier handles both versions, but a 2026-vintage `verify.py` won't understand 2027-vintage chains. Bundle the verifier *with the audit package* (which the library does automatically) so contemporary verifiers travel with their logs.
+- **Not a qualified timestamp.** GitHub Actions output, S3 Object Lock, and internal ledgers establish the chain tip existed *at some moment after* it was anchored. They are not RFC 3161 qualified timestamps. For jurisdictions where qualified timestamps are required (eIDAS-regulated EU workflows), pair the anchor with a trusted-timestamp authority.
+- **`sort_keys=False` is a real interoperability constraint.** If a third-party verifier re-serializes a record from a parsed JSON object using a language or runtime that does not preserve insertion order, hash recomputation will silently fail. Verifiers should always read the raw NDJSON line as bytes and hash the byte sequence directly when possible, or use a JSON library that preserves insertion order (Python 3.7+, Go's `encoding/json` with `ordered` tagging, etc.). This is a known limitation of the canonical-JSON-by-insertion-order approach; future `chain_version` bumps may move to RFC 8785 (JCS) for stronger language portability.
+- **Not a replacement for filesystem permissions.** A tamper-evident log proves *that* tampering happened; it does not prevent it. Pair the chain with filesystem `chattr +a` (Linux append-only), an S3 bucket with versioning and retention, or a write-once-read-many appliance for prevention.
+
+## See also
+
+- [`compliance.py`](https://github.com/multivon-ai/multivon-eval/blob/main/multivon_eval/compliance.py) — the full reference implementation.
+- [Sample audit-package zip (5.5 KB)](https://github.com/multivon-ai/multivon-eval/raw/main/docs/sample-audit-package.zip) — an illustrative chain produced from the `regulated` init template plus the standalone verifier. Synthetic eval data, real chain mechanics.
+- [Compliance Bundle](/compliance/bundle) — paid services that wrap the OSS audit trail with framework-update commitments, attestation letter, and named technical contact.
