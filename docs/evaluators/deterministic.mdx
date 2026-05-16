@@ -227,13 +227,13 @@ Passes if output starts with the given prefix. Case-insensitive by default.
 
 **When to use:** Enforcing response format conventions — code blocks that must open with a fence, structured outputs that must begin with a specific token.
 
-```python
+````python
 from multivon_eval import EvalCase, StartsWith
 
 case = EvalCase(input="Generate a JSON response")
 StartsWith("Sure")
 StartsWith("```json", case_sensitive=True)
-```
+````
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|

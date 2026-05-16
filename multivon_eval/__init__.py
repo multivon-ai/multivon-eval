@@ -165,6 +165,18 @@ __all__ = [
     "BearerAuth", "APIKeyAuth",
     "DeployedAPITarget", "MultiTurnAPITarget", "BrowserTarget",
     "simulate_users",
+    # Result types (CaseResult.status enum is the headline 0.7.0 feature)
+    "CaseResult", "EvalResult", "EvalReport",
+    "EvalStatus", "EVALUATION_STATUSES", "ERROR_STATUSES",
+    # Cost tracking
+    "Costs", "CostTracker", "ProviderUsage", "ModelPricing", "register_pricing",
+    # Suite locking / fingerprinting
+    "SuiteLock", "EvaluatorFingerprint", "LockMismatch",
+    "build_suite_lock", "fingerprint_evaluator", "verify_suite_against_lock",
+    # Audit packaging
+    "build_audit_package",
+    # Pytest plugin (no-op when pytest is not installed)
+    "assert_evaluators", "EvaluatorFailure",
     # Deterministic
     "NotEmpty", "ExactMatch", "Contains", "RegexMatch",
     "JSONSchemaEval", "WordCount", "Latency", "MaxLatency",

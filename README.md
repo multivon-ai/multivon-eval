@@ -351,13 +351,13 @@ For regulated industries (healthcare, finance, legal) where traces can't leave y
 from multivon_eval import PIIEvaluator
 
 suite.add_evaluators(
-    PIIEvaluator()                        # all patterns, all jurisdictions
-    PIIEvaluator(jurisdiction="gdpr")     # GDPR-specific extensions
-    PIIEvaluator(jurisdiction="ccpa")     # California CCPA
-    PIIEvaluator(redact=True)             # mask PII in the report
-    PIIEvaluator(patterns={               # custom patterns
+    PIIEvaluator(),                        # all patterns, all jurisdictions
+    PIIEvaluator(jurisdiction="gdpr"),     # GDPR-specific extensions
+    PIIEvaluator(jurisdiction="ccpa"),     # California CCPA
+    PIIEvaluator(redact=True),             # mask PII in the report
+    PIIEvaluator(patterns={                # custom patterns
         "employee_id": r"EMP-\d{6}",
-    })
+    }),
 )
 ```
 

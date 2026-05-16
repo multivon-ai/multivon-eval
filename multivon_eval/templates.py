@@ -203,22 +203,29 @@ from multivon_eval import (
 )
 
 
-# Auto-detect judge: cloud key wins; falls back to local Ollama if present.
+# Auto-detect judge: cloud key wins; probes local Ollama before assuming it,
+# so a missing daemon doesn't make `suite.run()` hang on a 30s connect timeout.
 def _auto_judge() -> JudgeConfig:
-    if os.getenv("ANTHROPIC_API_KEY", "").startswith("sk-ant-") and \\
-       "..." not in os.getenv("ANTHROPIC_API_KEY", ""):
+    ak = os.getenv("ANTHROPIC_API_KEY", "")
+    ok = os.getenv("OPENAI_API_KEY", "")
+    if ak.startswith("sk-ant-") and "..." not in ak:
         return JudgeConfig(provider="anthropic", model="claude-haiku-4-5", temperature=0.0)
-    if os.getenv("OPENAI_API_KEY", "").startswith("sk-") and \\
-       "..." not in os.getenv("OPENAI_API_KEY", ""):
+    if ok.startswith("sk-") and "..." not in ok:
         return JudgeConfig(provider="openai", model="gpt-4o-mini", temperature=0.0)
-    # Local fallback — assumes Ollama on default port with llama3 pulled.
-    # The OpenAI SDK requires a non-empty api_key even for local endpoints,
-    # so set a sentinel value; the local server ignores it.
-    os.environ.setdefault("OPENAI_API_KEY", "ollama-local-no-auth")
-    return JudgeConfig(
-        provider="openai", model="llama3",
-        base_url="http://localhost:11434/v1",
-    )
+    base = os.getenv("OPENAI_BASE_URL", "http://localhost:11434/v1")
+    try:
+        import urllib.request
+        probe = base.rstrip("/").rsplit("/v1", 1)[0] + "/api/tags"
+        with urllib.request.urlopen(probe, timeout=0.5):
+            pass
+        os.environ.setdefault("OPENAI_API_KEY", "ollama-local-no-auth")
+        return JudgeConfig(provider="openai", model="llama3",
+                           base_url=base, temperature=0.0)
+    except Exception:
+        # Neither key nor a reachable Ollama. Return a placeholder so the
+        # module finishes importing; suite.run() will raise JudgeUnavailable
+        # with a plain-language setup hint. See multivon_eval/judge.py.
+        return JudgeConfig(provider="openai", model="gpt-4o-mini", temperature=0.0)
 
 
 configure(_auto_judge())

@@ -28,6 +28,7 @@ from typing import Callable
 
 from .base import Evaluator
 from ..case import EvalCase
+from ..exceptions import JudgeUnavailable
 from ..result import EvalResult
 from ..judge import JudgeConfig, resolve_judge, make_judge_call
 
@@ -217,6 +218,8 @@ class SelfConsistency(Evaluator):
                     is_consistent = "consistent" in answer.strip().lower()
                     consistent += int(is_consistent)
                     total += 1
+                except JudgeUnavailable:
+                    raise
                 except Exception:
                     total += 1
 

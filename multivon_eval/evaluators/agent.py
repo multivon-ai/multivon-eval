@@ -12,6 +12,7 @@ import re
 from .base import Evaluator
 from .llm_judge import _judge_call, _call as _judge_call_with, _parse_yes_no, _qag_eval
 from ..case import EvalCase, AgentStep
+from ..exceptions import JudgeUnavailable
 from ..judge import JudgeConfig, resolve_judge
 from ..result import EvalResult
 
@@ -154,6 +155,8 @@ class ToolArgumentAccuracy(Evaluator):
                 good = _parse_yes_no(answer)
                 results.append(good)
                 reasons.append(f"{'✓' if good else '✗'} {tc.name}({args_str[:60]})")
+            except JudgeUnavailable:
+                raise
             except Exception as e:
                 results.append(False)
                 reasons.append(f"✗ {tc.name} (error: {e})")
@@ -263,6 +266,8 @@ class ToolCallNecessity(Evaluator):
                 needed = _parse_yes_no(answer)
                 results.append(needed)
                 reasons.append(f"{'✓' if needed else '✗ redundant'} {tc.name}({args_str[:50]})")
+            except JudgeUnavailable:
+                raise
             except Exception as e:
                 results.append(True)
                 reasons.append(f"? {tc.name} (error: {e})")
@@ -332,6 +337,8 @@ class TrajectoryEfficiency(Evaluator):
                     reasons.append(f"✗ Did not recover well from {len(failed_tools)} tool failure(s)")
                 else:
                     reasons.append(f"✓ Recovered from {len(failed_tools)} tool failure(s)")
+            except JudgeUnavailable:
+                raise
             except Exception:
                 pass
 
@@ -417,6 +424,8 @@ class StepFaithfulness(Evaluator):
                 results.append(faithful)
                 thought_preview = step.thought[:60] if step.thought else "(no thought)"
                 reasons.append(f"{'✓' if faithful else '✗'} Step {i}: {thought_preview}")
+            except JudgeUnavailable:
+                raise
             except Exception as e:
                 results.append(False)
                 reasons.append(f"✗ Step {i} (error: {e})")

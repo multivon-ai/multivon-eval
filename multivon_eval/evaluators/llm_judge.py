@@ -22,6 +22,7 @@ _logger = logging.getLogger("multivon_eval.check")
 
 from .base import Evaluator
 from ..case import EvalCase
+from ..exceptions import JudgeUnavailable
 from ..result import EvalResult
 from ..judge import JudgeConfig, resolve_judge, make_judge_call
 from ..calibration import calibrated_threshold as _calibrated_threshold
@@ -84,6 +85,8 @@ def _qag_eval(
             passed = got_yes == expect_yes
             results.append(passed)
             reasons.append(f"{'✓' if passed else '✗'} {question[:100]}")
+        except JudgeUnavailable:
+            raise
         except Exception as e:
             results.append(False)
             reasons.append(f"✗ {question[:100]} (error: {e})")
@@ -127,6 +130,8 @@ class Faithfulness(Evaluator):
             )
             match = re.search(r'\[.*?\]', raw, re.DOTALL)
             claims = json.loads(match.group()) if match else []
+        except JudgeUnavailable:
+            raise
         except Exception:
             return self._result(0.0, "Failed to extract claims")
 
@@ -144,6 +149,8 @@ class Faithfulness(Evaluator):
                 supported = _parse_yes_no(answer)
                 verified.append(supported)
                 reasons.append(f"{'✓' if supported else '✗'} {claim[:80]}")
+            except JudgeUnavailable:
+                raise
             except Exception:
                 verified.append(False)
                 reasons.append(f"✗ {claim[:80]} (eval error)")
@@ -375,6 +382,8 @@ class ContextPrecision(Evaluator):
                 results.append(relevant)
                 preview = chunk[:60].replace("\n", " ")
                 reasons.append(f"{'✓' if relevant else '✗'} Chunk {i+1}: {preview}...")
+            except JudgeUnavailable:
+                raise
             except Exception:
                 results.append(False)
         score = sum(results) / len(results) if results else 0.0
@@ -481,6 +490,8 @@ class GEval(Evaluator):
                 data = json.loads(match.group()) if match else {}
                 scores.append(max(0.0, min(1.0, float(data.get("score", 0.0)))))
                 reasons.append(data.get("reason", ""))
+            except JudgeUnavailable:
+                raise
             except Exception as e:
                 scores.append(0.0)
                 reasons.append(f"Eval error: {e}")
@@ -646,6 +657,11 @@ class CheckEvaluator(Evaluator):
                     "\n".join(f"  {i+1}. {q}" for i, (q, _) in enumerate(pairs)),
                 )
                 return pairs, False
+            except JudgeUnavailable:
+                # Don't retry or fall back on a missing key / unreachable
+                # provider — the user needs to fix the setup. Propagate so
+                # suite.run() routes this case to status=JUDGE_ERROR.
+                raise
             except Exception as exc:
                 last_exc = exc
                 if attempt == 0:

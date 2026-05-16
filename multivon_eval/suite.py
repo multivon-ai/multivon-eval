@@ -7,7 +7,9 @@ from typing import TYPE_CHECKING, Any, Callable, Awaitable
 
 from .case import EvalCase
 from .exceptions import JudgeUnavailable
-from .result import CalibrationResult, CaseResult, EvalGateFailure, EvalReport, EvalResult
+from .result import (
+    CalibrationResult, CaseResult, EvalGateFailure, EvalReport, EvalResult, ERROR_STATUSES,
+)
 from .evaluators.base import Evaluator
 from .evaluators.deterministic import Latency, MaxLatency
 from .reporters.terminal import print_report
@@ -417,12 +419,32 @@ class EvalSuite:
             report.save_json(json_path)
             print(f"  JSON report saved → {json_path}")
 
-        if fail_threshold is not None and report.pass_rate < fail_threshold:
-            raise EvalGateFailure(
-                f"\nEval failed: pass rate {report.pass_rate:.1%} < threshold {fail_threshold:.1%}",
-                pass_rate=report.pass_rate,
-                threshold=fail_threshold,
-            )
+        if fail_threshold is not None:
+            if report.evaluated == 0 and report.errors > 0:
+                # Every case errored out before quality could be assessed.
+                # Don't pretend it's a pass-rate problem — surface the first
+                # underlying error so the user fixes the setup, not the model.
+                first_err = next(
+                    (cr for cr in report.case_results if cr.status in ERROR_STATUSES),
+                    None,
+                )
+                detail = (
+                    (first_err.judge_error or first_err.model_error
+                     or first_err.evaluator_error or "(no detail)")
+                    if first_err else "(no detail)"
+                )
+                raise EvalGateFailure(
+                    f"\nEval blocked: all {report.errors} case(s) errored before quality scoring. "
+                    f"First error:\n  {detail}",
+                    pass_rate=report.pass_rate,
+                    threshold=fail_threshold,
+                )
+            if report.pass_rate < fail_threshold:
+                raise EvalGateFailure(
+                    f"\nEval failed: pass rate {report.pass_rate:.1%} < threshold {fail_threshold:.1%}",
+                    pass_rate=report.pass_rate,
+                    threshold=fail_threshold,
+                )
 
         return report
 
@@ -726,12 +748,32 @@ class EvalSuite:
         if verbose:
             print_report(report)
 
-        if fail_threshold is not None and report.pass_rate < fail_threshold:
-            raise EvalGateFailure(
-                f"\nEval failed: pass rate {report.pass_rate:.1%} < threshold {fail_threshold:.1%}",
-                pass_rate=report.pass_rate,
-                threshold=fail_threshold,
-            )
+        if fail_threshold is not None:
+            if report.evaluated == 0 and report.errors > 0:
+                # Every case errored out before quality could be assessed.
+                # Don't pretend it's a pass-rate problem — surface the first
+                # underlying error so the user fixes the setup, not the model.
+                first_err = next(
+                    (cr for cr in report.case_results if cr.status in ERROR_STATUSES),
+                    None,
+                )
+                detail = (
+                    (first_err.judge_error or first_err.model_error
+                     or first_err.evaluator_error or "(no detail)")
+                    if first_err else "(no detail)"
+                )
+                raise EvalGateFailure(
+                    f"\nEval blocked: all {report.errors} case(s) errored before quality scoring. "
+                    f"First error:\n  {detail}",
+                    pass_rate=report.pass_rate,
+                    threshold=fail_threshold,
+                )
+            if report.pass_rate < fail_threshold:
+                raise EvalGateFailure(
+                    f"\nEval failed: pass rate {report.pass_rate:.1%} < threshold {fail_threshold:.1%}",
+                    pass_rate=report.pass_rate,
+                    threshold=fail_threshold,
+                )
 
         return report
 
@@ -1445,12 +1487,32 @@ class EvalSuite:
         if verbose:
             print_report(report)
 
-        if fail_threshold is not None and report.pass_rate < fail_threshold:
-            raise EvalGateFailure(
-                f"\nEval failed: pass rate {report.pass_rate:.1%} < threshold {fail_threshold:.1%}",
-                pass_rate=report.pass_rate,
-                threshold=fail_threshold,
-            )
+        if fail_threshold is not None:
+            if report.evaluated == 0 and report.errors > 0:
+                # Every case errored out before quality could be assessed.
+                # Don't pretend it's a pass-rate problem — surface the first
+                # underlying error so the user fixes the setup, not the model.
+                first_err = next(
+                    (cr for cr in report.case_results if cr.status in ERROR_STATUSES),
+                    None,
+                )
+                detail = (
+                    (first_err.judge_error or first_err.model_error
+                     or first_err.evaluator_error or "(no detail)")
+                    if first_err else "(no detail)"
+                )
+                raise EvalGateFailure(
+                    f"\nEval blocked: all {report.errors} case(s) errored before quality scoring. "
+                    f"First error:\n  {detail}",
+                    pass_rate=report.pass_rate,
+                    threshold=fail_threshold,
+                )
+            if report.pass_rate < fail_threshold:
+                raise EvalGateFailure(
+                    f"\nEval failed: pass rate {report.pass_rate:.1%} < threshold {fail_threshold:.1%}",
+                    pass_rate=report.pass_rate,
+                    threshold=fail_threshold,
+                )
 
         return report
 

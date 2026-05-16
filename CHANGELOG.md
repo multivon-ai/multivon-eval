@@ -2,9 +2,18 @@
 
 All notable changes to `multivon-eval`. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) as of 0.7.0.
 
-## [0.7.0] — 2026-05-15
+## [0.7.0] — 2026-05-16
 
 The trust release: explicit error classification so a transient judge outage no longer masquerades as a model regression, plus the first major batch of community-facing usability work — JUnit CI integration, a local HTML report viewer, classical similarity metrics, repaired examples and notebooks.
+
+### Fixed (pre-release audit, 0.7.0)
+
+- **Headline trust feature now actually works.** Every LLM-judge evaluator (`Faithfulness`, `Hallucination`, `Relevance`, `ContextPrecision`, `CustomRubric`, `GEval`, `CheckEvaluator`) plus the agent evaluators (`ToolArgumentAccuracy`, `ToolCallNecessity`, `TaskCompletion`, `StepFaithfulness`) and `SelfConsistency` had bare `except Exception:` blocks that silently swallowed `JudgeUnavailable` and re-classified the case as a quality failure (`score=0.0`). This defeated the entire `CaseResult.status` distinction the release advertises. Each judge call now re-raises `JudgeUnavailable` so `suite.run()` routes the case to `EvalStatus.JUDGE_ERROR` and `pass_rate` excludes it correctly.
+- **`fail_threshold` no longer reports "Eval failed: pass rate 0.0%" when every case errored.** When `evaluated == 0` and `errors > 0`, `suite.run()` raises `EvalGateFailure` with the underlying error message (e.g. "Missing credentials … export OPENAI_API_KEY=sk-…") instead of a misleading quality gate failure.
+- **`rag` init template no longer hangs ~45s** when no API key is set and Ollama isn't running. The template now probes Ollama with a 0.5s timeout (matching the `regulated` template) and falls back to a JudgeConfig whose `suite.run()` call surfaces an actionable setup hint at first use.
+- **`__all__` re-exports** — `CaseResult`, `EvalResult`, `EvalReport`, `EvalStatus`, `EVALUATION_STATUSES`, `ERROR_STATUSES`, `Costs`, `CostTracker`, `ProviderUsage`, `ModelPricing`, `register_pricing`, `SuiteLock`, `EvaluatorFingerprint`, `LockMismatch`, `build_suite_lock`, `fingerprint_evaluator`, `verify_suite_against_lock`, `build_audit_package`, `assert_evaluators`, `EvaluatorFailure` were imported at module top-level but missing from `__all__`. `from multivon_eval import *` and IDE introspection now see them.
+- **README PII example** had four missing commas between `add_evaluators(...)` arguments — pasted-as-is was a `SyntaxError`. Fixed.
+- **`docs/evaluators/deterministic.mdx`** `StartsWith("```json")` example used a literal triple-backtick inside a triple-backtick fence, closing the outer code block early in Mintlify. Switched the outer fence to four backticks.
 
 ### Added
 
