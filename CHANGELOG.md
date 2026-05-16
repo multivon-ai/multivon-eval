@@ -2,9 +2,9 @@
 
 All notable changes to `multivon-eval`. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) as of 0.7.0.
 
-## [Unreleased] — 0.7.3
+## [0.7.3] — 2026-05-17
 
-Branch: `fix/calibration-silent-fallback-2026-05-16` (not yet merged or pushed).
+The trust release: the single most-cited bug across a 26-voice strategy deliberation was the silent calibration fallback. Fixed, with a public escape hatch for legacy callers who depended on it. Two experimental multimodal evaluators land as the seed for a forthcoming document-AI benchmark (see [`pdfhell`](https://github.com/multivon-ai/pdfhell)).
 
 ### Fixed
 
