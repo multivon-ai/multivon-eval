@@ -139,12 +139,13 @@ Multi-judge agreement on the same task, N=50, all judges temperature=0:
 
 | Judge | Accuracy vs human | Precision | F1 |
 |---|---:|---:|---:|
-| **claude-haiku-4-5** | **0.800** | **0.895** | 0.773 |
-| gpt-4o-mini          | 0.800 | 0.857 | **0.783** |
-| gpt-4o               | 0.760 | 0.783 | 0.750 |
-| claude-sonnet-4-6    | 0.720 | 0.720 | 0.720 |
+| **gemini-2.5-flash**  | **0.860** | **0.950** | **0.844** |
+| gpt-4o-mini           | 0.820 | 0.900 | 0.800 |
+| claude-haiku-4-5      | 0.800 | 0.895 | 0.773 |
+| gpt-4o                | 0.780 | 0.792 | 0.776 |
+| claude-sonnet-4-6     | 0.720 | 0.720 | 0.720 |
 
-Pairwise Cohen's κ across the 4 judges: 0.52–0.76 (moderate to substantial). Calibration provenance + per-(judge × evaluator) thresholds ship in [`multivon_eval/_calibration_data/v2.json`](multivon_eval/_calibration_data/v2.json).
+Pairwise Cohen's κ across the 5 judges: 0.60–0.80 (substantial on most pairs). Calibration provenance + per-(judge × evaluator) thresholds ship in [`multivon_eval/_calibration_data/v2.json`](multivon_eval/_calibration_data/v2.json). `gemini-2.5-flash` leads on every metric in this run; `claude-haiku-4-5` and `gpt-4o-mini` are close seconds with cheaper tokens. Pick by your latency / cost / sovereignty constraints — all three are first-class providers.
 
 **Cost / latency** ([`benchmarks/results/cost_latency.json`](benchmarks/results/cost_latency.json)) — 50 HaluEval QA cases × 4 LLM-judge evaluators with `claude-haiku-4-5`, `workers=1`:
 

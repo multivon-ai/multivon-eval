@@ -48,6 +48,17 @@ _OPENAI = {
     "gpt-4.1": ModelPricing(2.50, 10.0),
 }
 
+# ─── Google ─────────────────────────────────────────────────────────────────
+# Per-million USD pricing as published by Google AI Studio / Gemini API.
+# Numbers as of 2026-05; update via register_pricing() if Google moves them.
+_GOOGLE = {
+    "gemini-2.5-flash":     ModelPricing(0.075, 0.30),
+    "gemini-2.5-flash-lite": ModelPricing(0.0375, 0.15),
+    "gemini-2.5-pro":       ModelPricing(1.25, 5.00),
+    "gemini-1.5-flash":     ModelPricing(0.075, 0.30),
+    "gemini-1.5-pro":       ModelPricing(1.25, 5.00),
+}
+
 # ─── Self-hosted / on-prem ─────────────────────────────────────────────────
 # Local models incur compute cost, not per-token API cost. We report $0 here
 # so cost accounting is correct on-prem; users with explicit GPU bills can
@@ -62,6 +73,7 @@ _ONPREM = {
 _CATALOG: dict[str, ModelPricing] = {}
 _CATALOG.update(_ANTHROPIC)
 _CATALOG.update(_OPENAI)
+_CATALOG.update(_GOOGLE)
 _CATALOG.update(_ONPREM)
 
 

@@ -38,11 +38,12 @@ from .exceptions import JudgeUnavailable
 
 __all__ = ["JudgeConfig", "configure", "get_global_judge"]
 
-_SUPPORTED_PROVIDERS = {"anthropic", "openai", "litellm"}
+_SUPPORTED_PROVIDERS = {"anthropic", "openai", "google", "litellm"}
 
 _DEFAULT_MODELS: dict[str, str] = {
     "anthropic": "claude-haiku-4-5",
     "openai": "gpt-4o-mini",
+    "google": "gemini-2.5-flash",
     "litellm": "",  # User must specify; LiteLLM model strings vary by provider.
 }
 
@@ -219,10 +220,16 @@ def _setup_hint(provider: str) -> str:
             "    export OPENAI_API_KEY=sk-...",
             "    (get a key at https://platform.openai.com)",
         ]
+    elif provider == "google":
+        lines += [
+            "    export GOOGLE_API_KEY=...",
+            "    (get a key at https://aistudio.google.com/apikey)",
+        ]
     else:
         lines += [
             "    export ANTHROPIC_API_KEY=sk-ant-...    # or",
-            "    export OPENAI_API_KEY=sk-...",
+            "    export OPENAI_API_KEY=sk-...           # or",
+            "    export GOOGLE_API_KEY=...",
         ]
     lines += [
         "    OR run a local LLM (no key needed):",
@@ -289,6 +296,48 @@ def _sync_openai_call(prompt: str, config: JudgeConfig) -> str:
     return response.choices[0].message.content or ""
 
 
+def _sync_google_call(prompt: str, config: JudgeConfig) -> str:
+    """Gemini judge call via the official google-genai SDK.
+
+    Auth: GOOGLE_API_KEY env var (matches Google's own examples). The SDK
+    raises a generic ClientError on auth/connection problems — those are
+    caught by `_wrap_provider_error` so the user gets a setup hint.
+    """
+    try:
+        from google import genai
+    except ImportError as exc:
+        raise JudgeUnavailable(
+            "provider='google' requires the google-genai package: "
+            "pip install 'multivon-eval[google]'",
+            provider="google",
+            model=config.model,
+        ) from exc
+    client = genai.Client()
+    response = client.models.generate_content(
+        model=config.model,
+        contents=prompt,
+        config={
+            "temperature": config.temperature,
+            "max_output_tokens": config.max_tokens,
+        },
+    )
+    usage = getattr(response, "usage_metadata", None)
+    _record_usage(
+        provider="google",
+        model=config.model,
+        input_tokens=getattr(usage, "prompt_token_count", 0) if usage else 0,
+        output_tokens=getattr(usage, "candidates_token_count", 0) if usage else 0,
+    )
+    # google-genai returns text either via response.text or candidates[0].content.parts[0].text
+    text = getattr(response, "text", None)
+    if not text and getattr(response, "candidates", None):
+        # Defensive: pull from the first candidate's first text part
+        cand = response.candidates[0]
+        parts = getattr(getattr(cand, "content", None), "parts", []) or []
+        text = next((getattr(p, "text", "") for p in parts if getattr(p, "text", "")), "")
+    return text or ""
+
+
 def _sync_litellm_call(prompt: str, config: JudgeConfig) -> str:
     try:
         import litellm
@@ -329,6 +378,8 @@ def _make_judge_call_uncached(prompt: str, config: JudgeConfig) -> str:
                 return _sync_anthropic_call(prompt, config)
             if config.provider == "openai":
                 return _sync_openai_call(prompt, config)
+            if config.provider == "google":
+                return _sync_google_call(prompt, config)
             if config.provider == "litellm":
                 return _sync_litellm_call(prompt, config)
             raise JudgeUnavailable(
@@ -453,6 +504,50 @@ async def _async_openai_call(prompt: str, config: JudgeConfig) -> str:
     return response.choices[0].message.content or ""
 
 
+async def _async_google_call(prompt: str, config: JudgeConfig) -> str:
+    """Gemini async call. The google-genai SDK exposes async via client.aio.
+
+    Falls back to running the sync call in a thread if the installed SDK
+    version doesn't expose `aio`."""
+    try:
+        from google import genai
+    except ImportError as exc:
+        raise JudgeUnavailable(
+            "provider='google' requires the google-genai package: "
+            "pip install 'multivon-eval[google]'",
+            provider="google",
+            model=config.model,
+        ) from exc
+    client = genai.Client()
+    aio = getattr(client, "aio", None)
+    if aio is None:
+        # SDK without async support — degrade to threaded sync call so the
+        # event loop isn't blocked. Cleaner than refusing on old SDKs.
+        import asyncio
+        return await asyncio.to_thread(_sync_google_call, prompt, config)
+    response = await aio.models.generate_content(
+        model=config.model,
+        contents=prompt,
+        config={
+            "temperature": config.temperature,
+            "max_output_tokens": config.max_tokens,
+        },
+    )
+    usage = getattr(response, "usage_metadata", None)
+    _record_usage(
+        provider="google",
+        model=config.model,
+        input_tokens=getattr(usage, "prompt_token_count", 0) if usage else 0,
+        output_tokens=getattr(usage, "candidates_token_count", 0) if usage else 0,
+    )
+    text = getattr(response, "text", None)
+    if not text and getattr(response, "candidates", None):
+        cand = response.candidates[0]
+        parts = getattr(getattr(cand, "content", None), "parts", []) or []
+        text = next((getattr(p, "text", "") for p in parts if getattr(p, "text", "")), "")
+    return text or ""
+
+
 async def _async_litellm_call(prompt: str, config: JudgeConfig) -> str:
     try:
         import litellm
@@ -514,6 +609,8 @@ async def _make_judge_call_async_uncached(prompt: str, config: JudgeConfig) -> s
                 return await _async_anthropic_call(prompt, config)
             if config.provider == "openai":
                 return await _async_openai_call(prompt, config)
+            if config.provider == "google":
+                return await _async_google_call(prompt, config)
             if config.provider == "litellm":
                 return await _async_litellm_call(prompt, config)
             raise JudgeUnavailable(

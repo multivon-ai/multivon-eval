@@ -2,6 +2,16 @@
 
 All notable changes to `multivon-eval`. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) as of 0.7.0.
 
+## [0.7.2] — 2026-05-16
+
+Gemini lands as a first-class judge provider. The 5-judge multi-judge agreement benchmark re-ran with 250 LLM calls and ships in the website.
+
+### Added
+
+- **`provider="google"` for `JudgeConfig`** — backed by the official `google-genai` SDK. Default model: `gemini-2.5-flash`. Install with `pip install 'multivon-eval[google]'` (the extra pulls `google-genai>=1.0.0`). Sync + async paths wired. Auth via `GOOGLE_API_KEY` (matches Google's own docs); the standard "missing key" `JudgeUnavailable` setup hint now mentions where to get one.
+- **Pricing for Gemini** in `_cost_models.py` — `gemini-2.5-flash` $0.075/$0.30 per million in/out, `gemini-2.5-flash-lite` $0.0375/$0.15, `gemini-2.5-pro` $1.25/$5.00, plus 1.5-series. Per-token usage is recorded the same way as Anthropic and OpenAI, so `report.costs.total_cost_usd` is correct out of the box.
+- **Multi-judge benchmark refreshed with 5 judges**. `benchmarks/results/multi_judge_agreement.json` now reports pairwise Cohen's κ 0.60–0.80 (substantial agreement on most pairs) and per-judge accuracy/precision/F1 on HaluEval QA, N=50. `gemini-2.5-flash` leads on every metric in this run (accuracy 0.860, precision 0.950, F1 0.844). Numbers surface on the website and in the new "Why multivon-eval" docs page.
+
 ## [0.7.1] — 2026-05-16
 
 Pre-public-launch hardening: two real bugs the new benchmarks surfaced, plus calibration around the numbers we put on the website.

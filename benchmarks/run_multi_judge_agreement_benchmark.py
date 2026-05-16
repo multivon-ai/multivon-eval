@@ -49,10 +49,11 @@ def cohens_kappa(a: list[int], b: list[int]) -> float:
 
 
 JUDGES = {
-    "claude-haiku-4-5": JudgeConfig(provider="anthropic", model="claude-haiku-4-5", temperature=0.0),
-    "claude-sonnet-4-6": JudgeConfig(provider="anthropic", model="claude-sonnet-4-6", temperature=0.0),
-    "gpt-4o-mini":  JudgeConfig(provider="openai", model="gpt-4o-mini", temperature=0.0),
-    "gpt-4o":       JudgeConfig(provider="openai", model="gpt-4o", temperature=0.0),
+    "claude-haiku-4-5":   JudgeConfig(provider="anthropic", model="claude-haiku-4-5", temperature=0.0),
+    "claude-sonnet-4-6":  JudgeConfig(provider="anthropic", model="claude-sonnet-4-6", temperature=0.0),
+    "gpt-4o-mini":        JudgeConfig(provider="openai", model="gpt-4o-mini", temperature=0.0),
+    "gpt-4o":             JudgeConfig(provider="openai", model="gpt-4o", temperature=0.0),
+    "gemini-2.5-flash":   JudgeConfig(provider="google", model="gemini-2.5-flash", temperature=0.0),
 }
 
 

@@ -7,15 +7,20 @@
     "claude-haiku-4-5",
     "claude-sonnet-4-6",
     "gpt-4o-mini",
-    "gpt-4o"
+    "gpt-4o",
+    "gemini-2.5-flash"
   ],
   "pairwise_cohens_kappa": {
     "claude-haiku-4-5 \u2194 claude-sonnet-4-6": 0.6,
-    "claude-haiku-4-5 \u2194 gpt-4o-mini": 0.667,
-    "claude-haiku-4-5 \u2194 gpt-4o": 0.755,
-    "claude-sonnet-4-6 \u2194 gpt-4o-mini": 0.52,
-    "claude-sonnet-4-6 \u2194 gpt-4o": 0.76,
-    "gpt-4o-mini \u2194 gpt-4o": 0.757
+    "claude-haiku-4-5 \u2194 gpt-4o-mini": 0.706,
+    "claude-haiku-4-5 \u2194 gpt-4o": 0.717,
+    "claude-haiku-4-5 \u2194 gemini-2.5-flash": 0.79,
+    "claude-sonnet-4-6 \u2194 gpt-4o-mini": 0.72,
+    "claude-sonnet-4-6 \u2194 gpt-4o": 0.8,
+    "claude-sonnet-4-6 \u2194 gemini-2.5-flash": 0.72,
+    "gpt-4o-mini \u2194 gpt-4o": 0.758,
+    "gpt-4o-mini \u2194 gemini-2.5-flash": 0.75,
+    "gpt-4o \u2194 gemini-2.5-flash": 0.758
   },
   "kappa_interpretation": {
     ">= 0.81": "almost perfect",
@@ -27,8 +32,9 @@
   "accuracy_vs_human_label": {
     "claude-haiku-4-5": 0.8,
     "claude-sonnet-4-6": 0.72,
-    "gpt-4o-mini": 0.8,
-    "gpt-4o": 0.76
+    "gpt-4o-mini": 0.82,
+    "gpt-4o": 0.78,
+    "gemini-2.5-flash": 0.86
   },
   "per_judge_metrics": {
     "claude-haiku-4-5": {
@@ -42,14 +48,19 @@
       "f1": 0.72
     },
     "gpt-4o-mini": {
-      "precision": 0.857,
+      "precision": 0.9,
       "recall": 0.72,
-      "f1": 0.783
+      "f1": 0.8
     },
     "gpt-4o": {
-      "precision": 0.783,
-      "recall": 0.72,
-      "f1": 0.75
+      "precision": 0.792,
+      "recall": 0.76,
+      "f1": 0.776
+    },
+    "gemini-2.5-flash": {
+      "precision": 0.95,
+      "recall": 0.76,
+      "f1": 0.844
     }
   }
 }

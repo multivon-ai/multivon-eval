@@ -26,12 +26,13 @@ Different judges disagree more than you'd expect. The calibrated-thresholds laye
 
 | Judge | Accuracy vs human | Precision | F1 |
 |---|---:|---:|---:|
-| **claude-haiku-4-5** | **0.800** | **0.895** | 0.773 |
-| gpt-4o-mini          | 0.800 | 0.857 | **0.783** |
-| gpt-4o               | 0.760 | 0.783 | 0.750 |
-| claude-sonnet-4-6    | 0.720 | 0.720 | 0.720 |
+| **gemini-2.5-flash**  | **0.860** | **0.950** | **0.844** |
+| gpt-4o-mini           | 0.820 | 0.900 | 0.800 |
+| claude-haiku-4-5      | 0.800 | 0.895 | 0.773 |
+| gpt-4o                | 0.780 | 0.792 | 0.776 |
+| claude-sonnet-4-6     | 0.720 | 0.720 | 0.720 |
 
-Pairwise Cohen's κ: 0.52–0.76 — moderate to substantial. `claude-haiku-4-5` has the highest precision and is the default for production gates where false positives are expensive. The lowest scorer (claude-sonnet-4-6) is a useful diversity judge in multi-judge runs, not a default.
+Pairwise Cohen's κ: 0.60–0.80 — substantial agreement on most pairs. `gemini-2.5-flash` leads every metric in this run; `claude-haiku-4-5` and `gpt-4o-mini` are close seconds with cheaper tokens. Pick by your cost / latency / sovereignty constraints — calibrated thresholds ship for each. claude-sonnet-4-6 is a useful diversity judge in multi-judge runs, not a default.
 
 ## Cost — 50 cases × 4 LLM-judge evaluators
 
@@ -71,6 +72,7 @@ We're not better at everything. If your priority is —
 - **CI/CD on every PR**: `multivon-eval init --ci github` ships the workflow. Distinct exit codes for quality vs infra failures.
 - **Regulated AI**: hash-chained NDJSON audit logs with paragraph-accurate EU AI Act / NIST AI RMF / HIPAA mappings. `audit-package` produces an auditor-attachable zip — [download a real sample (5.5 KB)](https://github.com/multivon-ai/multivon-eval/raw/main/docs/sample-audit-package.zip).
 - **Agent-native**: tool-call accuracy, trajectory efficiency, step faithfulness — framework-agnostic via `AgentTracer`.
+- **First-class multi-judge support**: ship with `anthropic`, `openai`, `google`, and `litellm` providers, plus any OpenAI-compatible endpoint (Ollama, vLLM, LM Studio, Azure, Bedrock via LiteLLM). Threshold packs calibrated per (judge × evaluator) so you can swap providers without re-tuning.
 
 ## Reproduce everything
 
