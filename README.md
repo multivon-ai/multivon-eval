@@ -52,11 +52,21 @@ See [CHANGELOG.md](CHANGELOG.md) for the full list including breaking changes.
 ---
 
 ```python
+# pip install multivon-eval anthropic
+# export ANTHROPIC_API_KEY=sk-ant-...
+
+import anthropic
 from multivon_eval import EvalSuite, EvalCase
 
-# Your model — any str → str callable (real LLM, API client, anything).
-def my_model_fn(input: str) -> str:
-    return your_llm.generate(input)  # replace with your call
+client = anthropic.Anthropic()
+
+def support_bot(prompt: str) -> str:
+    response = client.messages.create(
+        model="claude-haiku-4-5",
+        max_tokens=200,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    return response.content[0].text
 
 suite = EvalSuite("Support Bot Eval")
 suite.add_check("Response explains how to resolve the issue")
@@ -67,7 +77,7 @@ suite.add_cases([
         context="Users can reset their password by clicking 'Forgot Password' on the login page.",
     ),
 ])
-report = suite.run(my_model_fn)
+report = suite.run(support_bot)
 ```
 
 ```
@@ -111,6 +121,30 @@ Every team building AI products hits the same problem: **how do you know if your
 | Local-first, no account needed | ✓ | ✓ | ✓ | ✓ |
 | Synthetic data generation | ✓ | ✓ | ✓ | — |
 | Open source (Apache 2.0) | ✓ | ✓ | ✓ | ✓ |
+
+> Comparison based on each project's public documentation as of May 2026. We host these benchmarks open: see [`benchmarks/`](benchmarks/) for code + datasets and [`benchmarks/results/`](benchmarks/results/) for the raw output JSON. Found something wrong? [Open an issue](https://github.com/multivon-ai/multivon-eval/issues) — we'll fix it.
+
+### Numbers, not adjectives
+
+Hallucination detection, HaluEval QA, N=100, claude-haiku-4-5 judge, human labels:
+
+| Evaluator | Precision | False positives | F1 |
+|---|---:|---:|---:|
+| **multivon-eval (QAG)** | **0.788** | **11** | **0.804** |
+| DeepEval (GPT-4o-mini)  | 0.456 | 49 | 0.586 |
+| Simple LLM judge (1-10) | 0.617 | 31 | 0.763 |
+| Keyword overlap         | 0.605 | 15 | 0.523 |
+
+Multi-judge agreement on the same task, N=50, all judges temperature=0:
+
+| Judge | Accuracy vs human | Precision | F1 |
+|---|---:|---:|---:|
+| **claude-haiku-4-5** | **0.800** | **0.895** | 0.773 |
+| gpt-4o-mini          | 0.800 | 0.857 | **0.783** |
+| gpt-4o               | 0.760 | 0.783 | 0.750 |
+| claude-sonnet-4-6    | 0.720 | 0.720 | 0.720 |
+
+Pairwise Cohen's κ across the 4 judges: 0.52–0.76 (moderate to substantial). Calibration provenance + per-(judge × evaluator) thresholds ship in [`multivon_eval/_calibration_data/v2.json`](multivon_eval/_calibration_data/v2.json).
 
 `multivon-eval` is different:
 
@@ -647,7 +681,7 @@ EvalSuite.run(model_fn)
            └── export → JSON / CSV
 ```
 
-**Judge model:** Configured via `JUDGE_MODEL` and `JUDGE_PROVIDER` env vars. Defaults to `claude-haiku-4-5`. Thresholds for `Faithfulness`, `Hallucination`, and `Relevance` are automatically calibrated per judge model against human-labeled benchmarks (F1 0.76–0.98). Local and self-hosted models work via `OPENAI_BASE_URL` or `JudgeConfig(base_url=...)` — Ollama, LM Studio, vLLM, and any OpenAI-compatible server are supported. The model under test and the judge model can be different providers.
+**Judge model:** Configured via `JUDGE_MODEL` and `JUDGE_PROVIDER` env vars. Defaults to `claude-haiku-4-5`. Thresholds for `Faithfulness`, `Hallucination`, and `Relevance` are calibrated per (judge × evaluator) against human-labeled benchmarks — calibration F1 ranges from 0.66 (`Faithfulness` on `claude-sonnet-4-6`) to 1.00 (`Relevance` on `gpt-4o-mini`) across the shipped table. Provenance — dataset hash, N, F1, measurement date — is in [`_calibration_data/v2.json`](multivon_eval/_calibration_data/v2.json). Local and self-hosted models work via `OPENAI_BASE_URL` or `JudgeConfig(base_url=...)` — Ollama, LM Studio, vLLM, and any OpenAI-compatible server are supported. The model under test and the judge model can be different providers.
 
 ---
 

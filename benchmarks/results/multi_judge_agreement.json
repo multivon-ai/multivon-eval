@@ -1,0 +1,55 @@
+{
+  "benchmark": "multi_judge_agreement",
+  "dataset": "halueval_qa",
+  "n_cases": 25,
+  "n_pairs": 50,
+  "judges": [
+    "claude-haiku-4-5",
+    "claude-sonnet-4-6",
+    "gpt-4o-mini",
+    "gpt-4o"
+  ],
+  "pairwise_cohens_kappa": {
+    "claude-haiku-4-5 \u2194 claude-sonnet-4-6": 0.6,
+    "claude-haiku-4-5 \u2194 gpt-4o-mini": 0.667,
+    "claude-haiku-4-5 \u2194 gpt-4o": 0.755,
+    "claude-sonnet-4-6 \u2194 gpt-4o-mini": 0.52,
+    "claude-sonnet-4-6 \u2194 gpt-4o": 0.76,
+    "gpt-4o-mini \u2194 gpt-4o": 0.757
+  },
+  "kappa_interpretation": {
+    ">= 0.81": "almost perfect",
+    "0.61\u20130.80": "substantial",
+    "0.41\u20130.60": "moderate",
+    "0.21\u20130.40": "fair",
+    "< 0.21": "slight"
+  },
+  "accuracy_vs_human_label": {
+    "claude-haiku-4-5": 0.8,
+    "claude-sonnet-4-6": 0.72,
+    "gpt-4o-mini": 0.8,
+    "gpt-4o": 0.76
+  },
+  "per_judge_metrics": {
+    "claude-haiku-4-5": {
+      "precision": 0.895,
+      "recall": 0.68,
+      "f1": 0.773
+    },
+    "claude-sonnet-4-6": {
+      "precision": 0.72,
+      "recall": 0.72,
+      "f1": 0.72
+    },
+    "gpt-4o-mini": {
+      "precision": 0.857,
+      "recall": 0.72,
+      "f1": 0.783
+    },
+    "gpt-4o": {
+      "precision": 0.783,
+      "recall": 0.72,
+      "f1": 0.75
+    }
+  }
+}

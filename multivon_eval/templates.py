@@ -261,8 +261,10 @@ suite.add_evaluators(Faithfulness(), Hallucination())
 
 if __name__ == "__main__":
     # fail_threshold=0.7 makes the process exit 1 when pass-rate drops
+    # below the bar. save_json= writes the report BEFORE the gate fires,
+    # so a failing run still leaves an artifact for `multivon-eval view`.
     # below 70%, so CI catches eval failures — not just code errors.
-    report = suite.run(rag_model, fail_threshold=0.7)
+    report = suite.run(rag_model, fail_threshold=0.7, save_json="eval-reports/rag.json")
 
     # Budget gate — fail CI if costs blow up. Tune these for your suite.
     try:
@@ -621,7 +623,7 @@ suite.add_evaluators(Faithfulness(), Hallucination())
 
 if __name__ == "__main__":
     reporter = ComplianceReporter("audit-logs", framework="eu-ai-act")
-    report = suite.run(regulated_model, fail_threshold=0.7)
+    report = suite.run(regulated_model, fail_threshold=0.7, save_json="eval-reports/regulated.json")
 
     reporter.record(report, tags={"system": "regulated-template-demo", "version": "0.1.0"})
 
@@ -786,7 +788,7 @@ suite.add_evaluators(
 
 
 if __name__ == "__main__":
-    report = suite.run(chatbot, fail_threshold=0.7)
+    report = suite.run(chatbot, fail_threshold=0.7, save_json="eval-reports/conversation.json")
 
     try:
         report.assert_budget(

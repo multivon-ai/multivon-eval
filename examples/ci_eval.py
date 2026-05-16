@@ -24,7 +24,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import anthropic
-from multivon_eval import EvalSuite, load, NotEmpty, Relevance, WordCount
+from multivon_eval import EvalSuite, load, AnswerAccuracy, NotEmpty, WordCount
 
 
 client = anthropic.Anthropic()
@@ -46,13 +46,17 @@ def main() -> int:
 
     suite = EvalSuite("CI Regression Eval", model_id="claude-haiku")
     suite.add_cases(cases)
+    # Relevance requires case.context. The sample dataset only has context on
+    # the summarization case, so applying Relevance to all 5 would score
+    # the rest 0 and the demo would appear broken. Use AnswerAccuracy +
+    # plain-English checks instead — they work on every case.
     suite.add_evaluators(
         NotEmpty(),
         WordCount(min=2, max=500),
-        Relevance(threshold=0.6),
+        AnswerAccuracy(threshold=0.6),
     )
-    suite.add_check("Response should directly answer the question asked")
-    suite.add_check("Response should not contain placeholder or error text")
+    suite.add_check("Response directly answers the question")
+    suite.add_check("Response is factually plausible")
 
     # fail_threshold=0.8 raises EvalGateFailure (subclass of SystemExit)
     # inside suite.run() when pass_rate < 80%. The rest of this function

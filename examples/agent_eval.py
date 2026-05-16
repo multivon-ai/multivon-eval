@@ -6,7 +6,9 @@ Uses ManualTracer to record each tool call, then evaluates:
   - TaskCompletion: did the agent resolve the customer's request?
   - add_check: plain-English quality criteria
 
-Run with runs=3 to surface flaky cases (non-deterministic tool selection).
+Demo uses runs=1; bump to runs=3 once you want to surface flaky tool
+selection. Each rep is a full agent loop (multiple LLM calls), so runs=3
+multiplies wall-clock by ~3× — fine for nightly CI, slow for a smoke run.
 """
 from dotenv import load_dotenv
 load_dotenv()
@@ -142,7 +144,9 @@ suite.add_check("Response should acknowledge the customer's specific issue")
 suite.add_check("Response should confirm what action was taken")
 
 if __name__ == "__main__":
-    # runs=3 surfaces non-deterministic tool selection (flaky cases)
-    report = suite.run(agent, tracer=tracer, runs=3)
-    report.save_json("agent_eval_results.json")
-    print("\nSaved to agent_eval_results.json")
+    # runs=1 for a fast demo. Switch to runs=3+ in CI to surface
+    # non-deterministic tool selection — flaky cases will fail at least once.
+    report = suite.run(
+        agent, tracer=tracer, runs=1,
+        save_json="agent_eval_results.json",
+    )

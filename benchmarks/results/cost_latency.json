@@ -1,0 +1,45 @@
+{
+  "deterministic (no LLM)": {
+    "n_cases": 50,
+    "n_evaluators": 3,
+    "evaluator_names": [
+      "not_empty",
+      "word_count",
+      "levenshtein"
+    ],
+    "wall_clock_s": 0.0,
+    "avg_per_case_s": 0.0,
+    "total_cost_usd": 0.0,
+    "cost_per_case_usd": 0.0,
+    "total_tokens_in": 0,
+    "total_tokens_out": 0,
+    "tokens_per_case": 0,
+    "n_judge_calls": 0,
+    "judge_calls_per_case": 0.0
+  },
+  "llm-judge (claude-haiku)": {
+    "n_cases": 50,
+    "n_evaluators": 4,
+    "evaluator_names": [
+      "faithfulness",
+      "hallucination",
+      "relevance",
+      "answer_accuracy"
+    ],
+    "wall_clock_s": 184.26,
+    "avg_per_case_s": 3.69,
+    "total_cost_usd": 0.0,
+    "cost_per_case_usd": 0.0,
+    "total_tokens_in": 0,
+    "total_tokens_out": 0,
+    "tokens_per_case": 0,
+    "n_judge_calls": 0,
+    "judge_calls_per_case": 0.0
+  },
+  "extrapolation": {
+    "scenario": "Same eval suite, 5000 cases",
+    "estimated_cost_usd": 0.0,
+    "estimated_wall_clock_min": 307.1,
+    "note": "Linear extrapolation; ignores rate-limiting and judge cache hits."
+  }
+}

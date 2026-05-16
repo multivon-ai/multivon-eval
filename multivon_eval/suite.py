@@ -327,6 +327,8 @@ class EvalSuite:
         tracer: "AgentTracer | None" = None,
         early_stop: bool = False,
         judge_retry: "JudgeRetry | None" = None,
+        save_json: str | None = None,
+        save_junit_xml: str | None = None,
     ) -> EvalReport:
         """
         Run all evaluators over all cases.
@@ -410,14 +412,20 @@ class EvalSuite:
         if verbose:
             print_report(report)
 
-        # Auto-save outputs when CLI flags are injected via env vars
+        # Auto-save outputs when CLI flags are injected via env vars OR
+        # via the save_* kwargs. Both run BEFORE the fail_threshold gate
+        # so a failing eval still leaves a JSON for `multivon-eval view`
+        # / `compare` — the moments users need the artifact MOST.
         import os as _os
         if html_path := _os.environ.get("MULTIVON_HTML_OUTPUT"):
             report.save_html(html_path)
             print(f"  HTML report saved → {html_path}")
-        if json_path := _os.environ.get("MULTIVON_JSON_OUTPUT"):
+        if json_path := (save_json or _os.environ.get("MULTIVON_JSON_OUTPUT")):
             report.save_json(json_path)
             print(f"  JSON report saved → {json_path}")
+        if junit_path := save_junit_xml:
+            report.save_junit_xml(junit_path)
+            print(f"  JUnit XML saved → {junit_path}")
 
         if fail_threshold is not None:
             if report.evaluated == 0 and report.errors > 0:

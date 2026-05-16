@@ -1,0 +1,157 @@
+{
+  "cache_on": {
+    "n_reps": 10,
+    "pass_rate_mean": 0.66,
+    "pass_rate_stdev": 0.0966,
+    "avg_score_mean": 0.8329,
+    "avg_score_stdev": 0.0364,
+    "total_wall_clock_s": 204.0,
+    "per_rep": [
+      {
+        "pass_rate": 0.7,
+        "avg_score": 0.8675,
+        "evaluated": 10,
+        "errors": 0
+      },
+      {
+        "pass_rate": 0.8,
+        "avg_score": 0.8583333333333334,
+        "evaluated": 10,
+        "errors": 0
+      },
+      {
+        "pass_rate": 0.7,
+        "avg_score": 0.8555555555555555,
+        "evaluated": 10,
+        "errors": 0
+      },
+      {
+        "pass_rate": 0.8,
+        "avg_score": 0.8892857142857142,
+        "evaluated": 10,
+        "errors": 0
+      },
+      {
+        "pass_rate": 0.6,
+        "avg_score": 0.8111111111111111,
+        "evaluated": 10,
+        "errors": 0
+      },
+      {
+        "pass_rate": 0.6,
+        "avg_score": 0.7946428571428571,
+        "evaluated": 10,
+        "errors": 0
+      },
+      {
+        "pass_rate": 0.7,
+        "avg_score": 0.8196428571428571,
+        "evaluated": 10,
+        "errors": 0
+      },
+      {
+        "pass_rate": 0.6,
+        "avg_score": 0.8446428571428571,
+        "evaluated": 10,
+        "errors": 0
+      },
+      {
+        "pass_rate": 0.5,
+        "avg_score": 0.77,
+        "evaluated": 10,
+        "errors": 0
+      },
+      {
+        "pass_rate": 0.6,
+        "avg_score": 0.81875,
+        "evaluated": 10,
+        "errors": 0
+      }
+    ]
+  },
+  "cache_off": {
+    "n_reps": 10,
+    "pass_rate_mean": 0.66,
+    "pass_rate_stdev": 0.0966,
+    "avg_score_mean": 0.8373,
+    "avg_score_stdev": 0.0308,
+    "total_wall_clock_s": 202.1,
+    "per_rep": [
+      {
+        "pass_rate": 0.6,
+        "avg_score": 0.8196428571428571,
+        "evaluated": 10,
+        "errors": 0
+      },
+      {
+        "pass_rate": 0.7,
+        "avg_score": 0.8225,
+        "evaluated": 10,
+        "errors": 0
+      },
+      {
+        "pass_rate": 0.5,
+        "avg_score": 0.7729166666666667,
+        "evaluated": 10,
+        "errors": 0
+      },
+      {
+        "pass_rate": 0.8,
+        "avg_score": 0.86875,
+        "evaluated": 10,
+        "errors": 0
+      },
+      {
+        "pass_rate": 0.7,
+        "avg_score": 0.818452380952381,
+        "evaluated": 10,
+        "errors": 0
+      },
+      {
+        "pass_rate": 0.6,
+        "avg_score": 0.8446428571428571,
+        "evaluated": 10,
+        "errors": 0
+      },
+      {
+        "pass_rate": 0.7,
+        "avg_score": 0.8555555555555555,
+        "evaluated": 10,
+        "errors": 0
+      },
+      {
+        "pass_rate": 0.6,
+        "avg_score": 0.8430555555555556,
+        "evaluated": 10,
+        "errors": 0
+      },
+      {
+        "pass_rate": 0.6,
+        "avg_score": 0.8458333333333334,
+        "evaluated": 10,
+        "errors": 0
+      },
+      {
+        "pass_rate": 0.8,
+        "avg_score": 0.8821428571428571,
+        "evaluated": 10,
+        "errors": 0
+      }
+    ]
+  },
+  "summary": {
+    "speedup_x": 1.0,
+    "score_stability_x": 0.8,
+    "interpretation": "Cache ON reproduces identical scores rep-to-rep. Cache OFF exposes the irreducible judge variance at temperature=0."
+  },
+  "metadata": {
+    "n_cases": 10,
+    "n_reps": 10,
+    "evaluators": [
+      "Hallucination",
+      "Faithfulness"
+    ],
+    "judge_model": "claude-haiku-4-5",
+    "dataset": "halueval_qa (first 10)"
+  }
+}
