@@ -1,45 +1,27 @@
 {
-  "deterministic (no LLM)": {
+  "deterministic": {
     "n_cases": 50,
     "n_evaluators": 3,
-    "evaluator_names": [
-      "not_empty",
-      "word_count",
-      "levenshtein"
-    ],
     "wall_clock_s": 0.0,
-    "avg_per_case_s": 0.0,
+    "avg_per_case_ms": 0.0,
     "total_cost_usd": 0.0,
-    "cost_per_case_usd": 0.0,
-    "total_tokens_in": 0,
-    "total_tokens_out": 0,
-    "tokens_per_case": 0,
-    "n_judge_calls": 0,
-    "judge_calls_per_case": 0.0
+    "n_judge_calls": 0
   },
-  "llm-judge (claude-haiku)": {
+  "llm_judge": {
     "n_cases": 50,
     "n_evaluators": 4,
-    "evaluator_names": [
-      "faithfulness",
-      "hallucination",
-      "relevance",
-      "answer_accuracy"
-    ],
-    "wall_clock_s": 184.26,
-    "avg_per_case_s": 3.69,
-    "total_cost_usd": 0.0,
-    "cost_per_case_usd": 0.0,
-    "total_tokens_in": 0,
-    "total_tokens_out": 0,
-    "tokens_per_case": 0,
-    "n_judge_calls": 0,
-    "judge_calls_per_case": 0.0
+    "wall_clock_s": 899.44,
+    "avg_per_case_s": 17.99,
+    "total_cost_usd": 0.0635,
+    "cost_per_case_usd": 0.00127,
+    "n_judge_calls": 854,
+    "judge_calls_per_case": 17.1,
+    "total_tokens_in": 46294,
+    "total_tokens_out": 6605
   },
-  "extrapolation": {
-    "scenario": "Same eval suite, 5000 cases",
-    "estimated_cost_usd": 0.0,
-    "estimated_wall_clock_min": 307.1,
-    "note": "Linear extrapolation; ignores rate-limiting and judge cache hits."
+  "extrapolation_5000": {
+    "estimated_cost_usd": 6.35,
+    "estimated_wall_clock_min": 1499.1,
+    "note": "Linear extrapolation; workers=1 (single LLM call at a time)"
   }
 }

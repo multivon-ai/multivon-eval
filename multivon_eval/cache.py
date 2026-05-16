@@ -201,6 +201,11 @@ class JudgeCache:
 
 _CACHE_LOCK = threading.Lock()
 _CACHE: JudgeCache | None = None
+# True iff the user explicitly opted in by calling `set_cache(non_none)`. A
+# lazily-initialised default doesn't count. Used by `JudgeConfig.resolve()` to
+# treat "user installed a cache" as "user wants caching" — otherwise the cache
+# silently no-ops because `JudgeConfig.cache=False` by default.
+_USER_OPTED_IN: bool = False
 
 
 def get_cache() -> JudgeCache:
@@ -215,10 +220,20 @@ def get_cache() -> JudgeCache:
 
 
 def set_cache(cache: JudgeCache | None) -> None:
-    """Replace (or clear) the process-wide cache. Primarily for tests."""
-    global _CACHE
+    """Install (or clear) the process-wide cache. Installing a cache also
+    implicitly enables caching for every subsequent `JudgeConfig`, so users
+    don't have to remember to pass `cache=True` everywhere as well."""
+    global _CACHE, _USER_OPTED_IN
     with _CACHE_LOCK:
         _CACHE = cache
+        _USER_OPTED_IN = cache is not None
+
+
+def cache_is_user_opted_in() -> bool:
+    """True iff the user called `set_cache(non_none)`. The judge layer uses
+    this so an explicit install enables caching without also having to set
+    `JudgeConfig(cache=True)` on every evaluator."""
+    return _USER_OPTED_IN
 
 
 def reset_cache_singleton() -> None:

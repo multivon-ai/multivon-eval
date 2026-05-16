@@ -90,7 +90,15 @@ class JudgeConfig:
         provider = self.provider or os.getenv("JUDGE_PROVIDER", "anthropic").lower()
         model = self.model or os.getenv("JUDGE_MODEL", _DEFAULT_MODELS.get(provider, ""))
         base_url = self.base_url or (os.getenv("OPENAI_BASE_URL", "") if provider == "openai" else "")
-        cache = self.cache or os.getenv("MULTIVON_JUDGE_CACHE", "").lower() in ("1", "true", "yes")
+        # Cache is opt-in BUT auto-enables if the user installed a cache via
+        # `set_cache(...)` — the docstring says "off by default", and calling
+        # `set_cache(JudgeCache(...))` is a clear opt-in signal.
+        from .cache import cache_is_user_opted_in
+        cache = (
+            self.cache
+            or os.getenv("MULTIVON_JUDGE_CACHE", "").lower() in ("1", "true", "yes")
+            or cache_is_user_opted_in()
+        )
         return JudgeConfig(
             provider=provider,
             model=model,

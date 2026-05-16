@@ -866,10 +866,18 @@ class EvalSuite:
         runs: int,
         judge_retry: "JudgeRetry | None" = None,
     ) -> list[CaseResult]:
+        # ContextVars don't propagate to ThreadPoolExecutor workers
+        # automatically — copy the caller's context so each worker sees the
+        # active CostTracker, request-scoped judge config, etc. Without this,
+        # `report.costs` is empty whenever workers > 1.
+        import contextvars
+        parent_ctx = contextvars.copy_context()
+
         results: dict[int, CaseResult] = {}
         with ThreadPoolExecutor(max_workers=workers) as pool:
             futures = {
                 pool.submit(
+                    parent_ctx.run,
                     self._run_case_with_retry, case, model_fn, runs,
                     None, False, judge_retry,
                 ): i

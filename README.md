@@ -146,6 +146,25 @@ Multi-judge agreement on the same task, N=50, all judges temperature=0:
 
 Pairwise Cohen's κ across the 4 judges: 0.52–0.76 (moderate to substantial). Calibration provenance + per-(judge × evaluator) thresholds ship in [`multivon_eval/_calibration_data/v2.json`](multivon_eval/_calibration_data/v2.json).
 
+**Cost / latency** ([`benchmarks/results/cost_latency.json`](benchmarks/results/cost_latency.json)) — 50 HaluEval QA cases × 4 LLM-judge evaluators with `claude-haiku-4-5`, `workers=1`:
+
+| Metric | Value |
+|---|---|
+| Cost per case (4 evaluators) | **$0.00127** |
+| Total cost for the run | $0.0635 |
+| Judge calls per case | 17.1 (QAG produces 3 questions × 4 evaluators + verification) |
+| Wall clock for 50 cases | 15 min |
+| Linear extrapolation to 5,000 cases | $6.35 |
+
+**Cache hit speedup** ([`benchmarks/results/reproducibility.json`](benchmarks/results/reproducibility.json)) — same suite, sequential reruns with `set_cache(JudgeCache(...))` installed:
+
+| Run | Wall clock | Judge calls |
+|---|---|---|
+| Rep 1 (cold) | 2.9 s | 4 |
+| Rep 2 (hot)  | 0 ms | 0 |
+
+Cache speedup on the rep-1→rep-2 transition: **2,271×**. Cache hits also produce identical scores by construction — flake-proof reruns. `set_cache()` auto-enables caching for every subsequent `JudgeConfig`; no need to thread `cache=True` through every evaluator.
+
 `multivon-eval` is different:
 
 **QAG scoring** — Instead of asking a judge "rate this 1-10", we generate yes/no questions about the output and score by the fraction answered correctly. Binary questions eliminate scale ambiguity, are easier for LLMs to answer consistently, and are fully auditable — every score is explained by which questions passed or failed.
