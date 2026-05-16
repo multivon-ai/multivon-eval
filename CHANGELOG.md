@@ -2,6 +2,29 @@
 
 All notable changes to `multivon-eval`. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) as of 0.7.0.
 
+## [0.7.3] — 2026-05-17
+
+The trust release: the single most-cited bug across a 26-voice strategy deliberation was the silent calibration fallback. Fixed, with a public escape hatch for legacy callers who depended on it. Two experimental multimodal evaluators land as the seed for a forthcoming document-AI benchmark (see [`pdfhell`](https://github.com/multivon-ai/pdfhell)).
+
+### Fixed
+
+- **Silent calibration fallback is now loud.** `calibrated_threshold(evaluator, judge)` previously fell back to `0.7` silently when the `(evaluator, judge_model)` pair was missing from `_calibration_data/v2.json` — the strategy deliberation flagged this as the single most-cited trust bug (5+ persona voices including a Series-A CTO who called it "deceitful code"). The default behaviour is now `"warn"`: a `UserWarning` fires once per pair, then the call returns `0.7`. Pre-0.7.3 silent behaviour is opt-in via `set_calibration_fallback_policy("silent")` for back-compat. For procurement/audit deployments call `set_calibration_fallback_policy("strict")` (raises `CalibrationMissing`). The `MULTIVON_CALIBRATION_FALLBACK={silent,warn,strict}` env var overrides at process start.
+
+### Added
+
+- **`set_calibration_fallback_policy(policy)`** exported at top level. Module-level switch; per-call `strict=True` still wins.
+- **`MULTIVON_CALIBRATION_FALLBACK` env var** — set to `silent`, `warn`, or `strict` to override the in-process default without code changes.
+- **Multimodal evaluators (experimental)** — first multimodal capabilities shipped:
+  - **`VQAFaithfulness`** — image-grounded faithfulness. Generates 3 QAG claims about an image, verifies each. Reads image from `case.metadata['image_url' | 'image_path' | 'images']`.
+  - **`DocumentGrounding`** — multi-page document-agent grounding. Three QAG questions per case: claim support, entity invention, exception handling. Seed evaluator for the Document Agent Acceptance Protocol v0.1.
+  - Vision dispatch wired for `anthropic` (Claude 3.5+ + 4.x), `openai` (GPT-4o+), `google` (Gemini 1.5+). Raises `JudgeUnavailable` with a friendlier hint when a text-only judge is mis-wired.
+  - Both classes flagged experimental: no calibration rows shipped yet (so the new "warn" default fires on first use until thresholds are calibrated).
+
+### Tests
+
+- 21 new tests in `tests/test_multimodal.py` exercise the public surface (image-metadata parsing, error paths, parse helpers) without provider API calls.
+- Full suite: 745 passed, 12 skipped (was 724/12).
+
 ## [0.7.2] — 2026-05-16
 
 Gemini lands as a first-class judge provider. The 5-judge multi-judge agreement benchmark re-ran with 250 LLM calls and ships in the website.

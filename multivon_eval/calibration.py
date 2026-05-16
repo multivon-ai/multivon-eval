@@ -29,9 +29,11 @@ To regenerate the file after a fresh calibration run::
 from __future__ import annotations
 
 import json
+import os
+import warnings
 from dataclasses import dataclass, field
 from importlib import resources
-from typing import TYPE_CHECKING, Iterable
+from typing import TYPE_CHECKING, Iterable, Literal
 
 from .exceptions import CalibrationMissing
 
@@ -40,6 +42,52 @@ if TYPE_CHECKING:
 
 
 _DEFAULT_THRESHOLD = 0.7
+
+# When `calibrated_threshold` is asked for an (evaluator, judge_model) pair
+# that isn't in the shipped calibration table, this policy decides what
+# happens. "warn" is the default as of 2026-05-16 — earlier releases were
+# silently using 0.7, which is uncalibrated and can produce 5-15pp F1 drift
+# on real data. "silent" is opt-in for backward compatibility.
+#
+# Override globally via `set_calibration_fallback_policy("strict")` or the
+# `MULTIVON_CALIBRATION_FALLBACK` env var.
+FallbackPolicy = Literal["silent", "warn", "strict"]
+_FALLBACK_POLICY: FallbackPolicy = "warn"
+_FALLBACK_WARNED: set[tuple[str, str]] = set()
+
+
+def _resolve_fallback_policy() -> FallbackPolicy:
+    forced = os.environ.get("MULTIVON_CALIBRATION_FALLBACK", "").strip().lower()
+    if forced in ("silent", "warn", "strict"):
+        return forced  # type: ignore[return-value]
+    return _FALLBACK_POLICY
+
+
+def set_calibration_fallback_policy(policy: FallbackPolicy) -> None:
+    """Configure what happens when ``calibrated_threshold`` cannot find
+    a calibration row for an (evaluator, judge_model) pair.
+
+    - ``"warn"`` (default, new in 0.7.3): emit a :class:`UserWarning` once
+      per (evaluator, judge_model) pair, then return ``0.7``. Pre-0.7.3
+      behaviour can be restored with ``"silent"``.
+    - ``"strict"``: raise :class:`CalibrationMissing` — recommended for
+      regulated-AI deployments and CI gates where a missing calibration
+      row should itself be an audit finding, not a silent default.
+    - ``"silent"``: fall back to ``0.7`` with no warning. Backward
+      compatible. Not recommended for new code.
+
+    Per-call ``strict=True`` always wins, regardless of the global policy.
+    The ``MULTIVON_CALIBRATION_FALLBACK`` env var overrides this at process
+    start without requiring a code change — useful for CI gates that want
+    "strict" without changing application code.
+    """
+    global _FALLBACK_POLICY
+    if policy not in ("silent", "warn", "strict"):
+        raise ValueError(
+            f"set_calibration_fallback_policy: unknown policy {policy!r}; "
+            "expected 'silent', 'warn', or 'strict'."
+        )
+    _FALLBACK_POLICY = policy
 
 
 @dataclass
@@ -226,10 +274,18 @@ def calibrated_threshold(
 ) -> float:
     """Return the calibrated threshold for ``(evaluator, judge.model)``.
 
-    Falls back to ``0.7`` if the combination has not been benchmarked,
-    unless ``strict=True``, in which case :class:`CalibrationMissing` is
-    raised. Strict mode is meant for procurement-style policy gates where
-    "no calibrated threshold" is itself a finding.
+    Behaviour when no calibration row exists is governed by the global
+    fallback policy (see :func:`set_calibration_fallback_policy`):
+
+    - ``"warn"`` (default since 0.7.3): emits a :class:`UserWarning` once
+      per (evaluator, judge_model) pair, then returns ``0.7``.
+    - ``"strict"``: raises :class:`CalibrationMissing`.
+    - ``"silent"``: falls back to ``0.7`` with no warning (pre-0.7.3
+      behaviour, opt-in).
+
+    Per-call ``strict=True`` overrides the global policy. The
+    ``MULTIVON_CALIBRATION_FALLBACK`` env var overrides the in-process
+    default.
 
     Pass ``version="v1"`` (or another shipped label) to pin the lookup
     to a specific calibration release for reproducibility.
@@ -239,8 +295,25 @@ def calibrated_threshold(
     entry = table.lookup(evaluator, model)
     if entry is not None:
         return entry.threshold
-    if strict:
+    # Per-call strict=True always wins.
+    effective = "strict" if strict else _resolve_fallback_policy()
+    if effective == "strict":
         raise CalibrationMissing(evaluator, model)
+    if effective == "warn":
+        cache_key = (evaluator, model)
+        if cache_key not in _FALLBACK_WARNED:
+            _FALLBACK_WARNED.add(cache_key)
+            warnings.warn(
+                f"calibrated_threshold: no calibration row for evaluator="
+                f"{evaluator!r} judge_model={model!r}; falling back to "
+                f"{_DEFAULT_THRESHOLD}. This default is uncalibrated and "
+                "may produce 5-15pp F1 drift on real data. Call "
+                "multivon_eval.calibration.set_calibration_fallback_policy"
+                "(\"strict\") to fail closed, or run "
+                "benchmarks/run_threshold_calibration.py to add a row.",
+                UserWarning,
+                stacklevel=2,
+            )
     return _DEFAULT_THRESHOLD
 
 

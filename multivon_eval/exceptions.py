@@ -49,8 +49,12 @@ class CalibrationMissing(MultivonError):
     """Raised when a strict caller asks for a calibrated threshold and the
     (evaluator, judge_model) pair has no entry in the calibration table.
 
-    The default behavior is to fall back silently to the library default
-    (0.7); use ``calibrated_threshold(..., strict=True)`` to raise instead.
+    As of 0.7.3 the default fallback policy is ``"warn"`` — a UserWarning is
+    emitted once per (evaluator, judge_model) pair and the call returns
+    ``0.7``. Use ``calibrated_threshold(..., strict=True)`` or
+    ``set_calibration_fallback_policy("strict")`` to raise this instead.
+    Pre-0.7.3 silent behaviour can be restored with
+    ``set_calibration_fallback_policy("silent")``.
     """
 
     def __init__(self, evaluator: str, judge_model: str) -> None:

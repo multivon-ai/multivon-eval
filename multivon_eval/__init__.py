@@ -23,7 +23,7 @@ Experiment tracking (compare runs across versions):
     exp.compare(old_run_id, run_id)
 """
 
-__version__ = "0.7.2"
+__version__ = "0.7.3"
 
 from .suite import EvalSuite
 from .case import EvalCase, AgentStep, ToolCall
@@ -96,7 +96,7 @@ from .result import (
 from .calibration import (
     calibrated_threshold, threshold_table,
     calibration_provenance, load_calibration, CalibrationEntry,
-    calibration_versions,
+    calibration_versions, set_calibration_fallback_policy,
 )
 from .evaluators import (
     # Deterministic
@@ -120,6 +120,8 @@ from .evaluators import (
     ConversationCompleteness, TurnConsistency,
     # Consistency
     SelfConsistency,
+    # Multimodal (experimental, 0.7.3)
+    VQAFaithfulness, DocumentGrounding,
 )
 
 __all__ = [
@@ -148,7 +150,8 @@ __all__ = [
     "EvalGateFailure",
     # Calibration
     "calibrated_threshold", "threshold_table",
-    "calibration_provenance", "load_calibration", "calibration_versions", "CalibrationEntry",
+    "calibration_provenance", "load_calibration", "calibration_versions",
+    "CalibrationEntry", "set_calibration_fallback_policy",
     # Secrets
     "SecretsResolver", "EnvResolver", "ChainedResolver", "StaticResolver",
     "get_secret", "set_resolver", "get_resolver", "reset_resolver",
@@ -195,6 +198,8 @@ __all__ = [
     # Conversation
     "ConversationRelevance", "KnowledgeRetention",
     "ConversationCompleteness", "TurnConsistency",
+    # Multimodal (experimental, 0.7.3)
+    "VQAFaithfulness", "DocumentGrounding",
     # Consistency
     "SelfConsistency",
 ]

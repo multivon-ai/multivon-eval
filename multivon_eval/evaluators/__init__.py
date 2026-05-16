@@ -23,6 +23,7 @@ from .conversation import (
 )
 from .consistency import SelfConsistency
 from .text_metrics import Levenshtein, ChrfScore
+from .multimodal import VQAFaithfulness, DocumentGrounding
 
 __all__ = [
     # Deterministic
@@ -45,4 +46,6 @@ __all__ = [
     "ConversationCompleteness", "TurnConsistency",
     # Consistency
     "SelfConsistency",
+    # Multimodal (experimental, 0.7.3)
+    "VQAFaithfulness", "DocumentGrounding",
 ]
