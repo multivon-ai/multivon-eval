@@ -51,6 +51,7 @@
             "pages": [
               "compliance/overview",
               "compliance/eu-ai-act",
+              "compliance/dpdp",
               "compliance/audit-trail",
               "compliance/bundle"
             ]

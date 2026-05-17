@@ -20,6 +20,7 @@ class TestPIIEvaluator:
             "gdpr": "Contact me at jane@example.com and VAT DE123456789.",
             "ccpa": "Email jane@example.com and bank account 123456789012.",
             "pipeda": "Call me at 415-555-1212 or email jane@example.com.",
+            "dpdp": "Aadhaar 1234 5678 9012 and PAN ABCDE1234F linked to GSTIN 27ABCDE1234F1Z5.",
             "all": "Patient MRN 123456, VAT DE123456789, and email jane@example.com.",
         }
         for jurisdiction, output in outputs.items():
@@ -29,7 +30,7 @@ class TestPIIEvaluator:
             assert "PII detected" in result.reason
 
     def test_non_pii_content_passes_for_each_jurisdiction(self):
-        for jurisdiction in ["hipaa", "gdpr", "ccpa", "pipeda", "all"]:
+        for jurisdiction in ["hipaa", "gdpr", "ccpa", "pipeda", "dpdp", "all"]:
             result = PIIEvaluator(jurisdiction=jurisdiction).evaluate(
                 case(),
                 "The quarterly summary contains aggregate metrics only.",
@@ -106,6 +107,58 @@ class TestPIIEvaluatorGDPRSpecific:
     def test_clean_aggregate_data_passes_gdpr(self):
         result = PIIEvaluator(jurisdiction="gdpr").evaluate(
             case(), "Total EU users: 42,000. Retention period: 24 months."
+        )
+        assert result.passed
+
+
+class TestPIIEvaluatorDPDPSpecific:
+    """Test DPDP (India, Digital Personal Data Protection Act 2023) patterns."""
+
+    def test_aadhaar_detected(self):
+        result = PIIEvaluator(jurisdiction="dpdp").evaluate(
+            case(), "Customer KYC linked Aadhaar 1234 5678 9012 on file."
+        )
+        assert not result.passed
+        assert "aadhaar" in result.reason.lower()
+
+    def test_pan_detected(self):
+        result = PIIEvaluator(jurisdiction="dpdp").evaluate(
+            case(), "Quoted PAN ABCDE1234F on invoice."
+        )
+        assert not result.passed
+        assert "pan" in result.reason.lower()
+
+    def test_gstin_detected(self):
+        result = PIIEvaluator(jurisdiction="dpdp").evaluate(
+            case(), "Vendor GSTIN 27ABCDE1234F1Z5 registered in Maharashtra."
+        )
+        assert not result.passed
+        assert "gstin" in result.reason.lower()
+
+    def test_ifsc_detected(self):
+        result = PIIEvaluator(jurisdiction="dpdp").evaluate(
+            case(), "Refund routed via IFSC SBIN0001234 to the listed account."
+        )
+        assert not result.passed
+        assert "ifsc" in result.reason.lower()
+
+    def test_voter_id_detected(self):
+        result = PIIEvaluator(jurisdiction="dpdp").evaluate(
+            case(), "Voter ID ABC1234567 verified for the registration."
+        )
+        assert not result.passed
+        assert "voter_id" in result.reason.lower()
+
+    def test_india_mobile_with_prefix_detected(self):
+        result = PIIEvaluator(jurisdiction="dpdp").evaluate(
+            case(), "Call back at +91 98765 43210 within 24 hours."
+        )
+        assert not result.passed
+        assert "phone_in" in result.reason.lower()
+
+    def test_clean_aggregate_data_passes_dpdp(self):
+        result = PIIEvaluator(jurisdiction="dpdp").evaluate(
+            case(), "Total Indian users: 1.2M. Avg session: 14 minutes."
         )
         assert result.passed
 

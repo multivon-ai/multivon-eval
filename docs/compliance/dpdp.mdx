@@ -1,0 +1,74 @@
+---
+title: Compliance — DPDP (India)
+description: How multivon-eval helps with the Digital Personal Data Protection Act, 2023 (India). PII patterns covered, what the library produces, what remains your obligation.
+---
+
+This page maps `multivon-eval` against the **Digital Personal Data Protection Act, 2023** (DPDP Act), India's principal data-protection law. The Act regulates the processing of digital personal data, imposes penalties for unauthorised processing or cross-border transfer, and requires Data Fiduciaries to implement reasonable security safeguards.
+
+Because DPDP penalties for unauthorised cross-border transfer can be steep (up to ₹250 crore per instance under §33), **local-first PII detection — running the check in your own VPC, with no data egress to a third-party API** — is often the safer architecture for any eval pipeline that touches Indian personal data. `multivon-eval`'s `PIIEvaluator` is regex-only and runs entirely offline.
+
+<Note>
+We are not your law firm. The mappings below are our best reading of the published text. Your DPO, your specific role under the Act (Data Fiduciary, Significant Data Fiduciary, or Data Processor), and your deployment context should be reviewed by qualified Indian counsel.
+</Note>
+
+---
+
+## What the `dpdp` jurisdiction covers
+
+`PIIEvaluator(jurisdiction="dpdp")` extends the base PII pattern set with six India-specific identifier patterns:
+
+| Identifier | What it is | Regex anchor |
+| --- | --- | --- |
+| **Aadhaar** | 12-digit unique identifier issued by UIDAI | 4-4-4 grouping with optional separator |
+| **PAN** | Permanent Account Number (Income Tax Department) | 5 uppercase + 4 digits + 1 uppercase |
+| **GSTIN** | Goods & Services Tax Identification Number | State code + PAN + entity code + `Z` + checksum |
+| **IFSC** | Indian Financial System Code (bank branch routing) | 4 alpha + `0` + 6 alphanumeric |
+| **Voter ID (EPIC)** | Electoral Photo Identity Card issued by ECI | 3 uppercase + 7 digits |
+| **India mobile** | +91 prefix + 10 digits starting 6–9 | Allows internal separators |
+
+Email, IP address, dates of birth, addresses, and other base PII patterns are also active under `dpdp` (inherited from the default jurisdiction set).
+
+```python
+from multivon_eval import EvalCase, PIIEvaluator
+
+case = EvalCase(input="customer-support transcript")
+output = "Refund processed to IFSC SBIN0001234 against PAN ABCDE1234F."
+
+result = PIIEvaluator(jurisdiction="dpdp").evaluate(case, output)
+print(result.passed)   # False — IFSC + PAN detected
+print(result.reason)
+# → "PII detected: ifsc=SBIN0001234, pan=ABCDE1234F"
+```
+
+---
+
+## What remains your obligation
+
+`multivon-eval` produces evidence that an evaluation pipeline detected (or failed to detect) personal data in a given output. It does **not** by itself satisfy your broader DPDP obligations:
+
+- **Notice and consent** (§§5–6). Whether you obtained appropriate notice and consent before processing the data the eval ran against is your obligation, not the library's.
+- **Purpose limitation and retention** (§§4(2), 8(7)). The library produces evidence that can support purpose-limitation arguments, but does not by itself enforce retention windows.
+- **Significant Data Fiduciary obligations** (§10). If you are classified as an SDF, additional duties (DPIA, audit, DPO appointment) apply that `multivon-eval` does not replace.
+- **Cross-border transfer assessment** (§16). The Central Government may restrict transfer of personal data outside India. Running PII detection *locally* (which `multivon-eval` does) is a defensible architectural choice; whether your overall data flow complies with §16 is a separate analysis.
+
+---
+
+## Audit-pack output
+
+When you pair `PIIEvaluator(jurisdiction="dpdp")` with `ComplianceReporter`, the run JSON includes:
+
+- The evaluator's per-case detection breakdown (which patterns matched, at which character offsets, in which case outputs).
+- A SHA-256 manifest of the input dataset + the run configuration, so the same eval can be re-executed and the result can be independently verified.
+- A hash-chained NDJSON log of every case scored — tamper-evident audit trail.
+
+This is the same audit-pack format used for the EU AI Act, NIST AI RMF, and HIPAA mappings. Reviewers downstream see one consistent artifact shape regardless of jurisdiction.
+
+---
+
+## Source
+
+- Evaluator implementation: [`multivon_eval/evaluators/compliance.py`](https://github.com/multivon-ai/multivon-eval/blob/main/multivon_eval/evaluators/compliance.py)
+- Test cases: [`tests/test_compliance_evaluators.py`](https://github.com/multivon-ai/multivon-eval/blob/main/tests/test_compliance_evaluators.py) — see `TestPIIEvaluatorDPDPSpecific`
+- DPDP coverage shipped in `multivon-eval >= 0.7.4`. Earlier versions support GDPR, CCPA, PIPEDA, and HIPAA.
+
+If a DPDP-relevant identifier you care about is not yet covered (e.g. a sector-specific Indian regulator ID), open an issue with the regex shape and we'll add it.

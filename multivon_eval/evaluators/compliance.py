@@ -73,11 +73,49 @@ _HIPAA_EXTRA: dict[str, str] = {
     "url":                   r"\bhttps?://[^\s\"'<>]{4,100}\b",
 }
 
+# DPDP (Digital Personal Data Protection Act, India 2023) — India-specific
+# personal identifiers. DPDP imposes notable penalties for unauthorised
+# cross-border transfer of personal data, so local-first PII detection
+# (zero egress) matters even more than under GDPR. Patterns cover the
+# identifiers most commonly seen in Indian production traces: Aadhaar
+# (UIDAI 12-digit), PAN (Income Tax 10-char), GSTIN (15-char tax ID),
+# IFSC (bank branch), Voter ID (Election Commission EPIC), and Indian
+# mobile numbers (+91 prefix). Names, addresses below state level, and
+# biometric identifiers remain out of scope (regex cannot reliably
+# detect them) and require upstream de-identification.
+_DPDP_EXTRA: dict[str, str] = {
+    # Aadhaar: 12 digits, often grouped 4-4-4 with spaces or hyphens.
+    # Word-boundary anchored to reduce collision with 12-digit account
+    # numbers; consumers should pair this with the bank_account pattern
+    # for full coverage in financial contexts.
+    "aadhaar":       r"\b\d{4}[-\s]?\d{4}[-\s]?\d{4}\b",
+    # PAN: Permanent Account Number — 5 uppercase letters + 4 digits +
+    # 1 uppercase letter. Format defined by Income Tax Department.
+    "pan":           r"\b[A-Z]{5}\d{4}[A-Z]\b",
+    # GSTIN: Goods and Services Tax Identification Number.
+    # 2 digits (state code) + 10-char PAN + 1 alphanumeric (entity code) +
+    # "Z" (default) + 1 alphanumeric (checksum).
+    "gstin":         r"\b\d{2}[A-Z]{5}\d{4}[A-Z][A-Z0-9]Z[A-Z0-9]\b",
+    # IFSC: Indian Financial System Code (bank branch identifier).
+    # 4 uppercase letters (bank code) + "0" (reserved) + 6 alphanumeric.
+    "ifsc":          r"\b[A-Z]{4}0[A-Z0-9]{6}\b",
+    # Voter ID (EPIC): 3 uppercase letters + 7 digits.
+    "voter_id":      r"\b[A-Z]{3}\d{7}\b",
+    # India mobile: +91 prefix followed by 10 digits starting with 6-9.
+    # Allows an internal separator after the first 5 digits to match the
+    # common "+91 98765 43210" display format. Anchored to the +91 prefix
+    # in the most distinctive variant to avoid false positives on generic
+    # 10-digit strings (which are common in transaction IDs); the bare
+    # 10-digit variant relies on the leading-digit-range constraint [6-9].
+    "phone_in":      r"\b(?:\+?91[-.\s]?)?[6-9]\d{4}[-.\s]?\d{5}\b",
+}
+
 _JURISDICTION_EXTRAS: dict[str, dict[str, str]] = {
     "gdpr":   _GDPR_EXTRA,
     "ccpa":   _CCPA_EXTRA,
     "pipeda": {},  # Same base patterns suffice for PIPEDA
     "hipaa":  _HIPAA_EXTRA,
+    "dpdp":   _DPDP_EXTRA,
 }
 
 
@@ -89,14 +127,15 @@ class PIIEvaluator(Evaluator):
     of what was found and where.
 
     Args:
-        jurisdiction: "gdpr" | "ccpa" | "pipeda" | "hipaa" | "all" (default "all").
+        jurisdiction: "gdpr" | "ccpa" | "pipeda" | "hipaa" | "dpdp" | "all" (default "all").
                       Selects which pattern extensions to include.
                       "hipaa" adds MRN, health plan numbers, VINs, fax numbers,
                       admission/discharge dates, device identifiers, account numbers,
                       NPI/DEA/license numbers, certificate numbers, and URLs.
-                      Note: 5 HIPAA PHI identifiers (names, geographic subdivisions
-                      below state, photos, biometrics, arbitrary unique numbers) cannot
-                      be reliably detected via regex and require upstream de-identification.
+                      "dpdp" (India, Digital Personal Data Protection Act 2023) adds
+                      Aadhaar, PAN, GSTIN, IFSC, Voter ID (EPIC), and +91 mobile numbers.
+                      Note: regex-based detection cannot catch names, free-form addresses,
+                      or biometric identifiers — these require upstream de-identification.
         patterns:     Additional custom {name: regex} patterns.
         redact:       If True, replace found PII with [REDACTED-TYPE] in the
                       reason field (default False — shows matched substring).
