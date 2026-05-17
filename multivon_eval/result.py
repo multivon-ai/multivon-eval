@@ -670,6 +670,14 @@ class EvalReport:
         )
 
     def save_json(self, path: str) -> None:
+        # Auto-create parent dir so callers don't have to `os.makedirs` first.
+        # Common path is `suite.run(save_json="eval-reports/x.json")` on a
+        # fresh checkout — the directory doesn't exist yet and the user just
+        # got a stack trace right after their first successful eval run.
+        import os
+        parent = os.path.dirname(os.path.abspath(path))
+        if parent:
+            os.makedirs(parent, exist_ok=True)
         with open(path, "w") as f:
             f.write(self.to_json())
 

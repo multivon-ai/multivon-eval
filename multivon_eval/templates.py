@@ -276,9 +276,6 @@ if __name__ == "__main__":
     except SystemExit as exc:
         print(f"\\n[BUDGET GATE FAILED] {exc}", file=sys.stderr)
         raise
-
-    os.makedirs("eval-reports", exist_ok=True)
-    report.save_json("eval-reports/rag.json")
 '''
 
 _RAG_README = """\
@@ -627,11 +624,6 @@ if __name__ == "__main__":
 
     reporter.record(report, tags={"system": "regulated-template-demo", "version": "0.1.0"})
 
-    # Save report under eval-reports/ so the CI artifact upload picks it up
-    # alongside the audit log.
-    os.makedirs("eval-reports", exist_ok=True)
-    report.save_json("eval-reports/regulated.json")
-
     print("\\nAudit log written to ./audit-logs/")
     print("Bundle for an auditor with:")
     print(f"  multivon-eval audit-package \\\\")
@@ -798,9 +790,6 @@ if __name__ == "__main__":
     except SystemExit as exc:
         print(f"\\n[BUDGET GATE FAILED] {exc}", file=sys.stderr)
         raise
-
-    os.makedirs("eval-reports", exist_ok=True)
-    report.save_json("eval-reports/conversation.json")
 '''
 
 _CONVERSATION_README = """\
