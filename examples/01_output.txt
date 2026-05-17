@@ -1,0 +1,49 @@
+
+─────────────────────── RAG Faithfulness — Insurance KB ────────────────────────
+  Model: precomputed-answers
+
+                                                                                
+  #      Input              Output                Score   Status       Latency  
+ ────────────────────────────────────────────────────────────────────────────── 
+  1      What is the        The standard           0.75   PASS             0ms  
+         standard           collision                                           
+         deductible for     deductible on                                       
+  2      How do I file a    To file a claim,       1.00   PASS             0ms  
+         claim and how      call                                                
+         long d             1-800-555-0123                                      
+  3      What discounts     Bundling auto          0.88   PASS             0ms  
+         are available      with home gets                                      
+         for bun            you 12%                                             
+  4      Does my auto       No — personal          0.88   PASS             0ms  
+         policy cover       items stolen from                                   
+         items stol         insi                                                
+  5      What is the        Acme reimburses        0.38   FAIL             0ms  
+         rental car         rental cars at up                                   
+         reimbursement      to                                                  
+                                                                                
+              By Evaluator              
+                                        
+  Evaluator      Avg Score   Pass Rate  
+ ────────────────────────────────────── 
+  faithfulness        0.80         80%  
+  relevance           0.75        100%  
+                                        
+╭────────────────────────────────── Summary ───────────────────────────────────╮
+│ Total: 5   Passed: 4   Failed: 1   Pass Rate: 80.0% [38%–96% 95% CI]   Avg   │
+│ Score: 0.78 [0.57–0.93]                                                      │
+│ Score distribution  p10:0.53  p50:0.88  p90:0.95                             │
+╰──────────────────────────────────────────────────────────────────────────────╯
+  ⚡ Power warning: 5 case(s) — minimum detectable change at 80% power is ~81%. 
+Add ≥291 cases to reliably detect a 10pp shift.
+
+
+Saved full results -> 01_rag_insurance_faithfulness_output.json
+
+=== Faithfulness verdict per case ===
+  [PASS] faithfulness=1.00  Q: What is the standard deductible for collision coverage?
+  [PASS] faithfulness=1.00  Q: How do I file a claim and how long does it take?
+  [PASS] faithfulness=1.00  Q: What discounts are available for bundling and safe driving?
+  [PASS] faithfulness=1.00  Q: Does my auto policy cover items stolen from inside my car?
+  [FAIL] faithfulness=0.00  Q: What is the rental car reimbursement limit on a standard pol...
+
+Result: FAIL — 1/5 case(s) ungrounded.

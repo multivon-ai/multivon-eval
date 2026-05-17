@@ -1,0 +1,71 @@
+
+───────────────────────────── Customer Support QA ──────────────────────────────
+  Model: precomputed-answers
+
+                                                                                
+  #      Input              Output                Score   Status       Latency  
+ ────────────────────────────────────────────────────────────────────────────── 
+  1      How long does      Standard shipping      0.69   FAIL             0ms  
+         standard           takes 5-7                                           
+         shipping take      business                                            
+  2      Can I return a     Unfortunately no       0.69   FAIL             0ms  
+         sale item?         — sale items are                                    
+                            fi                                                  
+  3      I forgot my        Visit                  1.00   PASS             0ms  
+         password — how     /forgot-password                                    
+         do I rese          and enter the                                       
+  4      Do you accept      Yes, we accept         0.53   FAIL             0ms  
+         Apple Pay?         Apple Pay along                                     
+                            with                                                
+  5      How do I cancel    Go to Account          0.92   PASS             0ms  
+         my subscription?   Settings →                                          
+                            Subscriptio                                         
+  6      The app is         We're sorry            0.42   FAIL             0ms  
+         showing a white    you're having                                       
+         screen an          trouble! O                                          
+  7      How long do        Refunds post to        0.81   FAIL             0ms  
+         refunds take       your original                                       
+         after I sen        paymen                                              
+  8      I want to delete   We don't delete        0.81   FAIL             0ms  
+         my account.        accounts                                            
+                            automatical                                         
+  9      When will my       With overnight         0.47   FAIL             0ms  
+         order arrive if    shipping ($24.99)                                   
+         I pick             you                                                 
+  10     Refund for order   Please contact         0.50   FAIL             0ms  
+         #4839 — it never   our support team                                    
+         ar                 for                                                 
+                                                                                
+              By Evaluator               
+                                         
+  Evaluator       Avg Score   Pass Rate  
+ ─────────────────────────────────────── 
+  faithfulness         0.92         80%  
+  relevance            0.70         90%  
+  actionability        0.43         20%  
+                                         
+╭────────────────────────────────── Summary ───────────────────────────────────╮
+│ Total: 10   Passed: 2   Failed: 8   Pass Rate: 20.0% [6%–51% 95% CI]   Avg   │
+│ Score: 0.68 [0.57–0.80]                                                      │
+│ Score distribution  p10:0.47  p50:0.69  p90:0.93                             │
+╰──────────────────────────────────────────────────────────────────────────────╯
+  ⚡ Power warning: 10 case(s) — minimum detectable change at 80% power is ~57%.
+Add ≥291 cases to reliably detect a 10pp shift.
+
+
+Saved full results -> 03_support_qa_multi_evaluator_output.json
+
+=== Per-case breakdown ===
+  [FAIL]  T1  faith=1.00✓  rel=0.75✓  act=0.33✗
+  [FAIL]  T2  faith=1.00✓  rel=0.75✓  act=0.33✗
+  [PASS]  T3  faith=1.00✓  rel=1.00✓  act=1.00✓
+  [FAIL]  T4  faith=0.83✗  rel=0.75✓  act=0.00✗
+  [PASS]  T5  faith=1.00✓  rel=0.75✓  act=1.00✓
+  [FAIL]  T6  faith=1.00✓  rel=0.25✗  act=0.00✗
+  [FAIL]  T7  faith=1.00✓  rel=0.75✓  act=0.67✗
+  [FAIL]  T8  faith=1.00✓  rel=0.75✓  act=0.67✗
+  [FAIL]  T9  faith=0.33✗  rel=0.75✓  act=0.33✗
+  [FAIL] T10  faith=1.00✓  rel=0.50✓  act=0.00✗
+
+Overall pass rate: 20%  (2/10)
+Result: FAIL — pass rate below 70% gate.

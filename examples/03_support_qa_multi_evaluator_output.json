@@ -1,0 +1,457 @@
+{
+  "suite": "Customer Support QA",
+  "model": "precomputed-answers",
+  "summary": {
+    "total": 10,
+    "evaluated": 10,
+    "passed": 2,
+    "failed": 8,
+    "errors": 0,
+    "errors_by_kind": {},
+    "skipped": 0,
+    "pass_rate": 0.2,
+    "pass_rate_ci_95": [
+      0.056682151454375246,
+      0.5098375284633582
+    ],
+    "avg_score": 0.6833,
+    "avg_score_ci_95": [
+      0.5722,
+      0.8
+    ],
+    "score_percentiles": {
+      "p10": 0.4667,
+      "p50": 0.6944,
+      "p90": 0.925
+    },
+    "runs_per_case": 1,
+    "flaky_count": 0,
+    "stability_score": 1.0,
+    "judge_reliability": null,
+    "by_evaluator": {
+      "faithfulness": 0.9167,
+      "relevance": 0.7,
+      "actionability": 0.4333
+    },
+    "costs": {
+      "total_input_tokens": 10289,
+      "total_output_tokens": 803,
+      "total_tokens": 11092,
+      "total_calls": 104,
+      "total_cost_usd": 0.011443,
+      "by_model": [
+        {
+          "provider": "anthropic",
+          "model": "claude-haiku-4-5",
+          "input_tokens": 10289,
+          "output_tokens": 803,
+          "total_tokens": 11092,
+          "calls": 104,
+          "cost_usd": 0.0114432
+        }
+      ]
+    }
+  },
+  "cases": [
+    {
+      "input": "How long does standard shipping take?",
+      "output": "Standard shipping takes 5-7 business days. If you need it faster, express is 2-3 business days.",
+      "status": "failed_quality",
+      "model_error": null,
+      "judge_error": null,
+      "evaluator_error": null,
+      "skipped": false,
+      "passed": false,
+      "score": 0.6944,
+      "score_std": 0.0,
+      "all_scores": [],
+      "run_pass_rate": 0.0,
+      "is_flaky": false,
+      "runs": 1,
+      "retry_attempts": 0,
+      "retry_errors": [],
+      "latency_ms": 0.0,
+      "tags": [],
+      "evaluators": [
+        {
+          "name": "faithfulness",
+          "score": 1.0,
+          "passed": true,
+          "reason": "2/2 claims grounded\n\u2713 Standard shipping takes 5-7 business days\n\u2713 Express shipping takes 2-3 business days"
+        },
+        {
+          "name": "relevance",
+          "score": 0.75,
+          "passed": true,
+          "reason": "\u2713 Does the response directly answer the question asked?\n\u2713 Does the response stay on topic without going off on unrelated tangents?\n\u2717 Could someone understand what was being asked just from the response?\n\u2713 Does the response contain significant content unrelated to the question?"
+        },
+        {
+          "name": "actionability",
+          "score": 0.3333,
+          "passed": false,
+          "reason": "Criterion: Response should name the customer's specific problem and provide a concrete next step.\n\u2717 Does the response name or restate the customer's specific problem?\n\u2717 Does the response provide a concrete next step or action the customer can take?\n\u2713 Does the response avoid vague deferrals like 'we will look into this'?"
+        }
+      ]
+    },
+    {
+      "input": "Can I return a sale item?",
+      "output": "Unfortunately no \u2014 sale items are final and cannot be returned or exchanged.",
+      "status": "failed_quality",
+      "model_error": null,
+      "judge_error": null,
+      "evaluator_error": null,
+      "skipped": false,
+      "passed": false,
+      "score": 0.6944,
+      "score_std": 0.0,
+      "all_scores": [],
+      "run_pass_rate": 0.0,
+      "is_flaky": false,
+      "runs": 1,
+      "retry_attempts": 0,
+      "retry_errors": [],
+      "latency_ms": 0.0,
+      "tags": [],
+      "evaluators": [
+        {
+          "name": "faithfulness",
+          "score": 1.0,
+          "passed": true,
+          "reason": "2/2 claims grounded\n\u2713 Sale items are final and cannot be returned\n\u2713 Sale items cannot be exchanged"
+        },
+        {
+          "name": "relevance",
+          "score": 0.75,
+          "passed": true,
+          "reason": "\u2713 Does the response directly answer the question asked?\n\u2713 Does the response stay on topic without going off on unrelated tangents?\n\u2717 Could someone understand what was being asked just from the response?\n\u2713 Does the response contain significant content unrelated to the question?"
+        },
+        {
+          "name": "actionability",
+          "score": 0.3333,
+          "passed": false,
+          "reason": "Criterion: Response should name the customer's specific problem and provide a concrete next step.\n\u2717 Does the response name or restate the customer's specific problem?\n\u2717 Does the response provide a concrete next step or action the customer can take?\n\u2713 Does the response avoid vague deferrals like 'we will look into this'?"
+        }
+      ]
+    },
+    {
+      "input": "I forgot my password \u2014 how do I reset it?",
+      "output": "Visit /forgot-password and enter the email on file. We'll send a reset link that's valid for 30 minutes.",
+      "status": "passed",
+      "model_error": null,
+      "judge_error": null,
+      "evaluator_error": null,
+      "skipped": false,
+      "passed": true,
+      "score": 1.0,
+      "score_std": 0.0,
+      "all_scores": [],
+      "run_pass_rate": 1.0,
+      "is_flaky": false,
+      "runs": 1,
+      "retry_attempts": 0,
+      "retry_errors": [],
+      "latency_ms": 0.0,
+      "tags": [],
+      "evaluators": [
+        {
+          "name": "faithfulness",
+          "score": 1.0,
+          "passed": true,
+          "reason": "3/3 claims grounded\n\u2713 A password reset link is sent to the email on file\n\u2713 The reset link is valid for 30 minutes\n\u2713 Users can visit /forgot-password to initiate a password reset"
+        },
+        {
+          "name": "relevance",
+          "score": 1.0,
+          "passed": true,
+          "reason": "\u2713 Does the response directly answer the question asked?\n\u2713 Does the response stay on topic without going off on unrelated tangents?\n\u2713 Could someone understand what was being asked just from the response?\n\u2713 Does the response contain significant content unrelated to the question?"
+        },
+        {
+          "name": "actionability",
+          "score": 1.0,
+          "passed": true,
+          "reason": "Criterion: Response should name the customer's specific problem and provide a concrete next step.\n\u2713 Does the response name or restate the customer's specific problem?\n\u2713 Does the response provide a concrete next step or action the customer can take?\n\u2713 Does the response avoid vague deferrals like 'we will look into this'?"
+        }
+      ]
+    },
+    {
+      "input": "Do you accept Apple Pay?",
+      "output": "Yes, we accept Apple Pay along with Visa, Mastercard, Amex, and PayPal \u2014 just select it at checkout.",
+      "status": "failed_quality",
+      "model_error": null,
+      "judge_error": null,
+      "evaluator_error": null,
+      "skipped": false,
+      "passed": false,
+      "score": 0.5278,
+      "score_std": 0.0,
+      "all_scores": [],
+      "run_pass_rate": 0.0,
+      "is_flaky": false,
+      "runs": 1,
+      "retry_attempts": 0,
+      "retry_errors": [],
+      "latency_ms": 0.0,
+      "tags": [],
+      "evaluators": [
+        {
+          "name": "faithfulness",
+          "score": 0.8333,
+          "passed": false,
+          "reason": "5/6 claims grounded\n\u2717 We accept Apple Pay\n\u2713 We accept Visa\n\u2713 We accept Mastercard\n\u2713 We accept Amex\n\u2713 We accept PayPal\n\u2713 These payment methods can be selected at checkout"
+        },
+        {
+          "name": "relevance",
+          "score": 0.75,
+          "passed": true,
+          "reason": "\u2713 Does the response directly answer the question asked?\n\u2713 Does the response stay on topic without going off on unrelated tangents?\n\u2717 Could someone understand what was being asked just from the response?\n\u2713 Does the response contain significant content unrelated to the question?"
+        },
+        {
+          "name": "actionability",
+          "score": 0.0,
+          "passed": false,
+          "reason": "Criterion: Response should name the customer's specific problem and provide a concrete next step.\n\u2717 Does the response name or restate the customer's specific problem?\n\u2717 Does the response provide a concrete next step or action the customer can take?\n\u2717 Does the response avoid vague deferrals like 'we will look into this'?"
+        }
+      ]
+    },
+    {
+      "input": "How do I cancel my subscription?",
+      "output": "Go to Account Settings \u2192 Subscription \u2192 Cancel. You'll keep access until the end of the current billing period.",
+      "status": "passed",
+      "model_error": null,
+      "judge_error": null,
+      "evaluator_error": null,
+      "skipped": false,
+      "passed": true,
+      "score": 0.9167,
+      "score_std": 0.0,
+      "all_scores": [],
+      "run_pass_rate": 1.0,
+      "is_flaky": false,
+      "runs": 1,
+      "retry_attempts": 0,
+      "retry_errors": [],
+      "latency_ms": 0.0,
+      "tags": [],
+      "evaluators": [
+        {
+          "name": "faithfulness",
+          "score": 1.0,
+          "passed": true,
+          "reason": "3/3 claims grounded\n\u2713 Account Settings contains a Subscription option\n\u2713 Subscription section has a Cancel option\n\u2713 Access is retained until the end of the current billing period after cancellatio"
+        },
+        {
+          "name": "relevance",
+          "score": 0.75,
+          "passed": true,
+          "reason": "\u2713 Does the response directly answer the question asked?\n\u2713 Does the response stay on topic without going off on unrelated tangents?\n\u2717 Could someone understand what was being asked just from the response?\n\u2713 Does the response contain significant content unrelated to the question?"
+        },
+        {
+          "name": "actionability",
+          "score": 1.0,
+          "passed": true,
+          "reason": "Criterion: Response should name the customer's specific problem and provide a concrete next step.\n\u2713 Does the response name or restate the customer's specific problem?\n\u2713 Does the response provide a concrete next step or action the customer can take?\n\u2713 Does the response avoid vague deferrals like 'we will look into this'?"
+        }
+      ]
+    },
+    {
+      "input": "The app is showing a white screen and won't load \u2014 what should I do?",
+      "output": "We're sorry you're having trouble! Our team will look into this and get back to you.",
+      "status": "failed_quality",
+      "model_error": null,
+      "judge_error": null,
+      "evaluator_error": null,
+      "skipped": false,
+      "passed": false,
+      "score": 0.4167,
+      "score_std": 0.0,
+      "all_scores": [],
+      "run_pass_rate": 0.0,
+      "is_flaky": false,
+      "runs": 1,
+      "retry_attempts": 0,
+      "retry_errors": [],
+      "latency_ms": 0.0,
+      "tags": [],
+      "evaluators": [
+        {
+          "name": "faithfulness",
+          "score": 1.0,
+          "passed": true,
+          "reason": "No verifiable claims found"
+        },
+        {
+          "name": "relevance",
+          "score": 0.25,
+          "passed": false,
+          "reason": "\u2717 Does the response directly answer the question asked?\n\u2717 Does the response stay on topic without going off on unrelated tangents?\n\u2717 Could someone understand what was being asked just from the response?\n\u2713 Does the response contain significant content unrelated to the question?"
+        },
+        {
+          "name": "actionability",
+          "score": 0.0,
+          "passed": false,
+          "reason": "Criterion: Response should name the customer's specific problem and provide a concrete next step.\n\u2717 Does the response name or restate the customer's specific problem?\n\u2717 Does the response provide a concrete next step or action the customer can take?\n\u2717 Does the response avoid vague deferrals like 'we will look into this'?"
+        }
+      ]
+    },
+    {
+      "input": "How long do refunds take after I send the item back?",
+      "output": "Refunds post to your original payment method within 5-7 business days after we receive the returned item.",
+      "status": "failed_quality",
+      "model_error": null,
+      "judge_error": null,
+      "evaluator_error": null,
+      "skipped": false,
+      "passed": false,
+      "score": 0.8056,
+      "score_std": 0.0,
+      "all_scores": [],
+      "run_pass_rate": 0.0,
+      "is_flaky": false,
+      "runs": 1,
+      "retry_attempts": 0,
+      "retry_errors": [],
+      "latency_ms": 0.0,
+      "tags": [],
+      "evaluators": [
+        {
+          "name": "faithfulness",
+          "score": 1.0,
+          "passed": true,
+          "reason": "2/2 claims grounded\n\u2713 Refunds post to your original payment method\n\u2713 Refunds are processed within 5-7 business days after the returned item is receiv"
+        },
+        {
+          "name": "relevance",
+          "score": 0.75,
+          "passed": true,
+          "reason": "\u2713 Does the response directly answer the question asked?\n\u2713 Does the response stay on topic without going off on unrelated tangents?\n\u2717 Could someone understand what was being asked just from the response?\n\u2713 Does the response contain significant content unrelated to the question?"
+        },
+        {
+          "name": "actionability",
+          "score": 0.6667,
+          "passed": false,
+          "reason": "Criterion: Response should name the customer's specific problem and provide a concrete next step.\n\u2713 Does the response name or restate the customer's specific problem?\n\u2717 Does the response provide a concrete next step or action the customer can take?\n\u2713 Does the response avoid vague deferrals like 'we will look into this'?"
+        }
+      ]
+    },
+    {
+      "input": "I want to delete my account.",
+      "output": "We don't delete accounts automatically \u2014 please contact our support team and we'll close it for you.",
+      "status": "failed_quality",
+      "model_error": null,
+      "judge_error": null,
+      "evaluator_error": null,
+      "skipped": false,
+      "passed": false,
+      "score": 0.8056,
+      "score_std": 0.0,
+      "all_scores": [],
+      "run_pass_rate": 0.0,
+      "is_flaky": false,
+      "runs": 1,
+      "retry_attempts": 0,
+      "retry_errors": [],
+      "latency_ms": 0.0,
+      "tags": [],
+      "evaluators": [
+        {
+          "name": "faithfulness",
+          "score": 1.0,
+          "passed": true,
+          "reason": "3/3 claims grounded\n\u2713 Accounts are not deleted automatically\n\u2713 Users can contact the support team to close their account\n\u2713 The support team will close accounts upon request"
+        },
+        {
+          "name": "relevance",
+          "score": 0.75,
+          "passed": true,
+          "reason": "\u2713 Does the response directly answer the question asked?\n\u2713 Does the response stay on topic without going off on unrelated tangents?\n\u2717 Could someone understand what was being asked just from the response?\n\u2713 Does the response contain significant content unrelated to the question?"
+        },
+        {
+          "name": "actionability",
+          "score": 0.6667,
+          "passed": false,
+          "reason": "Criterion: Response should name the customer's specific problem and provide a concrete next step.\n\u2717 Does the response name or restate the customer's specific problem?\n\u2713 Does the response provide a concrete next step or action the customer can take?\n\u2713 Does the response avoid vague deferrals like 'we will look into this'?"
+        }
+      ]
+    },
+    {
+      "input": "When will my order arrive if I pick overnight shipping?",
+      "output": "With overnight shipping ($24.99) your order will arrive by 10am the next business day, guaranteed.",
+      "status": "failed_quality",
+      "model_error": null,
+      "judge_error": null,
+      "evaluator_error": null,
+      "skipped": false,
+      "passed": false,
+      "score": 0.4722,
+      "score_std": 0.0,
+      "all_scores": [],
+      "run_pass_rate": 0.0,
+      "is_flaky": false,
+      "runs": 1,
+      "retry_attempts": 0,
+      "retry_errors": [],
+      "latency_ms": 0.0,
+      "tags": [],
+      "evaluators": [
+        {
+          "name": "faithfulness",
+          "score": 0.3333,
+          "passed": false,
+          "reason": "1/3 claims grounded\n\u2713 Overnight shipping costs $24.99\n\u2717 With overnight shipping, orders arrive by 10am the next business day\n\u2717 Overnight shipping delivery is guaranteed"
+        },
+        {
+          "name": "relevance",
+          "score": 0.75,
+          "passed": true,
+          "reason": "\u2713 Does the response directly answer the question asked?\n\u2713 Does the response stay on topic without going off on unrelated tangents?\n\u2717 Could someone understand what was being asked just from the response?\n\u2713 Does the response contain significant content unrelated to the question?"
+        },
+        {
+          "name": "actionability",
+          "score": 0.3333,
+          "passed": false,
+          "reason": "Criterion: Response should name the customer's specific problem and provide a concrete next step.\n\u2717 Does the response name or restate the customer's specific problem?\n\u2717 Does the response provide a concrete next step or action the customer can take?\n\u2713 Does the response avoid vague deferrals like 'we will look into this'?"
+        }
+      ]
+    },
+    {
+      "input": "Refund for order #4839 \u2014 it never arrived.",
+      "output": "Please contact our support team for assistance.",
+      "status": "failed_quality",
+      "model_error": null,
+      "judge_error": null,
+      "evaluator_error": null,
+      "skipped": false,
+      "passed": false,
+      "score": 0.5,
+      "score_std": 0.0,
+      "all_scores": [],
+      "run_pass_rate": 0.0,
+      "is_flaky": false,
+      "runs": 1,
+      "retry_attempts": 0,
+      "retry_errors": [],
+      "latency_ms": 0.0,
+      "tags": [],
+      "evaluators": [
+        {
+          "name": "faithfulness",
+          "score": 1.0,
+          "passed": true,
+          "reason": "No verifiable claims found"
+        },
+        {
+          "name": "relevance",
+          "score": 0.5,
+          "passed": true,
+          "reason": "\u2717 Does the response directly answer the question asked?\n\u2713 Does the response stay on topic without going off on unrelated tangents?\n\u2717 Could someone understand what was being asked just from the response?\n\u2713 Does the response contain significant content unrelated to the question?"
+        },
+        {
+          "name": "actionability",
+          "score": 0.0,
+          "passed": false,
+          "reason": "Criterion: Response should name the customer's specific problem and provide a concrete next step.\n\u2717 Does the response name or restate the customer's specific problem?\n\u2717 Does the response provide a concrete next step or action the customer can take?\n\u2717 Does the response avoid vague deferrals like 'we will look into this'?"
+        }
+      ]
+    }
+  ]
+}

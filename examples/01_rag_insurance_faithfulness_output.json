@@ -1,0 +1,226 @@
+{
+  "suite": "RAG Faithfulness \u2014 Insurance KB",
+  "model": "precomputed-answers",
+  "summary": {
+    "total": 5,
+    "evaluated": 5,
+    "passed": 4,
+    "failed": 1,
+    "errors": 0,
+    "errors_by_kind": {},
+    "skipped": 0,
+    "pass_rate": 0.8,
+    "pass_rate_ci_95": [
+      0.3755346297625255,
+      0.9637758913675698
+    ],
+    "avg_score": 0.775,
+    "avg_score_ci_95": [
+      0.575,
+      0.925
+    ],
+    "score_percentiles": {
+      "p10": 0.525,
+      "p50": 0.875,
+      "p90": 0.95
+    },
+    "runs_per_case": 1,
+    "flaky_count": 0,
+    "stability_score": 1.0,
+    "judge_reliability": null,
+    "by_evaluator": {
+      "faithfulness": 0.8,
+      "relevance": 0.75
+    },
+    "costs": {
+      "total_input_tokens": 9030,
+      "total_output_tokens": 467,
+      "total_tokens": 9497,
+      "total_calls": 40,
+      "total_cost_usd": 0.009092,
+      "by_model": [
+        {
+          "provider": "anthropic",
+          "model": "claude-haiku-4-5",
+          "input_tokens": 9030,
+          "output_tokens": 467,
+          "total_tokens": 9497,
+          "calls": 40,
+          "cost_usd": 0.009092
+        }
+      ]
+    }
+  },
+  "cases": [
+    {
+      "input": "What is the standard deductible for collision coverage?",
+      "output": "The standard collision deductible on an Acme Auto policy is $500. Comprehensive coverage has a separate $250 deductible.",
+      "status": "passed",
+      "model_error": null,
+      "judge_error": null,
+      "evaluator_error": null,
+      "skipped": false,
+      "passed": true,
+      "score": 0.75,
+      "score_std": 0.0,
+      "all_scores": [],
+      "run_pass_rate": 1.0,
+      "is_flaky": false,
+      "runs": 1,
+      "retry_attempts": 0,
+      "retry_errors": [],
+      "latency_ms": 0.0,
+      "tags": [],
+      "evaluators": [
+        {
+          "name": "faithfulness",
+          "score": 1.0,
+          "passed": true,
+          "reason": "2/2 claims grounded\n\u2713 The standard collision deductible on an Acme Auto policy is $500\n\u2713 Comprehensive coverage has a separate $250 deductible"
+        },
+        {
+          "name": "relevance",
+          "score": 0.5,
+          "passed": true,
+          "reason": "\u2717 Does the response directly answer the question asked?\n\u2713 Does the response stay on topic without going off on unrelated tangents?\n\u2717 Could someone understand what was being asked just from the response?\n\u2713 Does the response contain significant content unrelated to the question?"
+        }
+      ]
+    },
+    {
+      "input": "How do I file a claim and how long does it take?",
+      "output": "To file a claim, call 1-800-555-0123 within 72 hours. You'll need photos and a police report if another party was involved. Most claims are processed within 10 business days.",
+      "status": "passed",
+      "model_error": null,
+      "judge_error": null,
+      "evaluator_error": null,
+      "skipped": false,
+      "passed": true,
+      "score": 1.0,
+      "score_std": 0.0,
+      "all_scores": [],
+      "run_pass_rate": 1.0,
+      "is_flaky": false,
+      "runs": 1,
+      "retry_attempts": 0,
+      "retry_errors": [],
+      "latency_ms": 0.0,
+      "tags": [],
+      "evaluators": [
+        {
+          "name": "faithfulness",
+          "score": 1.0,
+          "passed": true,
+          "reason": "5/5 claims grounded\n\u2713 To file a claim, call 1-800-555-0123\n\u2713 Claims must be filed within 72 hours\n\u2713 Photos are needed to file a claim\n\u2713 A police report is needed if another party was involved\n\u2713 Most claims are processed within 10 business days"
+        },
+        {
+          "name": "relevance",
+          "score": 1.0,
+          "passed": true,
+          "reason": "\u2713 Does the response directly answer the question asked?\n\u2713 Does the response stay on topic without going off on unrelated tangents?\n\u2713 Could someone understand what was being asked just from the response?\n\u2713 Does the response contain significant content unrelated to the question?"
+        }
+      ]
+    },
+    {
+      "input": "What discounts are available for bundling and safe driving?",
+      "output": "Bundling auto with home gets you 12% off. Safe drivers with 3+ claim-free years save up to 15%. Students with a GPA above 3.0 get an additional 7% discount.",
+      "status": "passed",
+      "model_error": null,
+      "judge_error": null,
+      "evaluator_error": null,
+      "skipped": false,
+      "passed": true,
+      "score": 0.875,
+      "score_std": 0.0,
+      "all_scores": [],
+      "run_pass_rate": 1.0,
+      "is_flaky": false,
+      "runs": 1,
+      "retry_attempts": 0,
+      "retry_errors": [],
+      "latency_ms": 0.0,
+      "tags": [],
+      "evaluators": [
+        {
+          "name": "faithfulness",
+          "score": 1.0,
+          "passed": true,
+          "reason": "3/3 claims grounded\n\u2713 Bundling auto with home gets you 12% off\n\u2713 Safe drivers with 3+ claim-free years save up to 15%\n\u2713 Students with a GPA above 3.0 get an additional 7% discount"
+        },
+        {
+          "name": "relevance",
+          "score": 0.75,
+          "passed": true,
+          "reason": "\u2713 Does the response directly answer the question asked?\n\u2713 Does the response stay on topic without going off on unrelated tangents?\n\u2717 Could someone understand what was being asked just from the response?\n\u2713 Does the response contain significant content unrelated to the question?"
+        }
+      ]
+    },
+    {
+      "input": "Does my auto policy cover items stolen from inside my car?",
+      "output": "No \u2014 personal items stolen from inside the vehicle are not covered under your auto policy. They are typically covered by homeowner's or renter's insurance.",
+      "status": "passed",
+      "model_error": null,
+      "judge_error": null,
+      "evaluator_error": null,
+      "skipped": false,
+      "passed": true,
+      "score": 0.875,
+      "score_std": 0.0,
+      "all_scores": [],
+      "run_pass_rate": 1.0,
+      "is_flaky": false,
+      "runs": 1,
+      "retry_attempts": 0,
+      "retry_errors": [],
+      "latency_ms": 0.0,
+      "tags": [],
+      "evaluators": [
+        {
+          "name": "faithfulness",
+          "score": 1.0,
+          "passed": true,
+          "reason": "2/2 claims grounded\n\u2713 Personal items stolen from inside a vehicle are not covered under auto policy\n\u2713 Personal items stolen from inside a vehicle are typically covered by homeowner's"
+        },
+        {
+          "name": "relevance",
+          "score": 0.75,
+          "passed": true,
+          "reason": "\u2717 Does the response directly answer the question asked?\n\u2713 Does the response stay on topic without going off on unrelated tangents?\n\u2713 Could someone understand what was being asked just from the response?\n\u2713 Does the response contain significant content unrelated to the question?"
+        }
+      ]
+    },
+    {
+      "input": "What is the rental car reimbursement limit on a standard policy?",
+      "output": "Acme reimburses rental cars at up to $75 per day for a maximum of 30 days while your vehicle is in the shop. Premium policyholders receive unlimited rental reimbursement.",
+      "status": "failed_quality",
+      "model_error": null,
+      "judge_error": null,
+      "evaluator_error": null,
+      "skipped": false,
+      "passed": false,
+      "score": 0.375,
+      "score_std": 0.0,
+      "all_scores": [],
+      "run_pass_rate": 0.0,
+      "is_flaky": false,
+      "runs": 1,
+      "retry_attempts": 0,
+      "retry_errors": [],
+      "latency_ms": 0.0,
+      "tags": [],
+      "evaluators": [
+        {
+          "name": "faithfulness",
+          "score": 0.0,
+          "passed": false,
+          "reason": "0/3 claims grounded\n\u2717 Acme reimburses rental cars at up to $75 per day\n\u2717 Acme's rental car reimbursement maximum is 30 days while your vehicle is in the \n\u2717 Premium policyholders receive unlimited rental reimbursement"
+        },
+        {
+          "name": "relevance",
+          "score": 0.75,
+          "passed": true,
+          "reason": "\u2713 Does the response directly answer the question asked?\n\u2713 Does the response stay on topic without going off on unrelated tangents?\n\u2717 Could someone understand what was being asked just from the response?\n\u2713 Does the response contain significant content unrelated to the question?"
+        }
+      ]
+    }
+  ]
+}

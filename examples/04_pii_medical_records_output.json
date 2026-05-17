@@ -1,0 +1,185 @@
+{
+  "suite": "PII Detection \u2014 Medical Records",
+  "model": "static-records",
+  "summary": {
+    "total": 5,
+    "evaluated": 5,
+    "passed": 3,
+    "failed": 2,
+    "errors": 0,
+    "errors_by_kind": {},
+    "skipped": 0,
+    "pass_rate": 0.6,
+    "pass_rate_ci_95": [
+      0.23072428127601297,
+      0.8823792257673521
+    ],
+    "avg_score": 0.6,
+    "avg_score_ci_95": [
+      0.2,
+      1.0
+    ],
+    "score_percentiles": {
+      "p10": 0.0,
+      "p50": 1.0,
+      "p90": 1.0
+    },
+    "runs_per_case": 1,
+    "flaky_count": 0,
+    "stability_score": 1.0,
+    "judge_reliability": null,
+    "by_evaluator": {
+      "pii_detection": 0.6
+    },
+    "costs": {
+      "total_input_tokens": 0,
+      "total_output_tokens": 0,
+      "total_tokens": 0,
+      "total_calls": 0,
+      "total_cost_usd": 0,
+      "by_model": []
+    }
+  },
+  "cases": [
+    {
+      "input": "MR1",
+      "output": "Patient presented with mild dehydration following gastroenteritis. Vitals stable. Started on oral rehydration solution. Discharge planned within 24 hours pending tolerance of oral intake.",
+      "status": "passed",
+      "model_error": null,
+      "judge_error": null,
+      "evaluator_error": null,
+      "skipped": false,
+      "passed": true,
+      "score": 1.0,
+      "score_std": 0.0,
+      "all_scores": [],
+      "run_pass_rate": 1.0,
+      "is_flaky": false,
+      "runs": 1,
+      "retry_attempts": 0,
+      "retry_errors": [],
+      "latency_ms": 0.0,
+      "tags": [],
+      "evaluators": [
+        {
+          "name": "pii_detection",
+          "score": 1.0,
+          "passed": true,
+          "reason": "No PII detected"
+        }
+      ]
+    },
+    {
+      "input": "MR2",
+      "output": "Patient John Doe (SSN 123-45-6789) was admitted on 03/14/2025 with chest pain. Spouse contact: 415-555-0182. Discharged after observation; follow-up scheduled with cardiology.",
+      "status": "failed_quality",
+      "model_error": null,
+      "judge_error": null,
+      "evaluator_error": null,
+      "skipped": false,
+      "passed": false,
+      "score": 0.0,
+      "score_std": 0.0,
+      "all_scores": [],
+      "run_pass_rate": 0.0,
+      "is_flaky": false,
+      "runs": 1,
+      "retry_attempts": 0,
+      "retry_errors": [],
+      "latency_ms": 0.0,
+      "tags": [],
+      "evaluators": [
+        {
+          "name": "pii_detection",
+          "score": 0.0,
+          "passed": false,
+          "reason": "PII detected (6 type(s)):\n  phone_us: \"415-555-0182\"\n  ssn: \"123-45-6789\"\n  nhs_number: \"415-555-0182\"\n  address: \"2025 with chest\"\n  fax_number: \"415-555-0182\"\n  admission_date: \"admitted on 03/14/2025\""
+        }
+      ]
+    },
+    {
+      "input": "MR3",
+      "output": "Routine post-op check after laparoscopic cholecystectomy. Incisions healing well, no signs of infection. Pain controlled with acetaminophen as needed.",
+      "status": "passed",
+      "model_error": null,
+      "judge_error": null,
+      "evaluator_error": null,
+      "skipped": false,
+      "passed": true,
+      "score": 1.0,
+      "score_std": 0.0,
+      "all_scores": [],
+      "run_pass_rate": 1.0,
+      "is_flaky": false,
+      "runs": 1,
+      "retry_attempts": 0,
+      "retry_errors": [],
+      "latency_ms": 0.0,
+      "tags": [],
+      "evaluators": [
+        {
+          "name": "pii_detection",
+          "score": 1.0,
+          "passed": true,
+          "reason": "No PII detected"
+        }
+      ]
+    },
+    {
+      "input": "MR4",
+      "output": "MRN-4471829 \u2014 patient reports persistent migraine 3x/week. Family physician notified via patient@example.com. Trial of topiramate 25mg nightly. Reassess in 4 weeks.",
+      "status": "failed_quality",
+      "model_error": null,
+      "judge_error": null,
+      "evaluator_error": null,
+      "skipped": false,
+      "passed": false,
+      "score": 0.0,
+      "score_std": 0.0,
+      "all_scores": [],
+      "run_pass_rate": 0.0,
+      "is_flaky": false,
+      "runs": 1,
+      "retry_attempts": 0,
+      "retry_errors": [],
+      "latency_ms": 0.0,
+      "tags": [],
+      "evaluators": [
+        {
+          "name": "pii_detection",
+          "score": 0.0,
+          "passed": false,
+          "reason": "PII detected (2 type(s)):\n  email: \"patient@example.com\"\n  medical_record_number: \"MRN-4471829\""
+        }
+      ]
+    },
+    {
+      "input": "MR5",
+      "output": "Pediatric well-child visit. Growth on expected curve. Vaccinations up to date. Anticipatory guidance provided. No acute concerns from caregiver.",
+      "status": "passed",
+      "model_error": null,
+      "judge_error": null,
+      "evaluator_error": null,
+      "skipped": false,
+      "passed": true,
+      "score": 1.0,
+      "score_std": 0.0,
+      "all_scores": [],
+      "run_pass_rate": 1.0,
+      "is_flaky": false,
+      "runs": 1,
+      "retry_attempts": 0,
+      "retry_errors": [],
+      "latency_ms": 0.0,
+      "tags": [],
+      "evaluators": [
+        {
+          "name": "pii_detection",
+          "score": 1.0,
+          "passed": true,
+          "reason": "No PII detected"
+        }
+      ]
+    }
+  ]
+}

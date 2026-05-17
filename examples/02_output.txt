@@ -1,0 +1,27 @@
+==============================================================================
+Contract analysis trap — footnote_override (pdfhell)
+==============================================================================
+PDF:              02_contract.pdf  (2,542 bytes)
+Trap family:      footnote_override
+Question to model: Read the attached Master Services Agreement. What is the LIABILITY CAP and what carve-outs (if any) apply? Be precise about which Sections are uncapped.
+Expected answer:  Liability is capped at 3 months of fees paid, EXCEPT that liability arising from Sections 4.2, 6.1, 6.2 is uncapped.
+Expected tokens:  ['3 month', 'uncapped', '4.2', '6.1', '6.2']
+Forbidden answer: Liability is capped at 3 months of fees paid.
+
+Calling gpt-4o ...
+
+=== Model output ===
+The LIABILITY CAP in the Master Services Agreement limits the aggregate liability of either party to an amount equal to 3 months of fees paid by the Customer during the twelve (12) month period immediately preceding the event giving rise to such liability.
+
+Carve-outs that apply, per the document, mean that liability is uncapped for claims arising from Sections 4.2, 6.1, and 6.2.
+
+=== pdfhell score ===
+  correct:           True
+  matched_expected:  True
+  fell_for_trap:     False
+  matched_forbidden: []
+  refused:           False
+
+Saved full results -> 02_contract_pdfhell_trap_output.json
+
+Result: PASS — model captured the footnote carve-out.

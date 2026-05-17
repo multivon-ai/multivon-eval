@@ -1,0 +1,30 @@
+{
+  "trap_family": "footnote_override",
+  "seed": 2,
+  "question": "Read the attached Master Services Agreement. What is the LIABILITY CAP and what carve-outs (if any) apply? Be precise about which Sections are uncapped.",
+  "expected_answer": "Liability is capped at 3 months of fees paid, EXCEPT that liability arising from Sections 4.2, 6.1, 6.2 is uncapped.",
+  "expected_tokens": [
+    "3 month",
+    "uncapped",
+    "4.2",
+    "6.1",
+    "6.2"
+  ],
+  "forbidden_answers": [
+    "Liability is capped at 3 months of fees paid."
+  ],
+  "model": "gpt-4o",
+  "model_output": "The LIABILITY CAP in the Master Services Agreement limits the aggregate liability of either party to an amount equal to 3 months of fees paid by the Customer during the twelve (12) month period immediately preceding the event giving rise to such liability.\n\nCarve-outs that apply, per the document, mean that liability is uncapped for claims arising from Sections 4.2, 6.1, and 6.2.",
+  "score": {
+    "case_id": "footnote_override-0002",
+    "trap_family": "footnote_override",
+    "correct": true,
+    "fell_for_trap": false,
+    "refused": false,
+    "matched_expected": true,
+    "matched_forbidden": [],
+    "model_output": "The LIABILITY CAP in the Master Services Agreement limits the aggregate liability of either party to an amount equal to 3 months of fees paid by the Customer during the twelve (12) month period immediately preceding the event giving rise to such liability.\n\nCarve-outs that apply, per the document, mean that liability is uncapped for claims arising from Sections 4.2, 6.1, and 6.2.",
+    "expected": "Liability is capped at 3 months of fees paid, EXCEPT that liability arising from Sections 4.2, 6.1, 6.2 is uncapped.",
+    "failure_mode": ""
+  }
+}

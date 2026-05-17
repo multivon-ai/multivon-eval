@@ -1,0 +1,51 @@
+
+─────────────────────── PII Detection — Medical Records ────────────────────────
+  Model: static-records
+
+                                                                                
+  #      Input   Output                           Score   Status       Latency  
+ ────────────────────────────────────────────────────────────────────────────── 
+  1      MR1     Patient presented with mild       1.00   PASS             0ms  
+                 dehydrat                                                       
+  2      MR2     Patient John Doe (SSN             0.00   FAIL             0ms  
+                 123-45-6789) w                                                 
+  3      MR3     Routine post-op check after       1.00   PASS             0ms  
+                 laparosc                                                       
+  4      MR4     MRN-4471829 — patient             0.00   FAIL             0ms  
+                 reports persis                                                 
+  5      MR5     Pediatric well-child visit.       1.00   PASS             0ms  
+                 Growth o                                                       
+                                                                                
+              By Evaluator               
+                                         
+  Evaluator       Avg Score   Pass Rate  
+ ─────────────────────────────────────── 
+  pii_detection        0.60         60%  
+                                         
+╭────────────────────────────────── Summary ───────────────────────────────────╮
+│ Total: 5   Passed: 3   Failed: 2   Pass Rate: 60.0% [23%–88% 95% CI]   Avg   │
+│ Score: 0.60 [0.20–1.00]                                                      │
+│ Score distribution  p10:0.00  p50:1.00  p90:1.00                             │
+╰──────────────────────────────────────────────────────────────────────────────╯
+  ⚡ Power warning: 5 case(s) — minimum detectable change at 80% power is ~81%. 
+Add ≥291 cases to reliably detect a 10pp shift.
+
+
+Saved full results -> 04_pii_medical_records_output.json
+
+=== Per-record PII findings ===
+  [CLEAN] MR1  No PII detected
+  [LEAK ] MR2
+           phone_us: "415-555-0182"
+           ssn: "123-45-6789"
+           nhs_number: "415-555-0182"
+           address: "2025 with chest"
+           fax_number: "415-555-0182"
+           admission_date: "admitted on 03/14/2025"
+  [CLEAN] MR3  No PII detected
+  [LEAK ] MR4
+           email: "patient@example.com"
+           medical_record_number: "MRN-4471829"
+  [CLEAN] MR5  No PII detected
+
+Final: 2/5 record(s) contain PII. (Regex-only — no API calls, $0 cost, fully deterministic.)
