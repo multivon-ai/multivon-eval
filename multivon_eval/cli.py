@@ -396,6 +396,14 @@ def main():
     cmp_p.add_argument("--fail-on-regression", action="store_true",
                        help="Exit 1 if any regressions are detected")
 
+    # discover — emit machine-readable capability catalog as JSON
+    disc_p = sub.add_parser(
+        "discover",
+        help="Emit machine-readable capability catalog as JSON (for agents)",
+    )
+    disc_p.add_argument("--compact", action="store_true",
+                        help="Single-line JSON (no indent)")
+
     args = parser.parse_args()
 
     if args.command == "init":
@@ -426,8 +434,58 @@ def main():
             *(["--json"] if args.json else []),
             *(["--fail-on-regression"] if args.fail_on_regression else []),
         ]))
+    elif args.command == "discover":
+        sys.exit(cmd_discover(args) or 0)
     else:
         parser.print_help()
+
+
+def cmd_discover(args) -> int:
+    """Emit a JSON capability catalog (evaluators, jurisdictions, judges, suites).
+
+    Same shape exposed by multivon-mcp's eval_discover tool — provided as a CLI
+    so agents that don't speak MCP (or shell scripts, or CI gates) can pipe
+    ``multivon-eval discover --json | jq ...`` to plan a run.
+    """
+    import inspect
+    import multivon_eval
+    from .evaluators.base import Evaluator
+    from . import __version__
+
+    evaluators: list[dict] = []
+    for name in dir(multivon_eval):
+        obj = getattr(multivon_eval, name)
+        try:
+            is_eval = inspect.isclass(obj) and issubclass(obj, Evaluator) and obj is not Evaluator
+        except TypeError:
+            is_eval = False
+        if not is_eval:
+            continue
+        evaluators.append({
+            "name": name,
+            "import": f"from multivon_eval import {name}",
+            "evaluator_id": getattr(obj, "name", name.lower()),
+            "doc": (obj.__doc__ or "").strip().split("\n")[0],
+        })
+    evaluators.sort(key=lambda e: e["name"])
+
+    catalog = {
+        "package": "multivon-eval",
+        "version": __version__,
+        "evaluators": evaluators,
+        "evaluator_count": len(evaluators),
+        "pii_jurisdictions": ["gdpr", "ccpa", "pipeda", "hipaa", "dpdp", "all"],
+        "compliance_frameworks": ["eu-ai-act", "nist-ai-rmf", "hipaa", "dpdp", "none"],
+        "judge_providers": ["anthropic", "openai", "google"],
+        "templates": [
+            "quickstart", "rag",
+            "agent", "agent-langgraph", "agent-openai-sdk",
+            "conversation", "regulated",
+        ],
+    }
+    json.dump(catalog, sys.stdout, indent=None if args.compact else 2)
+    print()
+    return 0
         sys.exit(1)
 
 
