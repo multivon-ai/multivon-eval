@@ -88,8 +88,54 @@ Suite hash: sha256:abc1234... — verifiable from manifest.json
 
 The agent's follow-up is usually a diff of the two failed `footnote_override` cases — model output vs expected — so you can see whether the model dropped the carve-out clause specifically.
 
+## Recipe 4: did my fix actually help? (multivon-mcp 0.3.0)
+
+**Use case:** you just refactored a RAG pipeline and want to know whether the new version regressed on any case the old version got right.
+
+**Prompt the agent:**
+
+> Compare `runs/before.json` against `runs/after.json` and tell me what got worse.
+
+**What happens:**
+
+1. Agent calls `eval_compare_runs(baseline_json_path="runs/before.json", new_json_path="runs/after.json")`.
+2. Response includes `pass_rate_delta`, per-case `regressions` (cases that passed before but fail now), `improvements`, and a McNemar p-value over paired cases.
+3. Agent flags the regressions case-by-case so you can decide whether to ship.
+
+This is the loop the marquee /eval scenario was already gesturing at — now it's one MCP call.
+
+## Recipe 5: synthesise an eval suite from your docs (multivon-mcp 0.3.0)
+
+**Use case:** you want to bootstrap an eval suite from a FAQ or product doc and don't want to handwrite cases.
+
+**Prompt the agent:**
+
+> Generate 20 RAG cases from `docs/faq.md` so I can score my pipeline against them.
+
+**What happens:**
+
+1. Agent reads the doc.
+2. Calls `eval_generate_cases(from_text=<file content>, n=20, task="qa")`.
+3. Gets back a list of `{input, expected_output, context}` dicts — drop straight into `EvalCase(...)` and you have a runnable suite.
+
+## Recipe 6: score the trace your agent just executed (multivon-mcp 0.3.0)
+
+**Use case:** the agent ran a multi-step task and wants to evaluate its own trajectory.
+
+**Prompt the agent:**
+
+> Score the trace from the run you just executed.
+
+**What happens:**
+
+1. Agent dumps its trace as a JSON dict (supported shapes: LangGraph, OpenAI Agents SDK, or canonical manual format).
+2. Calls `eval_ingest_trace(trace_json=<dict>, framework="langgraph")`.
+3. Receives an `EvalCase` with input + steps + tool_calls. Can then pipe through `eval_tool_call_accuracy` / `eval_step_faithfulness` for the actual scoring.
+
 ## Discovering tools mid-session
 
-If the agent isn't sure which evaluator to use, it can call `eval_discover` to dump the full catalog. The response includes every shipped evaluator, its tier (`deterministic` / `llm_judge_qag` / `agent_trace` / `conversation` / `compliance_multimodal`), the import path for direct SDK use, and which `(evaluator, judge_model)` pairs have shipped calibration data.
+If the agent isn't sure which evaluator to use, it can call `eval_discover` to dump the full catalog. The response includes every shipped evaluator, its tier (`deterministic` / `llm_judge_qag` / `agent_trace` / `compliance` / `safety` / `multimodal` / `consistency`), the import path for direct SDK use, and which `(evaluator, judge_model)` pairs have shipped calibration data.
+
+For agents that don't speak MCP, the same catalog is available via the CLI: `multivon-eval discover --json` and `pdfhell discover --json`.
 
 This is what makes multivon-mcp self-describing — the agent never has to read documentation to know what's available.
