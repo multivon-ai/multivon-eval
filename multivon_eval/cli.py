@@ -486,7 +486,6 @@ def cmd_discover(args) -> int:
     json.dump(catalog, sys.stdout, indent=None if args.compact else 2)
     print()
     return 0
-        sys.exit(1)
 
 
 if __name__ == "__main__":
