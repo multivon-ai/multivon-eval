@@ -1,0 +1,95 @@
+---
+title: "Agent recipes"
+description: "Three short patterns that turn an MCP-connected agent into a working eval loop."
+---
+
+These are the prompts you'd actually type to a Claude Desktop / Cursor / Claude Code session that has `multivon-mcp` configured. The agent figures out which tool to call from the natural-language request — these recipes just show the shape of the resulting flow.
+
+## Recipe 1: evaluate a RAG output for hallucination
+
+**Use case:** you just shipped a RAG endpoint and want to confirm the model didn't invent facts not present in the retrieved context.
+
+**Prompt the agent:**
+
+> I just got this output from my RAG endpoint. Can you check it for hallucinations?
+>
+> **Question:** "What is the auto-renewal policy?"
+>
+> **Retrieved context:** "Section 12.4: This Agreement shall automatically renew for successive one-year terms unless either party gives 30 days written notice prior to the renewal date."
+>
+> **Output:** "The contract auto-renews annually with 30-day written notice, and includes automatic price increases capped at 5%."
+
+**What happens:**
+
+1. Agent calls `eval_faithfulness(input, context, output)` — and optionally `eval_hallucination(output, context)` to confirm.
+2. JSON comes back: `{"score": 0.667, "passed": false, "threshold": 0.9, "reason": "2/3 claims grounded ..."}`.
+3. Agent reads the reason field, sees the unsupported claim ("price increases capped at 5%"), and tells you precisely which span hallucinated.
+
+```
+score: 0.667 (passed: False), threshold: 0.9
+reason: 2/3 claims grounded
+  ✓ "annual renewal" — supported by context
+  ✓ "30-day notice" — supported by context
+  ✗ "5% price increase cap" — NOT in context
+```
+
+The agent's follow-up is usually "add a Hallucination evaluator to your CI gate, threshold ≥0.85, and re-prompt with explicit 'only use facts from context' instructions."
+
+## Recipe 2: score an agent tool call
+
+**Use case:** you're building an agent and want to verify it called the right tool with the right arguments on a known trace.
+
+**Prompt the agent:**
+
+> Score this trace. The expected tool was `search_products` with `query="organic flour"` and `max_results=5`. The actual call was `search_products` with `query="organic flour"` and `max_results=10`.
+
+**What happens:**
+
+1. Agent calls `eval_tool_call_accuracy(expected_tool="search_products", actual_tool="search_products", expected_arguments={"query": "organic flour", "max_results": 5}, actual_arguments={"query": "organic flour", "max_results": 10})`.
+2. JSON comes back deterministically — no LLM judge involved:
+
+```
+score: 0.0 (passed: False)
+reason:
+  tool name: ✓ expected='search_products', got='search_products'
+  arg 'query': ✓
+  arg 'max_results': ✗ expected=5, got=10
+```
+
+The agent points out which specific argument drifted. No API key needed — `eval_tool_call_accuracy` is pure string comparison.
+
+<Tip>
+Pair this with `eval_g_eval` when you want a semantic score on top — *was the tool call sensible given the user's intent?* — not just byte-equal argument matching.
+</Tip>
+
+## Recipe 3: run a pdfhell benchmark + ship the audit pack
+
+**Use case:** procurement wants evidence that your document-AI vendor's model holds up against adversarial PDFs.
+
+**Prompt the agent:**
+
+> Run the pdfhell mini suite against `anthropic:claude-sonnet-4-6`, then package the result as a procurement-ready audit pack.
+
+**What happens:**
+
+1. Agent calls `pdfhell_run(model="anthropic:claude-sonnet-4-6", suite="mini")` — returns a full report dict with `pass_rate`, per-trap CIs, per-case details, suite hash.
+2. Agent inspects the report, notes any trap family below threshold (e.g. `footnote_override: 0.7`), and surfaces the specific case IDs that failed.
+3. If the run JSON was written to disk, the agent calls `eval_audit_pack(run_json_path, cases_dir, output_zip_path)` to build the hash-chained ZIP. The manifest in the response confirms suite hash + file count.
+
+```
+Pass rate: 0.933 (28/30) on mini suite. Per-trap:
+  hidden_ocr_mismatch:        1.00  (10/10)
+  footnote_override:          0.80  (8/10)   ← below 0.9 gate
+  split_table_across_pages:   1.00  (10/10)
+
+Audit pack: /tmp/audit-pack.zip (412 KB, 64 files)
+Suite hash: sha256:abc1234... — verifiable from manifest.json
+```
+
+The agent's follow-up is usually a diff of the two failed `footnote_override` cases — model output vs expected — so you can see whether the model dropped the carve-out clause specifically.
+
+## Discovering tools mid-session
+
+If the agent isn't sure which evaluator to use, it can call `eval_discover` to dump the full catalog. The response includes every shipped evaluator, its tier (`deterministic` / `llm_judge_qag` / `agent_trace` / `conversation` / `compliance_multimodal`), the import path for direct SDK use, and which `(evaluator, judge_model)` pairs have shipped calibration data.
+
+This is what makes multivon-mcp self-describing — the agent never has to read documentation to know what's available.

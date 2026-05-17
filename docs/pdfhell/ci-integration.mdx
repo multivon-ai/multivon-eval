@@ -1,0 +1,148 @@
+---
+title: "CI integration"
+description: "Wire pdfhell into GitHub Actions, GitLab CI, and the audit pack into procurement workflows."
+---
+
+PDF Hell ships JUnit XML output and a `--fail-threshold` CI gate — drop it into any CI runner that renders JUnit (which is all of them).
+
+## GitHub Actions
+
+```yaml
+# .github/workflows/pdfhell.yml
+name: PDF Hell
+on: [pull_request]
+
+jobs:
+  pdfhell:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: |
+          uvx pdfhell run \
+            --model anthropic:claude-sonnet-4-6 \
+            --suite mini \
+            --junit pdfhell-results.xml \
+            --audit-pack pdfhell-audit.zip \
+            --fail-threshold 0.85
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pdfhell-results
+          path: |
+            pdfhell-results.xml
+            pdfhell-audit.zip
+```
+
+Failures show up as red rows on the PR with the expected and observed answers in the failure message. The audit ZIP is downloadable from the workflow artifacts — attach it to a procurement appendix without any post-processing.
+
+## GitLab CI
+
+```yaml
+# .gitlab-ci.yml
+pdfhell:
+  image: python:3.12-slim
+  before_script:
+    - pip install pdfhell
+  script:
+    - pdfhell run --model anthropic:claude-sonnet-4-6 --suite mini --junit pdfhell.xml --fail-threshold 0.85
+  artifacts:
+    when: always
+    reports:
+      junit: pdfhell.xml
+```
+
+## CircleCI
+
+```yaml
+version: 2.1
+jobs:
+  pdfhell:
+    docker:
+      - image: cimg/python:3.12
+    steps:
+      - checkout
+      - run: pip install pdfhell
+      - run:
+          name: PDF Hell
+          command: pdfhell run --model anthropic:claude-sonnet-4-6 --suite mini --junit pdfhell.xml --fail-threshold 0.85
+      - store_test_results:
+          path: pdfhell.xml
+```
+
+## pytest integration
+
+pdfhell isn't a pytest plugin (deliberately — it's a benchmark, not a test framework), but you can call the runner from a pytest test:
+
+```python
+# tests/test_pdfhell_gate.py
+import subprocess
+
+def test_pdfhell_passes():
+    result = subprocess.run(
+        ["pdfhell", "run",
+         "--model", "anthropic:claude-sonnet-4-6",
+         "--suite", "smoke",
+         "--fail-threshold", "0.7",
+         "--quiet"],
+        capture_output=True,
+    )
+    assert result.returncode == 0, result.stdout.decode()
+```
+
+Run with `pytest tests/test_pdfhell_gate.py`. If your CI uses pytest already, this slots into the existing test pipeline without changing the report format.
+
+## Reading the JUnit output
+
+JUnit dialect — passes, failures, and "skipped" (refusals):
+
+```xml
+<testsuites>
+  <testsuite name="pdfhell.mini.anthropic.claude-sonnet-4-6" tests="30" failures="1" errors="0" skipped="0">
+    <testcase name="hidden_ocr_mismatch-1001" classname="hidden_ocr_mismatch"/>
+    <testcase name="footnote_override-2010" classname="footnote_override">
+      <failure type="fell_for_trap" message="expected='12 month'; got='The cap is 24 months...'">
+        expected_answer: 12 month
+        model_output:    The cap is 24 months of fees paid.
+        matched_forbidden: ['The cap is 24 months of fees paid.']
+        failure_mode: Model reads the body clause and ignores the 6pt footnote.
+      </failure>
+    </testcase>
+  </testsuite>
+</testsuites>
+```
+
+Failure types:
+
+- `fell_for_trap` — the model returned exactly the wrong answer the trap was designed to elicit. A *known* failure mode. Most diagnostic.
+- `hallucination` — the model returned something neither expected nor forbidden. A different kind of wrong.
+
+Skipped cases are model refusals (`"I can't determine..."`) — they don't count as quality failures, but they don't count as passes either.
+
+## The audit pack
+
+`--audit-pack <path>` writes a ZIP procurement teams can attach to a diligence appendix. Contents:
+
+```
+audit-pack.zip
+├── manifest.json       # SHA-256 of every file in the pack
+├── README.txt          # What's in the ZIP + how to verify the hashes
+├── run.json            # Full run report
+├── run.xml             # JUnit XML
+└── cases/
+    ├── hidden_ocr_mismatch-1001.pdf
+    ├── hidden_ocr_mismatch-1001.json
+    └── ...             # every PDF the model was tested against + its answer key
+```
+
+Auditors verify the pack with:
+
+```bash
+unzip -p audit-pack.zip manifest.json | jq .files
+sha256sum cases/*.pdf cases/*.json run.json run.xml README.txt
+# Compare each hash against the manifest entry.
+```
+
+If any file in the ZIP was edited after delivery, its hash diverges from the manifest and verification fails. Tamper-evident by construction.

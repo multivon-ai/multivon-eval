@@ -1,0 +1,132 @@
+---
+title: "CLI reference"
+description: "Every pdfhell subcommand and flag."
+---
+
+`pdfhell` is a single binary installed by `pip install pdfhell` (or via `uvx pdfhell …`). All subcommands are non-interactive — designed for CI and scripting.
+
+## `pdfhell list-traps`
+
+Print every available trap family on stdout, one per line.
+
+```bash
+$ pdfhell list-traps
+hidden_ocr_mismatch
+footnote_override
+split_table_across_pages
+```
+
+## `pdfhell make`
+
+Generate one trap PDF + its case JSON for inspection.
+
+```bash
+pdfhell make --trap <family> --seed <int> [--out <dir>]
+```
+
+| Flag | Default | Notes |
+|---|---|---|
+| `--trap` | required | One of the family names from `pdfhell list-traps`. |
+| `--seed` | required | Integer seed. Same seed → byte-identical PDF + identical answer key. |
+| `--out` | `./cases` | Output directory. Created if missing. |
+
+Writes `<case_id>.pdf` and `<case_id>.json` to `--out`. The JSON includes the expected answer, forbidden answers (trap-caught failure modes), and metadata.
+
+## `pdfhell build`
+
+Materialise a named suite to disk.
+
+```bash
+pdfhell build --suite <smoke|mini> --out <dir>
+```
+
+| Flag | Default | Notes |
+|---|---|---|
+| `--suite` | `mini` | `smoke` (3 cases) or `mini` (30 cases). |
+| `--out` | `./cases/<suite>` | Output directory. |
+
+Used by `pdfhell run` automatically on first use — you rarely need to call this directly.
+
+## `pdfhell run` — main entry point
+
+Evaluate a vision model against a suite.
+
+```bash
+pdfhell run --model <provider>:<model>
+            [--suite smoke|mini]
+            [--cases-dir <dir>]
+            [--workers <n>]
+            [--out <path>]
+            [--junit <path>]
+            [--audit-pack <path>]
+            [--fail-threshold <0.0-1.0>]
+            [--quiet]
+```
+
+| Flag | Default | Notes |
+|---|---|---|
+| `--model` | required | `provider:model`. Providers: `anthropic`, `openai`, `google`. Examples: `anthropic:claude-sonnet-4-6`, `openai:gpt-4o`, `google:gemini-2.5-flash`. |
+| `--suite` | `mini` | `smoke` or `mini`. |
+| `--cases-dir` | `./cases/<suite>` | Built on first use if missing. |
+| `--workers` | `4` | Parallel API requests. |
+| `--out` | `runs/<suite>-<model>.json` | Full report JSON. |
+| `--junit` | _(none)_ | Optional JUnit XML for CI dashboards (GitHub Actions, GitLab CI, Jenkins). |
+| `--audit-pack` | _(none)_ | Optional hash-chained ZIP: PDFs + answer keys + run JSON + JUnit + SHA-256 manifest + README. The artifact procurement teams need. |
+| `--fail-threshold` | _(none)_ | Float in `[0.0, 1.0]`. Exits non-zero if `pass_rate` is below this — for CI gates. |
+| `--quiet` | `false` | Suppress per-case progress; print summary only. |
+
+API key comes from environment variables (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`). pdfhell never reads them from disk or asks for them interactively.
+
+## `pdfhell report`
+
+Print a saved run's summary.
+
+```bash
+pdfhell report runs/mini-anthropic-claude-sonnet-4-6.json
+```
+
+Useful for re-rendering a previous run's headline without re-running the model.
+
+## Exit codes
+
+| Code | Meaning |
+|---|---|
+| `0` | Run completed; if `--fail-threshold` was set, the threshold was met. |
+| `1` | Run completed but `pass_rate` was below `--fail-threshold`. CI should treat as failure. |
+| `2` | Bad arguments (unknown suite, unknown trap, missing required flag). |
+
+## Output format
+
+The `--out` JSON has this shape:
+
+```json
+{
+  "model": "anthropic:claude-sonnet-4-6",
+  "suite": "mini",
+  "n": 30,
+  "pass_rate": 0.967,
+  "refused_rate": 0.0,
+  "per_trap_pass": {
+    "hidden_ocr_mismatch": 1.0,
+    "footnote_override": 0.9,
+    "split_table_across_pages": 1.0
+  },
+  "per_trap_fell_for_trap": { },
+  "cases": [
+    {
+      "case_id": "hidden_ocr_mismatch-1001",
+      "trap_family": "hidden_ocr_mismatch",
+      "correct": true,
+      "fell_for_trap": false,
+      "refused": false,
+      "expected": "$1,234.56",
+      "model_output": "$1,234.56",
+      "matched_expected": true,
+      "matched_forbidden": [],
+      "failure_mode": ""
+    }
+  ]
+}
+```
+
+`per_trap_fell_for_trap` is the diagnostic signal: a model that's getting only 60% on a trap family but `fell_for_trap=0.6` is consistently caught by the *designed* failure mode (the trap is working). A model at 60% with `fell_for_trap=0` is failing by hallucinating *something else* — different bug, different fix.

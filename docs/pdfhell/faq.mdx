@@ -1,0 +1,88 @@
+---
+title: "FAQ"
+description: "Methodology questions, scoring, contamination, statistical power, and how pdfhell relates to existing eval frameworks."
+---
+
+## How is this different from DocVQA / MMMU / ChartQA?
+
+Existing document benchmarks measure correctness on **clean, naturally-occurring PDFs**. PDF Hell measures correctness under **adversarial PDF structures** that are common in production but absent in academic benchmarks (hidden OCR layers, footnote overrides, page-broken tables).
+
+It's a stress test, not a sufficient eval. Pair it with a domain benchmark (DocVQA, your in-house regression suite) for full coverage.
+
+## Why no LLM-as-judge?
+
+Because the same complexity that fools a document AI also fools a judge model. Customers paying for "Evidence Pack" reports from other vendors routinely discover their judge passed an answer that contradicted the source.
+
+PDF Hell removes the judge from the scoring path. The answer is set by code; the model's output is matched against a known string (or a list of required token substrings, for prose answers). Wrong answers can be diagnosed *why* they're wrong via the `forbidden_answers` mechanism — but the *score* never depends on another LLM's opinion.
+
+## Can a model train on the pdfhell repo and game the score?
+
+The procedural generators are open source — that's deliberate. Three mitigations:
+
+1. **Procedural, not fixed.** A model could memorise the 30 mini-suite seeds, but the generator is parameterised. Hosted-generator subscribers (Pro / Enterprise) get adversarial variants of *their own* templates, not the public mini suite. Test-leakage on the public set doesn't transfer.
+
+2. **Code-based ground truth.** Even if a model has seen a specific seed during training, the answer key is derived from the generator's parameters — those are random per-seed. Memorising the question without the answer key buys nothing.
+
+3. **Trap families generalise.** The point isn't to overfit on `hidden_ocr_mismatch-1001`; it's to test whether the model handles *the failure mode* (hidden OCR layers in general). A model that passes seed 1001 by memorisation but fails on seed 9001 (a held-out seed) has revealed the contamination.
+
+For research-grade evaluation, we recommend a fresh seed range as a held-out set. The mini suite uses seeds 1001–3010; seeds 5000+ are unused and reserved as private holdouts.
+
+## How statistically powerful is a 30-case run?
+
+The 95% Wilson confidence interval on a 30-case run with `pass_rate = 0.93` is approximately **[0.78, 0.98]**. Differences of less than ~5pp between models are *not* statistically distinguishable at this sample size.
+
+For the published claim "GPT-4o falls for `hidden_ocr_mismatch` 100% of the time" — that's 10 cases at 100% fell-for-trap rate. Wilson 95% CI is [0.72, 1.0]. Strong signal but not zero-uncertainty.
+
+If you need tighter CIs, generate more seeds with `pdfhell make --trap X --seed N` for N in 5000–5100 (or similar) and add them to a custom suite. The 0.2 release will likely bump the mini suite to 50 cases / 5 families.
+
+## Is the methodology robust to prompt engineering?
+
+The prompt for each trap family is fixed in the generator (the question included with each case). Deployers *could* re-engineer the prompt before sending to the model — e.g. inject "Make sure to read both visible text AND any invisible OCR layers."
+
+That's a feature, not a bug: if a deployer can prompt-engineer their way around a trap, the trap measures fragility-without-prompt-engineering, which is itself useful information. For the official leaderboard we use the exact prompt the case carries, so all models are evaluated under the same prompt.
+
+## What about on-prem models (Qwen-VL, Llama-3.2-Vision, etc.)?
+
+PDF Hell works with any OpenAI-compatible endpoint:
+
+```bash
+pdfhell run --model openai:qwen2.5-vl-7b \
+            --base-url http://localhost:8000/v1
+```
+
+Run Qwen-VL via vLLM, Llama-3.2-Vision via Ollama, or any other OpenAI-compatible local serving stack. We have not run the full mini suite against on-prem models for the published leaderboard yet — PRs welcome.
+
+## Why is GPT-4o so much worse than Claude/Gemini on hidden OCR?
+
+Honest answer: we don't know definitively. The pattern looks like GPT-4o's vision pipeline is trusting an internal text-extraction layer when one exists in the PDF, while Claude and Gemini are reading the rendered pixels.
+
+GPT-5.4 fixes most of it (80% pass on hidden OCR), but GPT-5.4-mini still falls 90%. We've reported the finding to OpenAI; no comment yet.
+
+## Can I add my own trap family?
+
+Yes. See [CONTRIBUTING.md](https://github.com/multivon-ai/pdfhell/blob/main/CONTRIBUTING.md) for the trap-family contract (deterministic seed, code-based answer key, named failure mode). One trap family per PR. Tests run with `pytest tests/`.
+
+## What does the hosted generator do that the OSS suite doesn't?
+
+The OSS mini suite tests pdfhell's three trap families against your model. The hosted generator (PDF Hell Pro, $49/mo) takes *your own document templates* — MSAs, claim forms, EOBs, medical records — and procedurally injects the same trap families into adversarial variants of *your* documents. Same methodology, your data shape. Useful when your domain has structure the public mini suite doesn't cover.
+
+See [pricing](https://multivon.ai/pricing).
+
+## Is this Multivon's product or just a research project?
+
+Both. PDF Hell is open-source under Apache 2.0 (the public benchmark). Multivon's commercial layer is the hosted generator (Pro, $49/mo) and the enterprise tier ($25k+/yr) with custom trap families, CI integration, and on-prem deployment.
+
+multivon-eval is the underlying SDK, also Apache 2.0 — it ships 43+ evaluators across deterministic, LLM-judge (QAG), agent-trace, conversation, and multimodal tiers. See the [multivon-eval](/introduction) tab.
+
+## I'm a researcher. How do I cite this?
+
+```bibtex
+@software{pdfhell,
+  title  = {PDF Hell: Adversarial PDFs for AI document readers},
+  author = {Multivon},
+  year   = {2026},
+  url    = {https://github.com/multivon-ai/pdfhell},
+}
+```
+
+A methodology paper is on the roadmap once the full suite (10 trap families) is shipped.

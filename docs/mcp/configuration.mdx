@@ -1,0 +1,83 @@
+---
+title: "Configuration"
+description: "Wire multivon-mcp into Claude Desktop, Claude Code, Cursor, and Cline."
+---
+
+multivon-mcp is a stdio MCP server installed as the console script `multivon-mcp`. Point any MCP-compatible agent at it.
+
+## Claude Desktop
+
+Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
+
+```json
+{
+  "mcpServers": {
+    "multivon": {
+      "command": "multivon-mcp",
+      "env": {
+        "ANTHROPIC_API_KEY": "sk-ant-...",
+        "OPENAI_API_KEY": "sk-proj-...",
+        "GOOGLE_API_KEY": "AIza..."
+      }
+    }
+  }
+}
+```
+
+Restart Claude. The 19 tools appear in the tool drawer; ask Claude `"use multivon to evaluate this RAG output"` and it picks the right tool.
+
+## Claude Code
+
+The same `claude_desktop_config.json` is read by Claude Code. If you prefer per-project scope, add an `.mcp.json` to the project root:
+
+```json
+{
+  "mcpServers": {
+    "multivon": {
+      "command": "multivon-mcp"
+    }
+  }
+}
+```
+
+API keys then come from the shell environment, not the config — useful for keeping secrets out of the repo.
+
+## Cursor
+
+`cursor.json` or via **Settings → MCP**:
+
+```json
+{
+  "mcpServers": {
+    "multivon": {
+      "command": "multivon-mcp"
+    }
+  }
+}
+```
+
+## Cline / OpenCode / any MCP-compatible agent
+
+Same shape — point at the `multivon-mcp` console script. All MCP clients speak stdio.
+
+```json
+{
+  "mcpServers": {
+    "multivon": {
+      "command": "multivon-mcp"
+    }
+  }
+}
+```
+
+## Local development & debugging
+
+```bash
+mcp dev multivon_mcp.server
+```
+
+This opens the MCP Inspector UI in your browser. You can call any tool by name, see the JSON schemas, and watch the request/response trace. Useful when you're debugging tool selection in an agent — drive it manually first to confirm the inputs / outputs match what you expect.
+
+<Note>
+Provider API keys are read from environment variables (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`). The MCP server never prompts for them and never accepts them as tool arguments — they stay in the agent's process env.
+</Note>

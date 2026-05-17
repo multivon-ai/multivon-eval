@@ -12,10 +12,21 @@
     "light": "#a78bfa",
     "dark": "#5b21b6"
   },
+  "contextual": {
+    "options": ["assistant", "mcp", "add-mcp", "cursor", "vscode"]
+  },
   "topbarLinks": [
     {
-      "name": "GitHub",
+      "name": "multivon-eval",
       "url": "https://github.com/multivon-ai/multivon-eval"
+    },
+    {
+      "name": "pdfhell",
+      "url": "https://github.com/multivon-ai/pdfhell"
+    },
+    {
+      "name": "multivon-mcp",
+      "url": "https://github.com/multivon-ai/multivon-mcp"
     },
     {
       "name": "multivon.ai",
@@ -29,7 +40,7 @@
   "navigation": {
     "tabs": [
       {
-        "tab": "Docs",
+        "tab": "multivon-eval",
         "groups": [
           {
             "group": "Getting Started",
@@ -52,7 +63,8 @@
               "evaluators/agent",
               "evaluators/compliance",
               "evaluators/conversation",
-              "evaluators/consistency"
+              "evaluators/consistency",
+              "evaluators/multimodal"
             ]
           },
           {
@@ -71,6 +83,35 @@
               "guides/integrations",
               "guides/production-targets",
               "guides/custom-evaluators"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "pdfhell",
+        "groups": [
+          {
+            "group": "PDF Hell",
+            "pages": [
+              "pdfhell/quickstart",
+              "pdfhell/trap-families",
+              "pdfhell/cli-reference",
+              "pdfhell/ci-integration",
+              "pdfhell/faq"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "multivon-mcp",
+        "groups": [
+          {
+            "group": "multivon-mcp",
+            "pages": [
+              "mcp/overview",
+              "mcp/configuration",
+              "mcp/tool-reference",
+              "mcp/agent-recipes"
             ]
           }
         ]

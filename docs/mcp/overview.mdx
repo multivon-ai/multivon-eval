@@ -1,0 +1,42 @@
+---
+title: "multivon-mcp"
+description: "MCP server that gives AI coding agents direct access to the multivon-eval and pdfhell evaluation surface."
+---
+
+`multivon-mcp` is a [Model Context Protocol](https://modelcontextprotocol.io) server that exposes 19 evaluation tools to any MCP-compatible agent — Claude Desktop, Claude Code, Cursor, Cline, OpenCode. The agent calls them by name; no copy-paste, no `python -c "..."`, no asking the agent to figure out the SDK calls.
+
+When the agent is helping you build an LLM product, it can:
+
+- Score a RAG output for hallucination without you writing the scaffolding
+- Generate an adversarial PDF on demand to test your document AI
+- Run the full pdfhell mini-suite against a model and analyse the results
+- Produce a hash-chained audit pack for procurement diligence
+- Discover the full evaluation capability catalog as JSON
+
+## Why an MCP server (not just a CLI)
+
+The MCP layer matters because the agent is the user. A CLI is the right shape for humans driving terminals; an MCP server is the right shape for an LLM that needs to *call* the tool mid-edit, get JSON back, and condition its next action on the result.
+
+Three concrete wins:
+
+1. **Tool discovery is free.** `eval_discover` returns the full 44-evaluator catalog as JSON. The agent never has to parse markdown to know what's available.
+2. **JSON results, not pretty-printed.** Every tool returns `{"score": 0.0-1.0, "passed": bool, "reason": str, "threshold": float}`. The agent can branch on the score programmatically.
+3. **Calibration is automatic.** Each evaluator uses the calibrated threshold for the configured judge — no asking the agent to guess at the right cutoff.
+
+## Install
+
+```bash
+pip install multivon-mcp
+```
+
+The bare install pulls `multivon-eval`, `pdfhell`, and the MCP SDK. Provider SDKs (`anthropic`, `openai`, `google-genai`) come along — bring your own API key in env.
+
+<Tip>
+For one-off use without installing, `uvx multivon-mcp` works zero-setup.
+</Tip>
+
+## Next steps
+
+- [Configuration](/mcp/configuration) — wire it into Claude Desktop, Claude Code, Cursor, or Cline.
+- [Tool reference](/mcp/tool-reference) — every tool, every argument.
+- [Agent recipes](/mcp/agent-recipes) — short patterns for common eval flows.

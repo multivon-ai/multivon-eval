@@ -1,0 +1,68 @@
+---
+title: "Quickstart"
+description: "Install pdfhell and run your first adversarial PDF benchmark in 30 seconds."
+---
+
+PDF Hell is an adversarial benchmark for AI document readers. Every test case is a PDF generated *from code*, so the correct answer is exactly known — no LLM judges another LLM.
+
+## Install
+
+```bash
+pip install pdfhell
+```
+
+The bare install pulls `multivon-eval` (the engine), `reportlab` (PDF generation), `pypdf`, and the three frontier-provider SDKs (`anthropic`, `openai`, `google-genai`). No GPU required, no provider extras to remember.
+
+If you use [uv](https://docs.astral.sh/uv/), skip the install — `uvx pdfhell <cmd>` works zero-setup.
+
+## Set an API key
+
+PDF Hell sends each PDF to a vision-capable model. Bring your own key for at least one of:
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
+export OPENAI_API_KEY=sk-proj-...
+export GOOGLE_API_KEY=AIza...
+```
+
+## Run the smoke suite (3 cases, ~10 seconds)
+
+```bash
+pdfhell run --model google:gemini-2.5-flash --suite smoke
+```
+
+You should see something like:
+
+```
+PDF Hell smoke suite — n=3
+model: google:gemini-2.5-flash
+pass: 3/3  (100.0%)
+refused: 0.0%
+
+per-trap pass rate:
+  footnote_override               pass=100%  fell-for-trap=0%
+  hidden_ocr_mismatch             pass=100%  fell-for-trap=0%
+  split_table_across_pages        pass=100%  fell-for-trap=0%
+```
+
+The smoke suite is one case per trap family. The full mini suite is 30 cases (10 per family) — same command, `--suite mini`.
+
+## Try a specific trap
+
+Generate one PDF and inspect it visually:
+
+```bash
+pdfhell make --trap hidden_ocr_mismatch --seed 42
+open ./cases/hidden_ocr_mismatch-0042.pdf
+```
+
+Open the PDF — you'll see what looks like a normal invoice. The trap is invisible: a second copy of the total amount is written into the PDF's text content stream using PDF render mode 3 (placed in the text stream but never rasterised). A vision model reads the visible amount; a text-extraction pipeline reads the hidden one.
+
+Every case JSON (`cases/<case_id>.json`) carries the expected answer, the forbidden answer (the value the trap was specifically designed to elicit), and a description of the failure mode.
+
+## What's next
+
+- See the **[Trap families](/pdfhell/trap-families)** reference to understand what each trap tests.
+- Wire pdfhell into your CI with the **[CI integration](/pdfhell/ci-integration)** guide.
+- Full **[CLI reference](/pdfhell/cli-reference)**.
+- The **[FAQ](/pdfhell/faq)** covers methodology questions (test leakage, prompt sensitivity, statistical power).

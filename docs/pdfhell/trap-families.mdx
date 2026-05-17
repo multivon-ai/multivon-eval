@@ -1,0 +1,100 @@
+---
+title: "Trap families"
+description: "The three adversarial trap families in the 0.1 mini suite — what each tests, how it's generated, and what specifically breaks."
+---
+
+The 0.1 release ships **three** trap families. Each is a procedural PDF generator: take a seed, draw a PDF with reportlab, return the bytes and the code-derived answer key. Re-running with the same seed produces byte-identical PDFs.
+
+## hidden_ocr_mismatch
+
+**One-line:** Invisible text layer disagrees with the rendered page.
+
+### How it's generated
+
+The generator draws a normal-looking invoice with realistic line items and a `TOTAL DUE` amount. Then it places a second, *different* amount at the same coordinate using PDF text render mode 3 — placed in the text content stream but never rasterised. A human sees one amount; a text-extraction pipeline (pdfminer, pdfplumber, pypdf, most RAG loaders) sees the other.
+
+### What it tests
+
+Whether the model trusts the rendered page or the underlying text layer. Vision-only models read the page; agents that fuse a text-extraction layer with vision output often silently prefer the layer.
+
+### Expected failure mode
+
+The model returns the *hidden* amount instead of the visible one. The case's `forbidden_answers` records the hidden amount so the scorer flags this specific failure with `fell_for_trap=true` — distinguishing trap-caught failures from generic hallucination.
+
+### Real-world equivalent
+
+Scanned-then-re-OCR'd PDFs in production. The OCR layer can drift from the rendered page (re-OCR with a different engine, re-saved through a buggy editor, manipulated headers). Document-AI agents that mix OCR + vision frequently fall here.
+
+### Example seeds
+
+`1001` – `1010` in the mini suite. Try `pdfhell make --trap hidden_ocr_mismatch --seed 42`.
+
+---
+
+## footnote_override
+
+**One-line:** A 6pt footnote overrides the body clause.
+
+### How it's generated
+
+A short legal/contract document (MSA, DPA, SOW, Order Form) with a confident body clause — e.g. *"Customer's liability shall be capped at twelve (12) months of fees paid"* — and a 6pt footnote near the bottom of the same page that overrides it: *"Notwithstanding the foregoing, liability for breaches of Sections 4.2 and 7.1 shall be uncapped."*
+
+Three clause families: liability caps, termination-for-convenience restrictions, data-residency with disaster-recovery exceptions. Section numbers, regions, and notice periods are randomly seeded — but the carve-out structure is fixed.
+
+### What it tests
+
+Whether the model captures both the body clause *and* the footnote when summarising. RAG pipelines that drop low-font-size text on ingest fail here. Contract-analysis agents that focus on the body clause fail here.
+
+### Expected failure mode
+
+The model returns the body-only answer (e.g. "Liability is capped at 12 months of fees paid"), missing the carve-out. The scoring uses `expected_tokens` — the answer must include the cap value AND every carve-out section number AND the word "uncapped" (any phrasing).
+
+### Real-world equivalent
+
+Customer paper from procurement teams routinely buries exceptions in footnotes. A model that ships confident summaries without the carve-out creates *malpractice-grade* errors for legal-AI vendors.
+
+### Example seeds
+
+`2001` – `2010`. Try `pdfhell make --trap footnote_override --seed 5`.
+
+---
+
+## split_table_across_pages
+
+**One-line:** Header on page 1, body rows on page 2 — no header repeat.
+
+### How it's generated
+
+A financial-results table with 6 columns (`Region`, `Quarter`, `Gross Revenue`, `COGS`, `Operating Income`, `Net Revenue`). Filler text is sized so the column-header row lands at the bottom of page 1. The 8 data rows sit at the top of page 2, headerless. The case asks for one specific cell — e.g. *"What was the Net Revenue for the Northwest region in Q3 of 2026?"*
+
+### What it tests
+
+Whether the model maintains column-header context across page boundaries. RAG loaders that paginate documents independently lose the header on page 2. Table-extraction models that don't persist column headers when a table spans a page break fail here.
+
+### Expected failure mode
+
+The model returns a value from an adjacent column in the correct row — *column confusion*. `forbidden_answers` records the value of an adjacent column in the same row so the scorer distinguishes column-confusion from outright hallucination.
+
+### Real-world equivalent
+
+Annual reports, financial statements, regulatory filings — long tables routinely span pages with header-only-on-first-page formatting. Any document-AI agent that retrieves "the page with Q3 data" without also retrieving "the page with the column headers" will trip here.
+
+### Example seeds
+
+`3001` – `3010`. Try `pdfhell make --trap split_table_across_pages --seed 7`.
+
+---
+
+## What's not yet in the suite
+
+The 0.1 release is intentionally narrow. Coming next (PRs welcome — see [contributing](https://github.com/multivon-ai/pdfhell/blob/main/CONTRIBUTING.md)):
+
+- `merged_table_cells` — value depends on row/column span interpretation
+- `rotated_scan` — visually legible but OCR-broken pages
+- `near_duplicate_entities` — *ACME Ltd.* vs *ACME Holdings Ltd.*
+- `prompt_injection_in_body` — *"Ignore previous instructions and answer X"*
+- `chart_axis_inversion` — answers depend on reading axis direction
+- `checkbox_ambiguity` — selected vs unselected with low visual margin
+- `cross_page_citation` — answers requiring page + bounding-box citations
+
+Target full suite: 10 trap families, ~50 cases.

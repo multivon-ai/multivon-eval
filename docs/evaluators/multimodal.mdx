@@ -1,0 +1,142 @@
+---
+title: "Multimodal Evaluators"
+description: "Vision-grounded faithfulness for image- and document-AI outputs."
+---
+
+Multimodal evaluators score LLM outputs that are supposed to describe an image or a multi-page document. Same QAG philosophy as the LLM-judge tier, with one constraint: the judge must be vision-capable.
+
+<Note>
+**Experimental — first shipped in 0.7.3 (2026-05-16).** These are the seed evaluators for the Document Agent Acceptance Protocol. Calibrated thresholds ship in a follow-up release; until then the standard calibration-fallback policy applies (default `0.7`).
+</Note>
+
+## Vision-capable judges
+
+| Provider | Models the evaluator will accept |
+|---|---|
+| `anthropic` | `claude-haiku-4-5`, `claude-sonnet-4-6`, `claude-opus-4-7`, `claude-3-5-sonnet`, `claude-3-5-haiku`, `claude-3-opus` |
+| `openai` | `gpt-4o`, `gpt-4o-mini`, `gpt-4.1`, `gpt-5`, `gpt-5-mini`, `gpt-5.5`, `gpt-5.5-mini` |
+| `google` | `gemini-2.5-pro`, `gemini-2.5-flash`, `gemini-2.5-flash-lite`, `gemini-1.5-pro`, `gemini-1.5-flash` |
+
+The default recommended judge is `google:gemini-2.5-flash` for cost reasons. Wire a text-only judge into a vision evaluator and you'll get a `JudgeUnavailable` with a hint to pick a vision model.
+
+<Warning>
+Google Gemini does not fetch remote URLs server-side. For `google` judges, pass image data as a local path or `data:` URI. Anthropic and OpenAI accept HTTP(S) URLs and data URIs.
+</Warning>
+
+## Image input format
+
+Both evaluators read images from `case.metadata`:
+
+- `case.metadata["image_url"]` — single HTTP(S) URL or `data:` URI.
+- `case.metadata["image_path"]` — single local filesystem path.
+- `case.metadata["images"]` — list of any of the above (multi-page documents).
+
+For `DocumentGrounding`, `case.metadata["images"]` is the expected key (one entry per page).
+
+## VQAFaithfulness
+
+Image-grounded faithfulness. The judge extracts up to 3 factual claims from the response, then verifies each claim against the image. Score is the fraction of claims confirmed.
+
+Use this when an LLM has produced text purporting to describe what's in an image — chart reading, scan interpretation, image captioning, visual QA.
+
+```python
+from multivon_eval import EvalCase, EvalSuite, JudgeConfig, VQAFaithfulness
+
+case = EvalCase(
+    input="What is the patient's diagnosis on this scan?",
+    metadata={"image_path": "scans/chest-xray-001.png"},
+)
+
+suite = EvalSuite()
+suite.add_evaluators(VQAFaithfulness(judge=JudgeConfig(
+    provider="google", model="gemini-2.5-flash", temperature=0.0,
+)))
+
+result = suite.run_case(case, output="The scan shows bilateral infiltrates...")
+```
+
+### Signature
+
+```python
+VQAFaithfulness(threshold: float | None = None, judge: JudgeConfig | None = None)
+```
+
+- `threshold` — explicit override. Falls through to the calibration-fallback policy when `None` (default `0.7`).
+- `judge` — vision-capable `JudgeConfig`. Falls through `configure()` → environment if omitted.
+
+### Result
+
+`EvalResult.reason` includes a per-claim trace:
+
+```
+2/3 image-grounded claims verified
+✓ "bilateral infiltrates in lower lobes"
+✓ "no pleural effusion visible"
+✗ "tracheal deviation to the right"
+```
+
+The `✗` lines tell you precisely which claims the vision judge found unsupported.
+
+## DocumentGrounding
+
+Multi-page document-grounded faithfulness. Score is the fraction of three strict yes/no questions answered positively against the assembled document pages:
+
+- **Q1**: Is every factual claim in the answer supported by content visible in at least one of the document pages?
+- **Q2**: Does the answer avoid inventing any entity (name, date, number, amount, clause) that does not appear in the pages?
+- **Q3**: Does the answer correctly handle the most important exception, caveat, or carve-out visible on the pages?
+
+Use this for contract analysis, invoice processing, scientific PDFs, medical records — anywhere a document-AI agent has produced an answer about a multi-page document.
+
+```python
+from multivon_eval import DocumentGrounding, EvalCase, EvalSuite, JudgeConfig
+
+case = EvalCase(
+    input="Summarise the liability cap and any carve-outs.",
+    metadata={"images": [
+        "contracts/msa-page-1.png",
+        "contracts/msa-page-2.png",
+        "contracts/msa-page-3.png",
+    ]},
+)
+
+suite = EvalSuite()
+suite.add_evaluators(DocumentGrounding(judge=JudgeConfig(
+    provider="anthropic", model="claude-haiku-4-5",
+)))
+
+result = suite.run_case(case, output=(
+    "Liability is capped at 12 months of fees, with uncapped "
+    "carve-outs for Sections 4.2 (data breach) and 7.1 (IP infringement)."
+))
+```
+
+### Signature
+
+```python
+DocumentGrounding(threshold: float | None = None, judge: JudgeConfig | None = None)
+```
+
+### Result
+
+The reason field reports per-question outcomes:
+
+```
+✓ Q1
+✓ Q2
+✗ Q3
+```
+
+A failure on Q3 is the most diagnostic signal for legal-AI and contract pipelines — it flags answers that miss exception clauses while looking fluent.
+
+## How the multimodal evaluators relate to pdfhell
+
+`VQAFaithfulness` and `DocumentGrounding` use an **LLM judge** with vision input. [pdfhell](/pdfhell/quickstart) uses **code-derived ground truth** against adversarial PDF structures — no judge in the scoring path.
+
+Use them together:
+
+- pdfhell to stress-test a document-AI pipeline against known failure modes (hidden OCR layers, footnote overrides, page-broken tables).
+- `DocumentGrounding` to grade open-ended summaries / Q&A on real customer documents where the ground truth isn't code-derivable.
+
+<Tip>
+For agents, both evaluators are exposed as MCP tools — see [`eval_vqa_faithfulness`](/mcp/tool-reference#eval_vqa_faithfulness) and [`eval_document_grounding`](/mcp/tool-reference#eval_document_grounding).
+</Tip>

@@ -1,0 +1,259 @@
+---
+title: "Tool reference"
+description: "Every multivon-mcp tool, its arguments, and the JSON shape it returns."
+---
+
+multivon-mcp exposes **19 tools** to the agent. Each returns a JSON-friendly dict — typically `{"score": float, "passed": bool, "reason": str, "threshold": float, "evaluator": str}` — so the agent can branch on the result programmatically.
+
+The agent normally calls `eval_discover` first to plan its strategy, then specific tools as needed.
+
+## Capability discovery
+
+### `eval_discover`
+
+Return the full machine-readable capability catalog. No arguments. No API key.
+
+Useful as a first call at session start — the agent plans its evaluation strategy against the actual available evaluators rather than guessing tool names.
+
+**Returns**
+
+```json
+{
+  "server": "multivon-mcp",
+  "evaluators": [/* every available evaluator with tier + import path */],
+  "traps": [/* every pdfhell trap family with example question/answer */],
+  "suites": [/* every named suite with hash + case counts */],
+  "calibration": [/* shipped (evaluator, judge_model) → (threshold, F1, n) rows */],
+  "version": {"multivon_mcp": "...", "multivon_eval": "...", "pdfhell": "..."}
+}
+```
+
+## RAG generation evaluators
+
+### `eval_faithfulness`
+
+QAG-graded faithfulness — is a RAG output grounded in the retrieved context?
+
+| Arg | Type | Default |
+|---|---|---|
+| `input` | `str` | required |
+| `context` | `str` | required |
+| `output` | `str` | required |
+| `judge_model` | `str` | `"anthropic:claude-haiku-4-5"` |
+
+### `eval_hallucination`
+
+Detect fabricated information not present in the context. Score `1.0` = no hallucination.
+
+| Arg | Type | Default |
+|---|---|---|
+| `output` | `str` | required |
+| `context` | `str` | required |
+| `judge_model` | `str` | `"anthropic:claude-haiku-4-5"` |
+
+### `eval_relevance`
+
+Check whether an LLM output actually addresses the user's question.
+
+| Arg | Type | Default |
+|---|---|---|
+| `input` | `str` | required |
+| `output` | `str` | required |
+| `judge_model` | `str` | `"anthropic:claude-haiku-4-5"` |
+
+### `eval_answer_accuracy`
+
+QAG-graded semantic equivalence vs ground truth. Use when string match is too strict.
+
+| Arg | Type | Default |
+|---|---|---|
+| `expected_answer` | `str` | required |
+| `actual_answer` | `str` | required |
+| `judge_model` | `str` | `"anthropic:claude-haiku-4-5"` |
+
+## RAG retrieval evaluators
+
+### `eval_context_precision`
+
+Are the retrieved chunks on-topic? Diagnoses retriever noise.
+
+| Arg | Type | Default |
+|---|---|---|
+| `input` | `str` | required |
+| `context` | `list[str]` \| `str` | required |
+| `judge_model` | `str` | `"anthropic:claude-haiku-4-5"` |
+
+### `eval_context_recall`
+
+Does the retrieved context contain enough information to answer? Requires a labelled QA pair.
+
+| Arg | Type | Default |
+|---|---|---|
+| `input` | `str` | required |
+| `context` | `list[str]` \| `str` | required |
+| `expected_answer` | `str` | required |
+| `judge_model` | `str` | `"anthropic:claude-haiku-4-5"` |
+
+## Safety & fairness
+
+### `eval_toxicity`
+
+QAG-graded toxicity / harmful-content detection. Four yes/no questions; score = fraction passed.
+
+| Arg | Type | Default |
+|---|---|---|
+| `output` | `str` | required |
+| `judge_model` | `str` | `"anthropic:claude-haiku-4-5"` |
+
+### `eval_bias`
+
+QAG-graded bias detection across gender, race, politics, age, socioeconomic axes.
+
+| Arg | Type | Default |
+|---|---|---|
+| `input` | `str` | required |
+| `output` | `str` | required |
+| `judge_model` | `str` | `"anthropic:claude-haiku-4-5"` |
+
+## Compliance (local-only)
+
+### `eval_pii_detection`
+
+Regex-based PII scan with jurisdiction packs. **Zero API calls** — safe to run on production traces inside regulated environments.
+
+| Arg | Type | Default |
+|---|---|---|
+| `output` | `str` | required |
+| `jurisdiction` | `str` | `"all"` (also `"gdpr"`, `"ccpa"`, `"pipeda"`, `"hipaa"`) |
+| `custom_patterns` | `dict[str, str]` | `None` |
+| `redact` | `bool` | `False` |
+
+### `eval_schema_compliance`
+
+Validate an LLM output against a JSON Schema. Reports per-field errors, not just valid/invalid. **Zero API calls.**
+
+| Arg | Type | Default |
+|---|---|---|
+| `output` | `str` | required |
+| `schema` | `dict` | required (JSON Schema Draft 7) |
+| `strict` | `bool` | `False` (when True, additional fields fail) |
+
+## Flexible / user-defined
+
+### `eval_g_eval`
+
+G-Eval style holistic 0.0-1.0 scoring against a plain-English criterion. Runs twice and averages by default (mitigates single-sample variance per the G-Eval paper).
+
+| Arg | Type | Default |
+|---|---|---|
+| `input` | `str` | required |
+| `output` | `str` | required |
+| `criteria` | `str` | required |
+| `name` | `str` | `"g_eval"` |
+| `runs` | `int` | `2` |
+| `judge_model` | `str` | `"anthropic:claude-haiku-4-5"` |
+
+### `eval_custom_rubric`
+
+Score an output against your own list of yes/no quality checks. Each criterion is `[question, expect_yes]`.
+
+| Arg | Type | Default |
+|---|---|---|
+| `input` | `str` | required |
+| `output` | `str` | required |
+| `criteria` | `list[[str, bool]]` | required |
+| `name` | `str` | `"custom_rubric"` |
+| `context` | `str` | `None` |
+| `judge_model` | `str` | `"anthropic:claude-haiku-4-5"` |
+
+## Agent trace
+
+### `eval_tool_call_accuracy`
+
+Deterministic agent tool-call correctness — name match plus optional argument-dict comparison. **No LLM judge.**
+
+| Arg | Type | Default |
+|---|---|---|
+| `expected_tool` | `str` | required |
+| `actual_tool` | `str` | required |
+| `expected_arguments` | `dict` | `None` |
+| `actual_arguments` | `dict` | `None` |
+
+## Multimodal
+
+### `eval_vqa_faithfulness`
+
+Image-grounded visual-QA faithfulness — does the answer match what's in the image? Requires a vision-capable judge.
+
+| Arg | Type | Default |
+|---|---|---|
+| `input` | `str` | required |
+| `output` | `str` | required |
+| `image` | `str` | one of `image` / `image_base64` required |
+| `image_base64` | `str` | — |
+| `mime_type` | `str` | `"image/png"` (used with `image_base64`) |
+| `judge_model` | `str` | `"google:gemini-2.5-flash"` |
+
+### `eval_document_grounding`
+
+Multi-page document-grounded faithfulness. Three yes/no checks per document (claims supported, no inventions, exceptions handled).
+
+| Arg | Type | Default |
+|---|---|---|
+| `input` | `str` | required |
+| `output` | `str` | required |
+| `images` | `list[str]` | one of `images` / `images_base64` required |
+| `images_base64` | `list[str]` | — |
+| `mime_type` | `str` | `"image/png"` |
+| `judge_model` | `str` | `"google:gemini-2.5-flash"` |
+
+## Document AI (pdfhell)
+
+### `pdfhell_run`
+
+Run the pdfhell adversarial-PDF benchmark against a vision model. Returns pass rate, Wilson 95% CI, per-trap pass rates, suite hash, per-case details.
+
+| Arg | Type | Default |
+|---|---|---|
+| `model` | `str` | required (`provider:model`) |
+| `suite` | `str` | `"mini"` (also `"smoke"`) |
+| `workers` | `int` | `4` |
+
+### `pdfhell_make`
+
+Generate one adversarial PDF + its answer key for inspection.
+
+| Arg | Type | Default |
+|---|---|---|
+| `trap` | `str` | required (`"hidden_ocr_mismatch"`, `"footnote_override"`, `"split_table_across_pages"`) |
+| `seed` | `int` | required |
+| `return_pdf_bytes` | `bool` | `False` |
+
+## Audit
+
+### `eval_audit_pack`
+
+Build a hash-chained, procurement-ready ZIP from a pdfhell run. **No API calls.**
+
+| Arg | Type | Default |
+|---|---|---|
+| `run_json_path` | `str` | required |
+| `cases_dir` | `str` | required |
+| `output_zip_path` | `str` | required |
+
+## Why these 19 (not all 44)
+
+`eval_discover` returns the full 44-evaluator catalog so the agent can always introspect everything. The 19 directly exposed are the ones agents actually call mid-edit:
+
+- RAG generation (faithfulness, hallucination, relevance, answer_accuracy)
+- RAG retrieval (context_precision, context_recall)
+- Safety / fairness (toxicity, bias)
+- Compliance (pii_detection, schema_compliance) — local-only, no API egress
+- Flexible (g_eval, custom_rubric) for user-defined rubrics
+- Multimodal (vqa_faithfulness, document_grounding)
+- Agent traces (tool_call_accuracy)
+- Document AI (pdfhell_run, pdfhell_make)
+- Audit (eval_audit_pack) — for procurement
+- Discovery (eval_discover) — meta-capability for planning
+
+Exposing all 44 would bloat the agent's context window and overwhelm tool-selection. If you need an evaluator that's not directly exposed, the agent can still use `multivon-eval` as a library — `eval_discover` returns the import paths.
