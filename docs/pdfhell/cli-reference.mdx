@@ -130,3 +130,39 @@ The `--out` JSON has this shape:
 ```
 
 `per_trap_fell_for_trap` is the diagnostic signal: a model that's getting only 60% on a trap family but `fell_for_trap=0.6` is consistently caught by the *designed* failure mode (the trap is working). A model at 60% with `fell_for_trap=0` is failing by hallucinating *something else* — different bug, different fix.
+
+## `pdfhell discover`
+
+Emit pdfhell's machine-readable capability catalog as JSON to stdout. The same shape an agent gets via the multivon-mcp `eval_discover` tool — provided as a CLI so agents that don't speak MCP (Claude Code via Bash, shell scripts, CI gates planning a run) can pipe `pdfhell discover --json | jq ...`.
+
+```bash
+pdfhell discover                # pretty-printed
+pdfhell discover --compact      # single-line JSON for piping
+```
+
+Output shape:
+
+```json
+{
+  "package": "pdfhell",
+  "version": "0.1.3",
+  "traps": [
+    {"name": "hidden_ocr_mismatch", "example_question": "…", "example_expected_answer": "$18,900.25"},
+    …
+  ],
+  "suites": [
+    {"name": "smoke", "version": "smoke-v1", "suite_hash": "8cb2f6ab", "total_cases": 3, "trap_seeds": {…}},
+    {"name": "mini",  "version": "mini-v1",  "suite_hash": "8ad87b8d", "total_cases": 30, "trap_seeds": {…}}
+  ]
+}
+```
+
+Use this when an agent needs to plan a run (e.g. "list the trap families before I call pdfhell_run") without round-tripping through MCP.
+
+## Scoring notes
+
+`pdfhell` uses contains-match scoring (whitespace-tolerant, case-insensitive, with trailing-punctuation strip). One nuance worth knowing:
+
+**Currency-prefix tolerance.** When the expected answer starts with a currency symbol (`$`, `€`, `£`, `¥`, `₹`) immediately before a digit, the matcher accepts the answer with or without the symbol. So `expected = "$780,803.18"` matches a model output of either `"$780,803.18"` or `"780,803.18"`. This avoids false negatives on the split-table trap, where models often omit the `$` even when the table column header includes it. Symmetric: an `expected = "780,803.18"` (no prefix) matches a model output of `"$780,803.18"` too.
+
+Known limitation: short numeric-only answers can substring-match longer numbers (`"18"` matches `"1875"`). Pad your expected answers with the surrounding context (e.g. `"$18.00"` rather than `"18"`) if you need stricter matching.

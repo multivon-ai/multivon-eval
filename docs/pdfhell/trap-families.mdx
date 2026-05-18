@@ -85,6 +85,22 @@ Annual reports, financial statements, regulatory filings — long tables routine
 
 ---
 
+## Suite versioning
+
+Each suite carries two reproducibility primitives in the run JSON:
+
+- `suite_version` — human-readable label (e.g. `mini-v1`). Bumped when traps are added or trap parameters change. Two runs with the same `suite_version` measured the same conceptual benchmark.
+- `suite_hash` — 8-character SHA-256 prefix of the sorted `(trap_family, seed)` pairs. Two runs with the same `suite_hash` measured the **exact same cases**. Bumping a seed → new `suite_hash` even within the same version.
+
+Today's published suites:
+
+| Suite | Version | Hash | Total cases | Use |
+| --- | --- | --- | --- | --- |
+| `smoke` | `smoke-v1` | `8cb2f6ab` | 3 | One case per trap family — ~10s end-to-end, useful for CI smoke tests |
+| `mini`  | `mini-v1`  | `8ad87b8d` | 30 | 10 seeds per family — the published-leaderboard suite, ~$0.01 on Gemini Flash |
+
+`pdfhell discover --json` emits these for agents; the run JSON includes both so a consumer can verify which cases were actually measured before comparing numbers across runs.
+
 ## What's not yet in the suite
 
 The 0.1 release is intentionally narrow. Coming next (PRs welcome — see [contributing](https://github.com/multivon-ai/pdfhell/blob/main/CONTRIBUTING.md)):

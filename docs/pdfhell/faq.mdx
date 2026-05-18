@@ -19,7 +19,7 @@ PDF Hell removes the judge from the scoring path. The answer is set by code; the
 
 The procedural generators are open source — that's deliberate. Three mitigations:
 
-1. **Procedural, not fixed.** A model could memorise the 30 mini-suite seeds, but the generator is parameterised. Hosted-generator subscribers (Pro / Enterprise) get adversarial variants of *their own* templates, not the public mini suite. Test-leakage on the public set doesn't transfer.
+1. **Procedural, not fixed.** A model could memorise the 30 mini-suite seeds, but the generator is parameterised. The mini suite uses seeds 1001–3010; seeds 5000+ are unused and reserved as private holdouts for follow-up evaluation. Test-leakage on the public set doesn't transfer to held-out seeds.
 
 2. **Code-based ground truth.** Even if a model has seen a specific seed during training, the answer key is derived from the generator's parameters — those are random per-seed. Memorising the question without the answer key buys nothing.
 
@@ -62,17 +62,17 @@ GPT-5.4 fixes most of it (80% pass on hidden OCR), but GPT-5.4-mini still falls 
 
 Yes. See [CONTRIBUTING.md](https://github.com/multivon-ai/pdfhell/blob/main/CONTRIBUTING.md) for the trap-family contract (deterministic seed, code-based answer key, named failure mode). One trap family per PR. Tests run with `pytest tests/`.
 
-## What does the hosted generator do that the OSS suite doesn't?
+## Can I get pdfhell against my own document templates?
 
-The OSS mini suite tests pdfhell's three trap families against your model. The hosted generator (PDF Hell Pro, $49/mo) takes *your own document templates* — MSAs, claim forms, EOBs, medical records — and procedurally injects the same trap families into adversarial variants of *your* documents. Same methodology, your data shape. Useful when your domain has structure the public mini suite doesn't cover.
+The OSS mini suite tests pdfhell's three trap families against your model. If you need adversarial variants of *your own* templates — MSAs, claim forms, EOBs, medical records — procedurally generated with the same methodology against the same trap families, drop a line to `hello@multivon.ai`. We're inbound-only on this and pricing depends on volume + integration scope.
 
-See [pricing](https://multivon.ai/pricing).
+See [commercial offerings](https://multivon.ai/commercial) for the full inbound flow.
 
 ## Is this Multivon's product or just a research project?
 
-Both. PDF Hell is open-source under Apache 2.0 (the public benchmark). Multivon's commercial layer is the hosted generator (Pro, $49/mo) and the enterprise tier ($25k+/yr) with custom trap families, CI integration, and on-prem deployment.
+Both. PDF Hell + multivon-eval + multivon-mcp are all open-source under Apache 2.0. Multivon offers commercial implementation services on top of the OSS surface (custom trap families against your document templates, CI integration help, on-prem deployment guidance) — inbound only, no published tiers. The OSS is the product; the services exist to help teams that don't want to do the integration themselves.
 
-multivon-eval is the underlying SDK, also Apache 2.0 — it ships 43+ evaluators across deterministic, LLM-judge (QAG), agent-trace, conversation, and multimodal tiers. See the [multivon-eval](/introduction) tab.
+multivon-eval is the underlying SDK, also Apache 2.0 — it ships 44 evaluators across seven categories: deterministic, LLM-judge (QAG), agent-trace, compliance, multimodal, conversation, and consistency. See the [multivon-eval](/introduction) tab.
 
 ## I'm a researcher. How do I cite this?
 
