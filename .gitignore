@@ -10,6 +10,12 @@ build/
 .venv/
 venv/
 eval_reports/
+eval-reports/
 audit-logs/
 .gstack/
 .deepeval/
+# Test / dogfood artifacts emitted by examples + smoke runs
+eval_results.json
+check_eval_results.json
+rag_eval_results.json
+rag_eval_results.csv

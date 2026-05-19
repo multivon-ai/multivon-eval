@@ -2,6 +2,33 @@
 
 All notable changes to `multivon-eval`. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) as of 0.7.0.
 
+## [0.8.0] — 2026-05-20
+
+The intelligent-eval release. Two new public surfaces solve the "I don't know what to eval" cold-start problem for teams shipping LLM products: a CLI bootstrap command that proposes a tuned EvalSuite from a product description + sample traces, and a `multivon_eval.auto` module that exposes the underlying primitives (case-shape inference, LLM-driven adversarial generation, N-shot judge-noise aggregation) for users who want to compose their own pipelines.
+
+### Added
+
+- **`multivon-eval bootstrap` CLI** — cold-start eval generator. Takes `--product PRODUCT.md --traces TRACES.jsonl` and emits four artifacts to `--output DIR`: `eval_suite.py` (runnable suite with 4-6 evaluators), `seed_cases.jsonl` (30 adversarial seed cases), `thresholds.yaml` (calibrated from your traces at p25 of baseline scores), and `DISCOVERY_REPORT.md` (a forwardable eval design review). Single Claude Haiku call for metric proposal, capped trace-sample calibration, deterministic safety net via `auto_evaluators`. Cost target ≈$0.12 per bootstrap, hard ceiling $0.15.
+- **PII / secret redaction before any LLM call.** Bootstrap runs a high-confidence local scan (AWS / Anthropic / OpenAI / GitHub / Google / Stripe / JWT / private key / SSN / email / Luhn-valid credit card) and redacts detections before traces are sent upstream. Three policies via `--pii-policy`: `redact` (default), `strict` (abort on detection), `allow` (raw, with explicit confirmation prompt).
+- **`multivon_eval.auto` module** — intelligent-eval primitives:
+  - `auto_evaluators(case)` — pure-heuristic, infers the recommended evaluator set from an `EvalCase` shape. Supports `task_type=` override, `strict_mode`, `include_pii`, `include_safety`. Zero-cost, microseconds.
+  - `generate_adversarial_cases(seed_text, mode, n)` — LLM-generates cases targeting one of 10 failure modes (ungrounded_claim, off_topic, format_violation, jailbreak, tool_misuse, numeric_edge, prompt_injection_direct, prompt_injection_indirect, tool_injection, pii_leakage_invitation). Stress-test labels embedded in metadata so downstream tools can route automatically.
+  - `generate_unicode_obfuscation_cases(base_strings, kinds)` — deterministic homoglyph / zero-width / RTL-override transforms, no LLM call.
+  - `validate_adversarial_cases(cases, baseline, n_shots=3, hardness_band=(0.5, 1.0))` — runs each case N times against a baseline + evaluator, computes failure_rate per case, filters by hardness band. Validated live this release: +0.80 mean failure-rate separation between weak (always-confabulate) and strong (always-refuse) baselines on `ungrounded_claim` cases, with judge noise correctly filtered out at the per-shot level.
+- **Top-level exports:** `bootstrap`, `BootstrapResult`, `RecommendedEvaluator`, `TraceSummary`, `infer_product_shape`, `summarize_traces`, `load_traces`, `auto_evaluators`, `EvaluatorRecommendation`, `AmbiguousCaseShape`, `generate_adversarial_cases`, `generate_unicode_obfuscation_cases`, `validate_adversarial_cases`, `HardnessReport`.
+
+### Fixed
+
+- **`rag_eval.ipynb`** — `Experiment.add_run("name", report)` doesn't exist; corrected to `exp.record(report, run_id="name")`. `suite.prepare()` doesn't exist; corrected to `evaluator.prepare()` per-CheckEvaluator. Cells also switched from private (`_criterion`, `_evaluators`) to public accessors (`criterion`, `evaluators`) to match the quickstart notebook's style.
+
+### Tests
+
+- 33 new tests in `tests/test_discover.py` cover the bootstrap pipeline (PII scan + redact, shape inference, LLM response parsing + safety-net merge, threshold calibration math, end-to-end with mocked LLM).
+- 19 tests in `tests/test_auto_validate_adversarial.py` cover N-shot aggregation, hardness_band filtering, baseline / evaluator crash resilience, and degenerate n_shots=1 fallback.
+- 19 tests in `tests/test_auto_evaluators.py` cover the heuristic surface (RAG / QA / agent / conversation / multimodal / structured-output paths, ambiguity scoring, strict_mode).
+- 7 tests in `tests/test_auto_unicode_obfuscation.py` cover the deterministic Unicode transforms.
+- Full suite: 818 passed, 13 skipped (was 745/12 at 0.7.3).
+
 ## [0.7.3] — 2026-05-17
 
 The trust release: the single most-cited bug across a 26-voice strategy deliberation was the silent calibration fallback. Fixed, with a public escape hatch for legacy callers who depended on it. Two experimental multimodal evaluators land as the seed for a forthcoming document-AI benchmark (see [`pdfhell`](https://github.com/multivon-ai/pdfhell)).

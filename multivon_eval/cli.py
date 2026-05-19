@@ -404,6 +404,34 @@ def main():
     disc_p.add_argument("--compact", action="store_true",
                         help="Single-line JSON (no indent)")
 
+    # bootstrap — cold-start eval suite generator
+    boot_p = sub.add_parser(
+        "bootstrap",
+        help="Cold-start eval bootstrap: product description + traces → tuned EvalSuite",
+    )
+    boot_p.add_argument("--product", "-p", required=True,
+                        help="Path to product description markdown (free-form, < 5K words)")
+    boot_p.add_argument("--traces", "-t", required=True,
+                        help="Path to traces JSONL (one trace per line, max 10K rows)")
+    boot_p.add_argument("--output", "-o", default="./eval-bootstrap",
+                        help="Output directory (default: ./eval-bootstrap)")
+    boot_p.add_argument("--judge-model", default="claude-haiku-4-5-20251001",
+                        help="Judge model for LLM proposal + calibration "
+                             "(default: claude-haiku-4-5-20251001)")
+    boot_p.add_argument("--judge-provider", default="anthropic",
+                        choices=["anthropic", "openai", "google"],
+                        help="Judge provider (default: anthropic)")
+    boot_p.add_argument("--n-seed-cases", type=int, default=30,
+                        help="Number of adversarial seed cases to generate (default: 30)")
+    boot_p.add_argument("--pii-policy", default="redact",
+                        choices=["redact", "strict", "allow"],
+                        help="PII handling: redact (default), strict (abort on detection), "
+                             "allow (send raw — requires confirmation)")
+    boot_p.add_argument("--skip-seed-cases", action="store_true",
+                        help="Skip adversarial seed-case generation (saves ~$0.02)")
+    boot_p.add_argument("--skip-calibration", action="store_true",
+                        help="Skip threshold calibration (use proposed thresholds as-is)")
+
     args = parser.parse_args()
 
     if args.command == "init":
@@ -436,8 +464,70 @@ def main():
         ]))
     elif args.command == "discover":
         sys.exit(cmd_discover(args) or 0)
+    elif args.command == "bootstrap":
+        sys.exit(cmd_bootstrap(args) or 0)
     else:
         parser.print_help()
+
+
+def cmd_bootstrap(args) -> int:
+    """Cold-start eval bootstrap: product + traces → tuned EvalSuite + report."""
+    from pathlib import Path
+    from .discover import bootstrap
+    from .judge import JudgeConfig
+
+    product = Path(args.product)
+    traces = Path(args.traces)
+    if not product.exists():
+        print(f"error: --product file not found: {product}", file=sys.stderr)
+        return 2
+    if not traces.exists():
+        print(f"error: --traces file not found: {traces}", file=sys.stderr)
+        return 2
+
+    if args.pii_policy == "allow":
+        confirm = input(
+            "WARNING: --pii-policy=allow sends raw traces (with any PII / secrets) "
+            "to the configured judge. Type 'yes' to continue: "
+        ).strip().lower()
+        if confirm != "yes":
+            print("aborted.", file=sys.stderr)
+            return 1
+
+    judge = JudgeConfig(provider=args.judge_provider, model=args.judge_model)
+
+    print(f"\n  bootstrapping eval suite for {product.name}...")
+    print(f"  judge: {args.judge_provider}:{args.judge_model}")
+    print(f"  pii policy: {args.pii_policy}")
+    print()
+
+    result = bootstrap(
+        description_path=product,
+        traces_path=traces,
+        output_dir=args.output,
+        judge=judge,
+        pii_policy=args.pii_policy,
+        skip_seed_cases=args.skip_seed_cases,
+        skip_calibration=args.skip_calibration,
+        n_seed_cases=args.n_seed_cases,
+    )
+
+    print(f"  ✓ inferred shape: {result.shape}")
+    print(f"  ✓ traces analyzed: {result.summary.count}")
+    if result.summary.pii_label_counts:
+        pii_str = ", ".join(f"{k}={v}" for k, v in result.summary.pii_label_counts.items())
+        print(f"  ✓ pii redacted before LLM call: {pii_str}")
+    print(f"  ✓ recommended {len(result.evaluators)} evaluators")
+    print(f"  ✓ generated {len(result.seed_cases)} adversarial seed cases")
+    print(f"  ✓ estimated cost: ${result.cost_usd:.4f}")
+    print()
+    print("  artifacts:")
+    for label, path in result.artifacts.items():
+        print(f"    {label:<14} {path}")
+    print()
+    print("  next: review DISCOVERY_REPORT.md, then `python eval_suite.py` "
+          "to verify the suite loads")
+    return 0
 
 
 def cmd_discover(args) -> int:

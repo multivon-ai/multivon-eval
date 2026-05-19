@@ -23,7 +23,7 @@ Experiment tracking (compare runs across versions):
     exp.compare(old_run_id, run_id)
 """
 
-__version__ = "0.7.8"
+__version__ = "0.8.0"
 
 from .suite import EvalSuite
 from .case import EvalCase, AgentStep, ToolCall
@@ -56,6 +56,18 @@ from .costs import Costs, CostTracker, ProviderUsage, ModelPricing, register_pri
 from .audit_package import build_audit_package
 from .retry import JudgeRetry
 from .compare import CaseDiff, ReportDiff, compare_reports
+
+# Bootstrap pipeline (0.8.0) — cold-start eval suite generator
+from .discover import (
+    bootstrap, BootstrapResult, RecommendedEvaluator, TraceSummary,
+    infer_product_shape, summarize_traces, load_traces,
+)
+# Auto / intelligent-eval prototype (0.8.0)
+from .auto import (
+    auto_evaluators, EvaluatorRecommendation, AmbiguousCaseShape,
+    generate_adversarial_cases, generate_unicode_obfuscation_cases,
+    validate_adversarial_cases, HardnessReport,
+)
 
 # Pytest plugin: pytest is an optional dependency. Guard the import so a
 # user who installs multivon-eval without pytest can still `import multivon_eval`.
@@ -202,4 +214,11 @@ __all__ = [
     "VQAFaithfulness", "DocumentGrounding",
     # Consistency
     "SelfConsistency",
+    # Bootstrap pipeline (0.8.0)
+    "bootstrap", "BootstrapResult", "RecommendedEvaluator", "TraceSummary",
+    "infer_product_shape", "summarize_traces", "load_traces",
+    # Intelligent-eval (auto) prototype (0.8.0)
+    "auto_evaluators", "EvaluatorRecommendation", "AmbiguousCaseShape",
+    "generate_adversarial_cases", "generate_unicode_obfuscation_cases",
+    "validate_adversarial_cases", "HardnessReport",
 ]
