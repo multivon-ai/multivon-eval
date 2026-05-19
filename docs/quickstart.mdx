@@ -1,9 +1,20 @@
 ---
 title: Quickstart
-description: Run your first eval in 5 minutes.
+description: Run your first eval in 5 minutes — or let multivon-eval pick your evaluators for you.
 ---
 
-## Try it in one line
+## The fastest path: `multivon-eval bootstrap`
+
+Don't know what to eval for your specific LLM product? Describe it and hand over a few sample traces — `multivon-eval bootstrap` proposes a tuned suite in under 60 seconds.
+
+```bash
+pip install multivon-eval
+multivon-eval bootstrap --product product.md --traces traces.jsonl --output ./eval-bootstrap/
+```
+
+Returns four files: `eval_suite.py` (runnable), `seed_cases.jsonl` (30 adversarial cases), `thresholds.yaml` (calibrated from your traces), and `DISCOVERY_REPORT.md` (an eval design review). Cost: ~$0.01 per bootstrap. **[Full walkthrough →](/guides/bootstrap)**
+
+## Or try the canned demo
 
 ```bash
 pip install multivon-eval && python -m multivon_eval

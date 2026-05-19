@@ -1,0 +1,166 @@
+---
+title: Bootstrap an eval suite from your product
+description: Cold-start your evals — `multivon-eval bootstrap` proposes a tuned suite from a product description + sample traces in under 60 seconds.
+---
+
+The hardest part of LLM evaluation isn't writing the assertions — it's knowing **what to measure** for your specific product. `multivon-eval bootstrap` answers that question. Hand it a one-paragraph product description and a few real traces, and it emits a runnable `EvalSuite` with metrics tuned to your shape, thresholds calibrated from your data, and adversarial seed cases targeting the most likely failure mode.
+
+## In 60 seconds
+
+```bash
+pip install multivon-eval
+multivon-eval bootstrap \
+  --product product.md \
+  --traces traces.jsonl \
+  --output ./eval-bootstrap/
+```
+
+You get four artifacts:
+
+| File                      | What it is                                                          |
+|---------------------------|---------------------------------------------------------------------|
+| `eval_suite.py`           | Runnable suite with 4–6 evaluators picked for your product shape    |
+| `seed_cases.jsonl`        | 30 adversarial seed cases targeting the primary failure mode        |
+| `thresholds.yaml`         | Per-evaluator thresholds calibrated from your traces (p25 of scores) |
+| `DISCOVERY_REPORT.md`     | An eval design review you can forward to your team                  |
+
+Total cost: ~$0.01–0.15 per bootstrap depending on options. Latency: under 60 seconds for default settings.
+
+## What the inputs look like
+
+### `product.md` — free-form markdown, under 5000 words
+
+```markdown
+# Product
+
+AcmeCorp customer support bot. Answers questions about return policies,
+shipping windows, and refund timelines using a retrieval-augmented knowledge
+base.
+
+# Inputs / Outputs
+
+Input: free-form question in English.
+Output: 1-3 sentence answer grounded in the retrieved policy text.
+
+# Known risks
+
+- Hallucinating policy details not in the retrieved context
+- Going off-topic into product recommendations (out of scope)
+- Echoing customer PII back into the response unnecessarily
+```
+
+Suggested sections (none are required): `# Product`, `# Users`, `# Inputs / Outputs`, `# Known risks`. The LLM uses the description to ground its metric recommendations in your domain.
+
+### `traces.jsonl` — newline-delimited JSON, max 10 000 rows
+
+Only `input` is required. Optional keys are detected and used to infer product shape:
+
+```jsonl
+{"input": "What's the refund window?", "context": "Refunds within 30 days.", "output": "30 days from purchase.", "expected_output": "30 days"}
+{"input": "Can I return electronics after 20 days?", "context": "Electronics: 14-day window.", "output": "No, electronics have a 14-day return window."}
+{"input": "How long does it take to receive my refund?", "context": "Refunds processed in 5-7 business days.", "output": "5-7 business days after we receive your item."}
+```
+
+| Optional key             | Triggers                                                    |
+|--------------------------|-------------------------------------------------------------|
+| `context`                | RAG-shape detection → adds Faithfulness, Hallucination      |
+| `expected_output`        | Enables threshold calibration + AnswerAccuracy / ContextRecall |
+| `expected_tool_calls`    | Agent-shape detection → adds ToolCallAccuracy               |
+| `conversation`           | Multi-turn detection → adds ConversationRelevance           |
+| `metadata.image_url`     | Multimodal detection → adds VQAFaithfulness                 |
+
+If you don't have output traces yet (pre-launch), the tool still proposes evaluators based on the product description alone — threshold calibration is the only step that's skipped.
+
+## How the recommendation works
+
+Three layers, in order:
+
+1. **Heuristic anchor.** `auto_evaluators()` inspects the trace shape and picks a deterministic starting set — Faithfulness + Hallucination for RAG, ToolCallAccuracy for agents, etc. This runs in microseconds, no LLM call, and provides the safety net.
+
+2. **LLM proposal.** A single call to Claude Haiku (configurable via `--judge-provider` / `--judge-model`) reads your product description + trace summary + a sample of traces, then proposes 4–6 evaluators with per-metric rationale and threshold suggestions. The LLM is constrained to an enumerated allow-list of evaluator names — it cannot invent metrics, and any proposal outside the list is silently dropped.
+
+3. **Merge + threshold calibration.** LLM picks take priority for the same evaluator name (more contextual); heuristic picks fill in tiers the LLM missed (e.g. NotEmpty as a guardrail). Thresholds are then re-tuned by running each evaluator over a sample of your traces (50 for deterministic evaluators, 15 for LLM-judge evaluators) and setting the threshold to the 25th percentile of observed scores.
+
+The whole pipeline runs in one Haiku call for proposal + one Haiku call for seed cases + minimal trace-side scoring. Total cost: roughly $0.12 on default settings.
+
+## PII handling — no surprises
+
+Every trace is locally scanned for high-confidence secrets and PII **before** any data leaves your machine: AWS keys, OpenAI / Anthropic / GitHub tokens, JWTs, private-key PEM headers, US SSNs, emails, Luhn-valid credit cards, and more. Three policies:
+
+| `--pii-policy` | Behavior                                                                                             |
+|----------------|------------------------------------------------------------------------------------------------------|
+| `redact` (default) | Detections are replaced with `[REDACTED:<label>]` before being sent to the judge. Logged in the report. |
+| `strict`       | Abort with a non-zero exit code if any high-confidence detection fires. For procurement / regulated environments. |
+| `allow`        | Send raw traces, with an explicit terminal-prompt confirmation. Use only when you're sure your traces are clean. |
+
+If PII was detected and redacted, the report's `## Trace evidence` section surfaces the counts (`email=12, ssn=2`) and the bootstrap pipeline auto-adds `PIIEvaluator` as a guardrail in the generated suite.
+
+## The discovery report — surprise winner
+
+Codex's review of the design doc flagged this: *"The most valuable output may be `DISCOVERY_REPORT.md`, not the generated eval code."* The report is built to be forwarded inside your team as an "eval design review" — what shape your product is, which metrics matter, what was rejected, and why. Many users use it as the artifact that gets a launch greenlit even if they edit the generated `eval_suite.py` heavily afterward.
+
+## What's NOT in the bootstrap (and why)
+
+- **No model-side wrapper.** The bootstrap emits a suite that calls **your** `model_fn`. You bring the wiring to your real model. No vendor lock-in.
+- **No "monitor production for me" loop.** The bootstrap is a setup-time tool. Once you have the suite, you run it with `python eval_suite.py` or wire it into CI via `--fail-threshold`.
+- **No template marketplace.** Picking your suite from a 20-template menu is the old approach. The bootstrap picks for you — and tells you why.
+- **No dashboard.** Local-first by design. Use `multivon-eval view report.json` if you want a browsable HTML report.
+
+## When to use it (and when not)
+
+**Use it when:**
+- You're starting a new LLM feature and don't yet have an eval suite.
+- You inherited an LLM product with no evals and need a credible starting point.
+- You're switching evaluation tools and want a clean baseline.
+- You're preparing for a launch and want a forwardable "what we eval and why" document for your team.
+
+**Don't use it when:**
+- You have a mature, hand-tuned eval suite and just want to add one more evaluator. Use `add_evaluators()` directly.
+- You only need a deterministic check (length, regex, schema). The bootstrap is overkill — write the assertion in two lines.
+
+## Configuration reference
+
+```text
+multivon-eval bootstrap --help
+```
+
+| Flag                 | Default                          | Notes                                                    |
+|----------------------|----------------------------------|----------------------------------------------------------|
+| `--product`, `-p`    | required                         | Path to product description markdown                     |
+| `--traces`, `-t`     | required                         | Path to traces JSONL                                     |
+| `--output`, `-o`     | `./eval-bootstrap`               | Output directory (created if absent)                     |
+| `--judge-model`      | `claude-haiku-4-5-20251001`      | Judge model for the proposal call                        |
+| `--judge-provider`   | `anthropic`                      | `anthropic` \| `openai` \| `google`                      |
+| `--n-seed-cases`     | `30`                             | Adversarial cases to generate (set to 0 to skip)         |
+| `--pii-policy`       | `redact`                         | `redact` \| `strict` \| `allow`                          |
+| `--skip-seed-cases`  | off                              | Save ~$0.02 if you don't need adversarial cases          |
+| `--skip-calibration` | off                              | Use proposed thresholds without trace-side scoring       |
+
+## Programmatic API
+
+If you'd rather invoke the bootstrap from Python (e.g. inside a Jupyter notebook or CI pipeline), the same pipeline lives in `multivon_eval.bootstrap`:
+
+```python
+from multivon_eval import bootstrap, JudgeConfig
+
+result = bootstrap(
+    description_path="product.md",
+    traces_path="traces.jsonl",
+    output_dir="./eval-bootstrap",
+    judge=JudgeConfig(provider="anthropic", model="claude-haiku-4-5-20251001"),
+    pii_policy="redact",
+    n_seed_cases=30,
+)
+
+print(f"shape: {result.shape}")
+print(f"evaluators: {[r.name for r in result.evaluators]}")
+print(f"cost: ${result.cost_usd:.4f}")
+print(f"artifacts: {result.artifacts}")
+```
+
+## See also
+
+- [`auto_evaluators(case)`](/evaluators/llm-judge#auto-evaluators) — the deterministic heuristic anchor under the bootstrap. Microseconds, no LLM call.
+- [`generate_adversarial_cases`](/guides/synthetic-data) — the failure-mode generator the bootstrap uses for seed cases. Targets 10 named failure modes (`ungrounded_claim`, `jailbreak`, `prompt_injection_direct`, etc.).
+- [`validate_adversarial_cases`](/guides/synthetic-data) — N-shot judge-noise filter for adversarial cases. Validated +0.80 mean failure-rate separation between weak and strong baselines.
+- [Quickstart](/quickstart) — the manual path: write `EvalCase` objects directly.

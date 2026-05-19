@@ -71,6 +71,7 @@
           {
             "group": "Guides",
             "pages": [
+              "guides/bootstrap",
               "guides/examples",
               "guides/generate",
               "guides/experiments",
