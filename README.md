@@ -1,15 +1,17 @@
 # multivon-eval
 
-![Python](https://img.shields.io/badge/python-3.10+-blue.svg)
-![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)
-![PyPI](https://img.shields.io/pypi/v/multivon-eval.svg)
+[![PyPI](https://img.shields.io/pypi/v/multivon-eval.svg)](https://pypi.org/project/multivon-eval)
+[![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://pypi.org/project/multivon-eval)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![Downloads](https://static.pepy.tech/badge/multivon-eval/month)](https://pepy.tech/project/multivon-eval)
+[![Tests](https://github.com/multivon-ai/multivon-eval/actions/workflows/test.yml/badge.svg)](https://github.com/multivon-ai/multivon-eval/actions/workflows/test.yml)
 [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/multivon-ai/multivon-eval/blob/main/notebooks/quickstart.ipynb)
 
-**[Documentation](https://evaldocs.multivon.ai)** · [Website](https://multivon.ai) · [PyPI](https://pypi.org/project/multivon-eval)
+**[Docs](https://docs.multivon.ai)** · [Website](https://multivon.ai) · [PyPI](https://pypi.org/project/multivon-eval) · [Changelog](CHANGELOG.md) · [Benchmark vs DeepEval + RAGAS](https://github.com/multivon-ai/eval-framework-benchmark)
 
 **AI evaluation for teams that ship models to production.**
 
-Run structured evals over your AI outputs — from simple string checks to LLM-as-judge scoring to agent trace validation — with a clean Python API, beautiful terminal reports, and CI/CD integration out of the box.
+Run structured evals over your AI outputs — from simple string checks to LLM-as-judge scoring to agent trace validation — with a clean Python API, beautiful terminal reports, and CI/CD integration out of the box. **New in 0.8.x:** `multivon-eval bootstrap` proposes a tuned eval suite from your product description + sample traces, in 60 seconds.
 
 ## Quickstart — 30 seconds, no API key
 
@@ -37,17 +39,51 @@ That's it. The `quickstart` template uses only deterministic evaluators (`NotEmp
 
 LLM-judge evaluators auto-activate when `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or a local server (Ollama on `:11434`, LM Studio on `:1234`, or `OPENAI_BASE_URL`) is detected — but every template runs without one in some form.
 
-## What's new in 0.7.0
+## What's new in 0.8.x
 
-- **`CaseResult.status` enum** — distinguishes `judge_error` / `model_error` / `evaluator_error` from quality failures. `pass_rate` excludes error cases from the denominator so a transient judge outage doesn't masquerade as a model regression.
-- **Per-evaluator error isolation** — one judge outage no longer crashes the whole case; the rest of the evaluators still run.
-- **JUnit XML output** — `report.save_junit_xml("junit.xml")` for native rendering in GitHub Actions / GitLab CI test panels.
-- **`multivon-eval view <report.json>`** — opens the HTML dashboard in a local browser. No setup.
-- **`multivon-eval init`** — 4 starter templates (quickstart, rag, agent, regulated). 5-minute first eval.
-- **`Levenshtein` + `ChrfScore`** — classical text-similarity evaluators, pure-Python, no external deps.
-- **`EvalReport.assert_budget(...)`** — cost / token / latency gates for CI.
+- **`multivon-eval bootstrap`** — cold-start eval generator. Describe your LLM product + hand over a JSONL of sample traces, get back a runnable `EvalSuite` + 30 adversarial seed cases + thresholds calibrated from your data + a forwardable `DISCOVERY_REPORT.md`. ~60 seconds, ~$0.12 per run. PII / secrets redacted locally before any LLM call. Best documented path is the [bootstrap guide](https://docs.multivon.ai/guides/bootstrap).
 
-See [CHANGELOG.md](CHANGELOG.md) for the full list including breaking changes.
+  ```bash
+  multivon-eval bootstrap --product PRODUCT.md --traces TRACES.jsonl --output ./eval-bootstrap/
+  ```
+
+- **`multivon_eval.auto` module** — the programmatic primitives the bootstrap CLI composes:
+  - `auto_evaluators(case)` — pure-heuristic, infers the recommended evaluator set from `EvalCase` shape. 0 LLM cost, microseconds.
+  - `generate_adversarial_cases(seed, mode, n)` — LLM-generated stress cases across 10 named failure modes (`ungrounded_claim`, `jailbreak`, `prompt_injection_direct/indirect`, `tool_injection`, `pii_leakage_invitation`, etc.).
+  - `validate_adversarial_cases(cases, baseline, n_shots=3)` — N-shot judge-noise filter. Validated +0.80 mean failure-rate separation between weak vs strong baselines.
+
+- **Reproducible head-to-head** — multivon-eval F1 **0.79** vs DeepEval **0.0** at default thresholds, **0.85** vs **0.59** at best-tuned thresholds, RAGAS errored. Run it yourself: [eval-framework-benchmark](https://github.com/multivon-ai/eval-framework-benchmark).
+
+### Carried forward from 0.7.x
+
+- **`CaseResult.status` enum** distinguishes `judge_error` / `model_error` / `evaluator_error` from quality failures. `pass_rate` excludes errors from the denominator.
+- **Per-evaluator error isolation** — one judge outage no longer crashes the case.
+- **JUnit XML output** + `multivon-eval view <report.json>` HTML dashboard + `multivon-eval init` starter templates + `EvalReport.assert_budget(...)` cost/latency gates.
+
+See [CHANGELOG.md](CHANGELOG.md) for the complete release history.
+
+## The Multivon ecosystem
+
+Five public + one early-access package, all built on a shared evaluation engine:
+
+| Repo | What it is |
+|---|---|
+| **multivon-eval** (you are here) | Python SDK — 44 evaluators + `bootstrap` CLI + `multivon_eval.auto` |
+| [pdfhell](https://github.com/multivon-ai/pdfhell) | Adversarial PDFs that break AI document readers — procedural ground truth, not LLM-as-judge |
+| [multivon-mcp](https://github.com/multivon-ai/multivon-mcp) | MCP server exposing 22 evaluation tools to Claude / Cursor / Cline / OpenCode |
+| [eval-action](https://github.com/multivon-ai/eval-action) | GitHub Action — run a suite on every PR, post a comment, gate the merge on regressions |
+| [eval-framework-benchmark](https://github.com/multivon-ai/eval-framework-benchmark) | Reproducible head-to-head benchmark vs DeepEval + RAGAS |
+| multivon-guard *(early access)* | Local proxy that catches LLM coding agents leaking secrets / PII before the request hits the wire. [`hello@multivon.ai`](mailto:hello@multivon.ai). |
+
+### When NOT to use multivon-eval
+
+| You want… | Use |
+|---|---|
+| To call evals from inside Claude Code / Cursor mid-edit | [multivon-mcp](https://github.com/multivon-ai/multivon-mcp) |
+| To gate every PR on eval regressions automatically | [eval-action](https://github.com/multivon-ai/eval-action) |
+| Adversarial PDF benchmarking with code-based ground truth | [pdfhell](https://github.com/multivon-ai/pdfhell) |
+| To see how multivon-eval stacks up against DeepEval / RAGAS | [eval-framework-benchmark](https://github.com/multivon-ai/eval-framework-benchmark) |
+| Just to gate on a single LLM judge call without a suite | call `Faithfulness(...).evaluate(case, output)` directly — overkill to spin up an `EvalSuite` |
 
 ---
 
