@@ -1,0 +1,180 @@
+---
+title: EvalReport API reference
+description: Programmatic interface for the object returned by suite.run(). Every attribute and method, with types and one-line descriptions.
+---
+
+`EvalReport` is the object returned by `EvalSuite.run()`. It exposes the run's
+results both as flat attributes (the common readouts) and as derived methods
+(breakdowns, exports, comparisons). This page is the complete public API — if
+something isn't on this page, treat it as internal and don't rely on it.
+
+```python
+report: EvalReport = suite.run(my_model_fn)
+print(report.pass_rate)                  # float, 0.0–1.0
+print(report.pass_rate_ci())             # (lo, hi) Wilson 95% CI
+print(report.costs.by_model[0].cost_usd) # USD spent on the judge
+for case in report.failed_cases:         # CaseResult objects
+    print(case.input, case.score)
+```
+
+## Quick reference
+
+| Attribute / method | Type | What it returns |
+|---|---|---|
+| `suite_name` | `str` | Suite name passed to `EvalSuite(name)`. |
+| `model_id` | `str` | Identifier of the model under test (set automatically when known). |
+| `total` | `int` | Total cases run. |
+| `evaluated` | `int` | Cases that produced at least one evaluator result. |
+| `passed` | `int` | Cases where every evaluator passed. |
+| `failed` | `int` | Cases where at least one evaluator failed. |
+| `errors` | `int` | Cases that errored before scoring (model or judge crash). |
+| `skipped` | `int` | Cases skipped because the case shape didn't fit. |
+| `pass_rate` | `float` | `passed / total` as a fraction. |
+| `pass_rate_ci(confidence=0.95)` | `tuple[float, float]` | Wilson CI on the pass rate. |
+| `avg_score` | `float` | Mean score across all cases. |
+| `avg_score_ci(confidence=0.95)` | `tuple[float, float]` | CI on the mean score. |
+| `score_percentiles(percentiles=[10,50,90])` | `dict[str,float]` | `{"p10": …, "p50": …, "p90": …}`. |
+| `case_results` | `list[CaseResult]` | The per-case results — see below. |
+| `passed_cases` | `list[CaseResult]` | Cases that fully passed. |
+| `failed_cases` | `list[CaseResult]` | Cases that failed at least one evaluator. |
+| `sample(n, failed_only=False)` | `list[CaseResult]` | Random sample for spot-checking. |
+| `filter_by_evaluator(name)` | `list[CaseResult]` | Cases that an evaluator scored, in original order. |
+| `passed_by_evaluator()` | `dict[str,float]` | `{evaluator_name: pass_rate}`. |
+| `scores_by_evaluator()` | `dict[str,float]` | `{evaluator_name: avg_score}`. |
+| `passed_by_tag()` | `dict[str,float]` | Same shape, grouped by case tag. |
+| `scores_by_tag()` | `dict[str,float]` | Average score per tag. |
+| `count_by_tag()` | `dict[str,int]` | Case count per tag. |
+| `costs` | `Costs` | Token / call / USD totals. See below. |
+| `flaky_count` | `int` | Cases where multiple runs disagreed. Requires `runs > 1`. |
+| `stability_score` | `float` | 1.0 when no flakiness; lower when cases disagreed across runs. |
+| `judge_reliability` | `float \| None` | Judge agreement rate when `JudgeConfig.reliability_check` is enabled. |
+| `runs_per_case` | `int` | How many times each case was rerun (from `suite.run(runs=N)`). |
+| `errors_by_kind` | `dict[str,int]` | `{ "model_error": 2, "judge_error": 1, ... }`. |
+| `suite_lock` | `SuiteLock` | Hash chain over evaluators + cases. Use for reproducibility. |
+| `compare(other)` | `Any` | Diff vs another `EvalReport`. Use for regression detection. |
+| `assert_budget(**limits)` | `None` | Raise if total cost / latency exceeds a limit. CI-friendly. |
+| `save_json(path)` | `None` | Write the report as JSON. |
+| `save_html(path)` | `None` | Write a static HTML viewer. |
+| `save_csv(path)` | `None` | Write a per-case CSV. |
+| `save_junit_xml(path)` | `None` | Write JUnit XML for CI runners. |
+| `to_json()` | `str` | Same as `save_json` but returns the string. |
+| `to_html()` | `str` | Same as `save_html` but returns the string. |
+| `to_junit_xml()` | `str` | Same as `save_junit_xml` but returns the string. |
+| `from_dict(data)` | classmethod | Re-hydrate from a `to_json()` payload. |
+
+## Common gotchas
+
+**Field-vs-method shapes.** Pass-rate and average score are **attributes**
+(plain access, no parens). The 95% CIs are **methods** (call them) so you
+can pass a different confidence level when needed. So:
+
+```python
+report.pass_rate          # ✓ attr
+report.pass_rate_ci()     # ✓ method
+report.pass_rate_ci(0.99) # ✓ tighter band
+```
+
+**`costs` is a dataclass, not a dict.** Use attribute access:
+
+```python
+report.costs.total_cost_usd          # ✓
+report.costs.total_calls             # ✓
+report.costs.by_model[0].provider    # ✓
+report.costs['total_cost_usd']       # ✗ TypeError — not subscriptable
+```
+
+The serialised JSON exposes the same data under string keys (`r['costs']['total_cost_usd']`),
+which is sometimes a source of confusion. Use the dataclass at runtime, the
+JSON-keyed view when consuming a saved report.
+
+**`case_results` is the iterable, not `cases`.** Older docs and blog posts
+sometimes show `report.cases[i]`; the correct attribute is `case_results`.
+
+**`passed_by_evaluator` is a method.** Some older snippets show it as an
+attribute. Always call it:
+
+```python
+report.passed_by_evaluator()   # ✓ → {'faithfulness': 0.83, 'hallucination': 0.67}
+report.passed_by_evaluator     # ✗ returns the bound method, not the dict
+```
+
+## `CaseResult` shape
+
+The objects in `report.case_results`.
+
+| Attribute | Type | Meaning |
+|---|---|---|
+| `case_input` | `str` | The case's input string. |
+| `actual_output` | `str` | What the model produced. |
+| `results` | `list[EvalResult]` | One per evaluator that ran on this case. |
+| `evaluators` | alias of `results` | Same list — older code uses this name. |
+| `passed` | `bool` | All evaluators on this case passed. |
+| `score` | `float` | Average of evaluator scores on this case. |
+| `latency_ms` | `float` | Wall time of the model call only. |
+| `tags` | `list[str]` | Case tags inherited from `EvalCase.tags`. |
+| `model_error` | `str \| None` | Set when the model function raised. |
+| `judge_error` | `str \| None` | Set when a judge call raised. |
+| `evaluator_error` | `str \| None` | Set when an evaluator raised. |
+| `skipped` | `bool` | Case was skipped end-to-end. |
+| `agent_trace` | `list[AgentStep]` | Populated when an `AgentTracer` instrumented the model. |
+| `runs` | `int` | Number of times this case was rerun (from `suite.run(runs=N)`). |
+| `all_scores` | `list[float]` | Per-run scores; empty unless `runs > 1`. |
+| `pass_count` | `int` | Across runs; -1 when `runs == 1`. |
+| `retry_attempts` | `int` | How many times `judge_retry` rescued a transient failure. |
+| `retry_errors` | `list[str]` | The transient errors that got retried. |
+
+## `EvalResult` shape
+
+The objects in `case_result.results` (per-evaluator).
+
+| Attribute | Type | Meaning |
+|---|---|---|
+| `evaluator` | `str` | Evaluator name. |
+| `score` | `float` | 0.0–1.0. |
+| `passed` | `bool` | `score >= evaluator.threshold`. |
+| `reason` | `str` | Human-readable reason. Strings starting with `[skipped]` mean the case shape didn't fit this evaluator (returns a passing skip — does not contaminate aggregates). |
+| `metadata` | `dict` | `{"skipped": True}` is set when the evaluator skipped. Free-form otherwise. |
+
+## `Costs` shape
+
+The dataclass on `report.costs`.
+
+| Attribute | Type | Meaning |
+|---|---|---|
+| `total_input_tokens` | `int` | Sum across all judge calls. |
+| `total_output_tokens` | `int` | Sum across all judge calls. |
+| `total_tokens` | `int` | Convenience sum. |
+| `total_calls` | `int` | Number of judge requests issued. |
+| `total_cost_usd` | `float` | USD spent at provider list price. |
+| `by_model` | `list[ProviderUsage]` | Per (provider, model) breakdown. |
+
+`ProviderUsage` has `provider`, `model`, `input_tokens`, `output_tokens`,
+`total_tokens`, `calls`, and `cost_usd`.
+
+## CI examples
+
+Fail the build on regressions:
+
+```python
+report = suite.run(model_fn)
+report.assert_budget(max_total_cost_usd=2.0, max_p95_latency_ms=5000)
+
+if report.pass_rate < 0.85:
+    sys.exit(1)
+```
+
+Compare vs a baseline run:
+
+```python
+prev = EvalReport.from_dict(json.loads(Path("baseline.json").read_text()))
+delta = report.compare(prev)
+print(f"pass_rate Δ = {delta.pass_rate_delta:+.2%}")
+```
+
+Filter by tag (e.g. only the adversarial subset):
+
+```python
+for c in report.filter_by_evaluator("hallucination"):
+    if not c.passed and "adversarial:ungrounded_claim" in c.tags:
+        print(c.case_input, c.results[0].reason)
+```

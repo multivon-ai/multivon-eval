@@ -9,76 +9,192 @@ Compliance evaluators run entirely within your environment. No data leaves your 
 
 ## PIIEvaluator
 
-Scans LLM outputs for personally identifiable information using local regex patterns. Zero API calls — runs entirely in-process.
+Scans LLM outputs for personally identifiable information using local regex
+patterns plus checksum validation (Luhn, Verhoeff, Mod-97, Mod-11). Zero API
+calls by default. Optional NER fallback via [Presidio](https://github.com/microsoft/presidio)
+when installed.
 
-**When to use:** Any regulated deployment (healthcare, finance, legal) where PII in model outputs is a compliance risk. Run it in CI/CD so regressions are caught before production.
+**When to use:** Any regulated deployment (healthcare, finance, legal,
+government) where PII in model outputs is a compliance risk. Run it in CI/CD
+so regressions are caught before production.
 
 **Passes** when no PII is detected. **Fails** with a per-type breakdown.
 
 ```python
 from multivon_eval import PIIEvaluator
 
+# Default — all jurisdictions, strict checksum validation, no NER.
 suite.add_evaluators(PIIEvaluator())
-suite.add_evaluators(PIIEvaluator(jurisdiction="gdpr"))
-suite.add_evaluators(PIIEvaluator(jurisdiction="hipaa"))
+
+# Healthcare with name detection (lazy-imports presidio_analyzer if installed).
+suite.add_evaluators(PIIEvaluator(jurisdiction="hipaa", use_ner=True))
+
+# India-specific with custom identifier overlay.
+suite.add_evaluators(PIIEvaluator(
+    jurisdiction="dpdp",
+    patterns={"employee_id": r"EMP-\d{6}"},
+))
+
+# Reason field uses [REDACTED-TYPE] tokens; original output is never mutated.
 suite.add_evaluators(PIIEvaluator(redact=True))
-suite.add_evaluators(PIIEvaluator(patterns={"employee_id": r"EMP-\d{6}"}))
 ```
 
-**Parameters:**
+### Parameters
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `jurisdiction` | `"all"` | `"gdpr"`, `"ccpa"`, `"pipeda"`, `"hipaa"`, or `"all"` |
-| `patterns` | `None` | Additional `{name: regex}` patterns |
-| `redact` | `False` | Replace PII with `[REDACTED-TYPE]` in reports |
-| `threshold` | `1.0` | Pass threshold (default: any PII = fail) |
+| `jurisdiction` | `"all"` | `"hipaa"`, `"gdpr"`, `"dpdp"`, `"ccpa"`, `"pipeda"`, or `"all"`. |
+| `patterns` | `None` | Additional `{name: regex}` overlay. Merged after jurisdiction patterns. |
+| `redact` | `False` | Reason field shows `[REDACTED-TYPE]` tokens instead of substrings. Original output is never mutated. |
+| `threshold` | `1.0` | Pass threshold — any PII match fails by default. |
+| `strict` | `True` | Apply checksum validators (Luhn, Verhoeff, Mod-97, Mod-11, PAN structural, SSN structural) to drop false positives. Pass `False` to see raw regex hits. |
+| `use_ner` | `False` | Lazy-import `presidio_analyzer` (if installed) to additionally catch PERSON, LOCATION, DATE_TIME. Partial coverage for HIPAA Safe Harbor categories regex can't reach. Silent no-op when Presidio isn't installed. |
 
-### Jurisdiction coverage
+### Standards covered
 
-Each jurisdiction value extends the base pattern set (email, US/international phones, SSN, credit card, IBAN, IP address, date of birth, passport, NHS number, address):
+Every pattern in the evaluator carries a citation to its source standard.
+The table below is exhaustive — if your jurisdiction needs an identifier
+not listed here, supply it via `patterns={...}` (or open a PR — additions
+are easy).
 
-| Jurisdiction | Additional patterns |
+#### HIPAA Safe Harbor — 45 CFR § 164.514(b)(2)
+
+Eighteen identifier categories. The evaluator covers thirteen via regex;
+the remaining five (free-text names, geographic subdivisions, photographs,
+biometrics, "other unique IDs") need `use_ner=True` for partial coverage.
+
+| # | Identifier | Detection |
+|---|---|---|
+| 1 | Names (with `Patient`, `Mr`, `Dr` etc. prefix) | Regex (context-led, high precision) |
+| 1 | Names without prefix | NER (`use_ner=True`) |
+| 2 | Street addresses | NER (`use_ner=True`); loose regex baseline |
+| 2 | US ZIP codes (`ZIP 94103`, `Zipcode 12345-6789`) | Regex (context-anchored) |
+| 3 | Dates of admission / discharge / death / birth | Regex (context-anchored) |
+| 3 | Age > 89 (`aged 92`, `years old: 95`) | Regex |
+| 4 | Telephone numbers | Regex (NANP + international) |
+| 5 | Fax numbers | Regex (NANP shape, `Fax:` prefix) |
+| 6 | Email addresses | Regex (RFC 5322 simplified) |
+| 7 | Social Security Numbers | Regex + structural validator (drops `000-`, `666-`, `9xx-`, all-same decoys) |
+| 8 | Medical record numbers (4–15 digits) | Regex |
+| 9 | Health plan beneficiary numbers (`HPN`, `Group No`, `Policy No`) | Regex |
+| 10 | Account numbers (`Acct`, `Account`) | Regex |
+| 11 | Certificate / license numbers (`NPI`, `DEA`, `License`, `Cert`) | Regex |
+| 12 | Vehicle identifiers (VINs, 17-char) | Regex |
+| 13 | Device identifiers (`UDI`, `Device ID`, `Implant No`) | Regex |
+| 14 | Web URLs | Regex |
+| 15 | IP addresses (IPv4) | Regex |
+| 16 | Biometric identifiers | NER (`use_ner=True`); partial |
+| 17 | Full-face photographs | Not text — must be screened upstream |
+| 18 | Other unique identifying numbers | `patterns={...}` overlay |
+
+#### GDPR — Regulation (EU) 2016/679, Art.4(1)
+
+National identification numbers across EU member states + base PII.
+
+| Identifier | Country | Validator |
+|---|---|---|
+| NI Number (`AB123456C`) | UK | Structural (excludes D/F/I/Q/U/V prefixes) |
+| NHS Number | UK | Mod-11 (10-digit, drops 3-3-4 grouping false positives) |
+| DNI (`12345678Z`) | Spain | Letter (mod-23) when strict |
+| NIE (`X1234567L`) | Spain | Letter (mod-23) when strict |
+| Codice Fiscale (16 alphanumeric) | Italy | Structural |
+| NIR / INSEE (15-digit Sécurité Sociale) | France | Structural |
+| Steuer-IdNr (`Steuer-IdNr: 12345678901`) | Germany | Context-anchored |
+| BSN (`BSN: 12345678`) | Netherlands | Context-anchored; 11-test optional |
+| PESEL (11-digit, `PESEL` context) | Poland | Structural |
+| Personnummer (`YYMMDD-XXXX`) | Sweden | Context-anchored |
+| CPR (`DDMMYY-XXXX`) | Denmark | Context-anchored |
+| PPSN (`7 digits + 1-2 letters`) | Ireland | Context-anchored |
+| HETU (`DDMMYY[-+A]NNNX`) | Finland | Structural |
+| EU VAT (country prefix + digits) | EU | Structural |
+| IBAN | All | **Mod-97 per ISO 13616** |
+
+> **Article 9 special categories** (race, religion, health data, sex life,
+> trade-union membership): these are content categories, not identifier
+> formats. Use a topic classifier or NER pipeline; the regex evaluator can't
+> reach them.
+
+#### DPDP India — Act 22 of 2023
+
+Indian government-issued identifiers + Indian PII formats.
+
+| Identifier | Format | Validator |
+|---|---|---|
+| Aadhaar | UIDAI 12-digit | **Verhoeff dihedral checksum** |
+| PAN | Income Tax `[A-Z]{5}\d{4}[A-Z]` | Structural — 4th char ∈ {P,F,C,A,T,B,L,J,G,H} |
+| GSTIN | `\d{2}[A-Z]{5}\d{4}[A-Z][A-Z0-9]Z[A-Z0-9]` | Structural |
+| IFSC | `[A-Z]{4}0[A-Z0-9]{6}` | Structural |
+| Voter ID (EPIC) | `[A-Z]{3}\d{7}` | Structural |
+| India mobile (+91) | 10-digit, starts 6-9 | Structural |
+| Driving License | State + RTO + year + serial | Structural |
+| India Passport | Letter (A–P, R–W, Y) + 7 digits | Structural |
+| Vehicle Registration | `KA-01-AB-1234` style | Structural |
+| Ration Card | Context-anchored | — |
+
+#### CCPA — Cal. Civ. Code § 1798.140(o)
+
+| Identifier | Detection |
 |---|---|
-| `"all"` | All patterns from all jurisdictions below |
-| `"gdpr"` | EU VAT numbers |
-| `"ccpa"` | Bank account numbers |
-| `"pipeda"` | No additions (base patterns satisfy PIPEDA) |
-| `"hipaa"` | See HIPAA PHI table below |
+| Bank account / routing (context-anchored: `account`, `acct`, `routing`) | Regex |
+| California Driver's License (`[A-Z]\d{7}`) | Regex |
 
-### HIPAA PHI coverage
+(Other CCPA categories — biometric data, geolocation, browsing history —
+need pipeline-level controls; regex can't cover them.)
 
-HIPAA Safe Harbor requires de-identifying 18 PHI identifier categories. Of these, 13 can be detected via regex and 5 cannot:
+#### PIPEDA (Canada)
 
-| PHI Identifier | Detection method |
+Schedule 1 categories overlap entirely with the base PII set (name, email,
+phone, address, SSN/SIN, financial). No Canada-specific identifier format
+needs to be added.
+
+### Strict mode (default)
+
+When `strict=True` (the default), regex hits are filtered through identity
+validators before being reported. This dramatically cuts false positives:
+
+| Identifier | Validator |
 |---|---|
-| Medical record numbers (`MRN-XXXXXXXX`) | Regex |
-| Health plan beneficiary numbers (`HPN-`, `Member ID`) | Regex |
-| Vehicle identifiers and serial numbers (VIN, 17-char) | Regex |
-| Fax numbers | Regex (shares US phone pattern) |
-| Admission and discharge dates | Regex |
-| Device identifiers and serial numbers (`UDI`, `Device ID`) | Regex |
-| Account numbers (`Acct #XXXXXXXX`) | Regex |
-| NPI, DEA, and license numbers | Regex |
-| Certificate and license numbers (`Cert #XXXXXX`) | Regex |
-| Web URLs | Regex |
-| Social Security Numbers | Regex (base pattern) |
-| Email addresses | Regex (base pattern) |
-| Phone numbers | Regex (base pattern) |
-| **Names** | **Cannot detect** — high false positive rate on common words |
-| **Geographic subdivisions below state** | **Cannot detect** — free text, no canonical form |
-| **Full-face photographs** | **Cannot detect** — binary content, not text |
-| **Biometric identifiers** (fingerprints, voiceprints) | **Cannot detect** — binary content, not text |
-| **Arbitrary unique identifying numbers** not listed above | **Cannot detect** — no pattern to match |
+| Credit card (Visa/MC/Amex/Discover/JCB) | **Luhn Mod-10** |
+| Aadhaar | **Verhoeff** |
+| IBAN | **Mod-97** (ISO 13616) |
+| NHS Number | **Mod-11** |
+| PAN India | Structural (holder-type) |
+| SSN (US) | Structural (drops `000-`, `666-`, `9xx-`, all-same decoys) |
+| GSTIN | Structural |
 
-The 5 identifiers that cannot be reliably detected via regex require upstream de-identification before evaluation.
+Pass `strict=False` to see raw matches without validation — useful for
+debugging and for jurisdictions where checksum specs aren't published.
 
-**Sample output:**
+### Optional NER (`use_ner=True`)
+
+When `use_ner=True`, the evaluator additionally invokes
+[`presidio_analyzer`](https://github.com/microsoft/presidio) on the output to
+catch PERSON, LOCATION, DATE_TIME, NRP, ORGANIZATION, etc. — providing
+partial coverage for HIPAA Safe Harbor categories that regex can't reach
+(unprefixed names, free-form addresses, biometrics references).
+
+Presidio is an optional dependency:
+
+```bash
+pip install presidio_analyzer
+python -m spacy download en_core_web_lg
 ```
-PII detected (2 type(s)):
-  email: "user@company.com"
-  phone_us: "555-123-4567"
+
+When Presidio isn't installed, `use_ner=True` is a silent no-op — the
+evaluator just runs the regex/checksum pipeline.
+
+### Sample output
+
 ```
+PII detected (3 type(s)):
+  patient_name: "John Smith" (1 match)
+  medical_record_number: "MRN 12345" (1 match)
+  email: "user@company.com" (1 match)
+```
+
+With `strict=True`, decoys like `1234-5678-9012` (not Verhoeff-valid
+Aadhaar), `4532-0151-1283-0367` (Luhn-invalid Visa shape), and
+`123-45-6789` (test SSN) are dropped from the report.
 
 ---
 

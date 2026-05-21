@@ -73,6 +73,7 @@
             "pages": [
               "guides/bootstrap",
               "guides/intelligent-eval",
+              "reference/eval-report",
               "guides/examples",
               "guides/generate",
               "guides/experiments",

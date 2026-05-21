@@ -404,6 +404,16 @@ def main():
     disc_p.add_argument("--compact", action="store_true",
                         help="Single-line JSON (no indent)")
 
+    # doctor — pre-flight check for keys, providers, optional deps
+    doc_p = sub.add_parser(
+        "doctor",
+        help="Pre-flight: check API keys, ping providers, surface env issues",
+    )
+    doc_p.add_argument("--no-ping", action="store_true",
+                       help="Skip live provider ping (offline mode)")
+    doc_p.add_argument("--json", action="store_true",
+                       help="Emit results as JSON for CI consumption")
+
     # bootstrap — cold-start eval suite generator
     boot_p = sub.add_parser(
         "bootstrap",
@@ -431,6 +441,13 @@ def main():
                         help="Skip adversarial seed-case generation (saves ~$0.02)")
     boot_p.add_argument("--skip-calibration", action="store_true",
                         help="Skip threshold calibration (use proposed thresholds as-is)")
+    boot_p.add_argument("--validate", action="store_true",
+                        help="N-shot judge-noise filter the generated seed cases against "
+                             "a stub-refusal baseline (uses validate_adversarial_cases). "
+                             "Drops cases outside hardness band (0.5–1.0). Adds ~$0.03 "
+                             "but typically removes 20-40%% of synthetic noise.")
+    boot_p.add_argument("--validate-n-shots", type=int, default=3,
+                        help="N-shot count for --validate (default: 3)")
 
     args = parser.parse_args()
 
@@ -464,6 +481,8 @@ def main():
         ]))
     elif args.command == "discover":
         sys.exit(cmd_discover(args) or 0)
+    elif args.command == "doctor":
+        sys.exit(cmd_doctor(args) or 0)
     elif args.command == "bootstrap":
         sys.exit(cmd_bootstrap(args) or 0)
     else:
@@ -519,6 +538,54 @@ def cmd_bootstrap(args) -> int:
         print(f"  ✓ pii redacted before LLM call: {pii_str}")
     print(f"  ✓ recommended {len(result.evaluators)} evaluators")
     print(f"  ✓ generated {len(result.seed_cases)} adversarial seed cases")
+
+    # --validate: optionally N-shot filter the seed cases via the
+    # validate_adversarial_cases primitive. The stub-refusal baseline
+    # ("I don't know") is intentionally weak — cases the baseline can
+    # confidently refuse (failure_rate < 0.5) aren't really stressing the
+    # primary evaluator and get dropped. Bumps cost by ~$0.03 typically.
+    if args.validate and result.seed_cases:
+        from .auto import validate_adversarial_cases
+        from pathlib import Path
+        import json as _json
+
+        def _stub_refusal(_input: str) -> str:
+            return "I don't have specific information about that."
+
+        kept, reports = validate_adversarial_cases(
+            result.seed_cases,
+            _stub_refusal,
+            n_shots=args.validate_n_shots,
+            judge=judge,
+        )
+        dropped = len(result.seed_cases) - len(kept)
+        print(f"  ✓ validated seed cases (n_shots={args.validate_n_shots}): "
+              f"kept {len(kept)}, dropped {dropped} as noise")
+
+        # Overwrite seed_cases.jsonl with the validated subset.
+        seed_path = Path(result.artifacts["seed_cases"])
+        with seed_path.open("w") as f:
+            for c in kept:
+                f.write(_json.dumps({
+                    "input": c.input,
+                    "expected_output": c.expected_output,
+                    "context": c.context,
+                    "tags": c.tags,
+                    "metadata": c.metadata,
+                }) + "\n")
+        # Also write a hardness report alongside for transparency.
+        hardness_path = seed_path.parent / "hardness_report.jsonl"
+        with hardness_path.open("w") as f:
+            for r in reports:
+                f.write(_json.dumps({
+                    "input": r.case.input[:200],
+                    "evaluator": r.evaluator_name,
+                    "failure_rate": r.failure_rate,
+                    "in_hardness_band": r.in_hardness_band,
+                    "scores": r.scores,
+                }) + "\n")
+        print(f"  ✓ hardness report: {hardness_path}")
+
     print(f"  ✓ estimated cost: ${result.cost_usd:.4f}")
     print()
     print("  artifacts:")
@@ -528,6 +595,179 @@ def cmd_bootstrap(args) -> int:
     print("  next: review DISCOVERY_REPORT.md, then `python eval_suite.py` "
           "to verify the suite loads")
     return 0
+
+
+def cmd_doctor(args) -> int:
+    """Pre-flight check that surfaces every env issue at once.
+
+    What we check:
+      - Python version (≥3.10 required; warns on 3.14 for missing wheels).
+      - Anthropic / OpenAI / Google API keys present + reachable.
+      - multivon-eval version vs latest on PyPI (if reachable).
+      - Optional deps: presidio_analyzer (PII NER), opentelemetry, datasets.
+      - ~/.multivon writable for experiment history.
+
+    Exit codes: 0 = all green, 1 = at least one ERROR, 2 = WARN only.
+    """
+    import os
+    import sys
+    import json
+    import platform
+    from . import __version__
+
+    checks: list[dict] = []  # {category, name, status, detail}
+
+    def add(category: str, name: str, status: str, detail: str = "") -> None:
+        checks.append({"category": category, "name": name, "status": status, "detail": detail})
+
+    # Python
+    py = sys.version_info
+    py_str = f"{py.major}.{py.minor}.{py.micro}"
+    if py >= (3, 10):
+        if py >= (3, 14):
+            add("env", "Python", "WARN",
+                f"{py_str} — some optional deps (presidio, certain ML wheels) may not have prebuilt wheels yet. "
+                "Pin to 3.11/3.12 for max compatibility, or expect occasional `pip install` source builds.")
+        else:
+            add("env", "Python", "OK", py_str)
+    else:
+        add("env", "Python", "ERROR", f"{py_str} — requires ≥3.10")
+
+    add("env", "Platform", "OK", platform.platform())
+    add("env", "multivon-eval", "OK", __version__)
+
+    # API keys
+    for env_name, label, prefix in [
+        ("ANTHROPIC_API_KEY", "Anthropic", "sk-ant-"),
+        ("OPENAI_API_KEY", "OpenAI", "sk-"),
+        ("GOOGLE_API_KEY", "Google", ""),
+    ]:
+        key = os.environ.get(env_name, "")
+        if not key:
+            add("keys", label, "WARN", f"{env_name} not set — judge calls to {label} will fail")
+            continue
+        if prefix and not key.startswith(prefix):
+            add("keys", label, "WARN", f"{env_name} present but doesn't start with {prefix!r} — possibly malformed")
+        else:
+            add("keys", label, "OK", f"{env_name} set ({len(key)} chars, prefix={key[:6]}...)")
+
+    # Provider pings (lazy; skip on --no-ping)
+    if not args.no_ping:
+        for env_name, label, ping_fn in (
+            ("ANTHROPIC_API_KEY", "Anthropic", _ping_anthropic),
+            ("OPENAI_API_KEY", "OpenAI", _ping_openai),
+            ("GOOGLE_API_KEY", "Google", _ping_google),
+        ):
+            if not os.environ.get(env_name):
+                continue
+            try:
+                msg = ping_fn()
+                add("ping", label, "OK", msg)
+            except Exception as e:
+                add("ping", label, "ERROR", f"ping failed: {type(e).__name__}: {str(e)[:120]}")
+
+    # Optional deps
+    for mod, label, why in (
+        ("presidio_analyzer", "Presidio NER", "PII evaluator use_ner=True falls back to regex without it"),
+        ("opentelemetry", "OpenTelemetry", "tracer integration unavailable"),
+        ("datasets", "HuggingFace datasets", "dataset loaders unavailable"),
+        ("anthropic", "anthropic SDK", "Anthropic judge calls unavailable"),
+        ("openai", "openai SDK", "OpenAI judge calls unavailable"),
+    ):
+        try:
+            __import__(mod)
+            add("deps", label, "OK", f"{mod} importable")
+        except ImportError:
+            add("deps", label, "WARN", f"{mod} not installed — {why}")
+
+    # ~/.multivon writability
+    multivon_dir = os.path.expanduser("~/.multivon")
+    try:
+        os.makedirs(multivon_dir, exist_ok=True)
+        probe = os.path.join(multivon_dir, ".doctor-probe")
+        with open(probe, "w") as f:
+            f.write("ok")
+        os.remove(probe)
+        add("env", "~/.multivon", "OK", f"writable at {multivon_dir}")
+    except Exception as e:
+        add("env", "~/.multivon", "WARN", f"not writable: {e}")
+
+    # Summary
+    n_err = sum(1 for c in checks if c["status"] == "ERROR")
+    n_warn = sum(1 for c in checks if c["status"] == "WARN")
+    n_ok = sum(1 for c in checks if c["status"] == "OK")
+
+    if args.json:
+        print(json.dumps({
+            "summary": {"ok": n_ok, "warn": n_warn, "error": n_err},
+            "checks": checks,
+        }, indent=2))
+    else:
+        # Pretty terminal output — group by category, color via ANSI.
+        try:
+            from rich.console import Console
+            from rich.table import Table
+            con = Console()
+            table = Table(show_header=True, header_style="bold")
+            table.add_column("Category", style="dim")
+            table.add_column("Check")
+            table.add_column("Status", justify="center")
+            table.add_column("Detail")
+            for c in checks:
+                style = {"OK": "green", "WARN": "yellow", "ERROR": "red"}.get(c["status"], "white")
+                symbol = {"OK": "✓", "WARN": "⚠", "ERROR": "✗"}.get(c["status"], "?")
+                table.add_row(c["category"], c["name"], f"[{style}]{symbol} {c['status']}[/{style}]", c["detail"])
+            con.print(table)
+            con.print()
+            if n_err:
+                con.print(f"[red]✗ {n_err} ERROR[/red] · [yellow]⚠ {n_warn} WARN[/yellow] · [green]✓ {n_ok} OK[/green]")
+                con.print("  fix the ERROR rows above before running evaluations.")
+            elif n_warn:
+                con.print(f"[yellow]⚠ {n_warn} WARN[/yellow] · [green]✓ {n_ok} OK[/green]")
+                con.print("  evaluations should work; some optional features unavailable.")
+            else:
+                con.print(f"[green]✓ all {n_ok} checks passed.[/green]")
+        except ImportError:
+            for c in checks:
+                print(f"  [{c['status']:5s}] {c['category']:8s} {c['name']:20s}  {c['detail']}")
+            print(f"\n  {n_ok} OK · {n_warn} WARN · {n_err} ERROR")
+
+    return 1 if n_err else (2 if n_warn else 0)
+
+
+def _ping_anthropic() -> str:
+    import anthropic
+    client = anthropic.Anthropic()
+    resp = client.messages.create(
+        model="claude-haiku-4-5",
+        max_tokens=4,
+        messages=[{"role": "user", "content": "Reply with the single word: ok"}],
+    )
+    text = resp.content[0].text if resp.content else ""
+    return f"Claude Haiku reachable; got {text!r}"
+
+
+def _ping_openai() -> str:
+    import openai
+    client = openai.OpenAI()
+    resp = client.chat.completions.create(
+        model="gpt-4o-mini",
+        max_tokens=4,
+        messages=[{"role": "user", "content": "Reply with the single word: ok"}],
+    )
+    text = resp.choices[0].message.content or ""
+    return f"gpt-4o-mini reachable; got {text!r}"
+
+
+def _ping_google() -> str:
+    from google import genai
+    client = genai.Client()
+    resp = client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents="Reply with the single word: ok",
+    )
+    text = (getattr(resp, "text", "") or "")[:20]
+    return f"gemini-2.5-flash reachable; got {text!r}"
 
 
 def cmd_discover(args) -> int:
