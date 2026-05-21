@@ -72,6 +72,7 @@
             "group": "Guides",
             "pages": [
               "guides/bootstrap",
+              "guides/intelligent-eval",
               "guides/examples",
               "guides/generate",
               "guides/experiments",

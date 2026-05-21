@@ -160,7 +160,6 @@ print(f"artifacts: {result.artifacts}")
 
 ## See also
 
-- [`auto_evaluators(case)`](/evaluators/llm-judge#auto-evaluators) — the deterministic heuristic anchor under the bootstrap. Microseconds, no LLM call.
-- [`generate_adversarial_cases`](/guides/synthetic-data) — the failure-mode generator the bootstrap uses for seed cases. Targets 10 named failure modes (`ungrounded_claim`, `jailbreak`, `prompt_injection_direct`, etc.).
-- [`validate_adversarial_cases`](/guides/synthetic-data) — N-shot judge-noise filter for adversarial cases. Validated +0.80 mean failure-rate separation between weak and strong baselines.
+- [Intelligent eval primitives](/guides/intelligent-eval) — full reference for the three primitives the bootstrap composes (`auto_evaluators`, `generate_adversarial_cases`, `validate_adversarial_cases`). Use these directly when you want fine-grained control or want to compose them into your own pipeline.
+- [Synthetic data generation](/guides/synthetic-data) — the higher-level `generate_from_file` / `generate_from_text` helpers, when you want generation without targeting a specific failure mode.
 - [Quickstart](/quickstart) — the manual path: write `EvalCase` objects directly.

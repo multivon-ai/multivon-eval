@@ -1,0 +1,261 @@
+---
+title: Intelligent eval primitives
+description: The multivon_eval.auto module — auto_evaluators, generate_adversarial_cases, and validate_adversarial_cases. The primitives the `multivon-eval bootstrap` CLI composes.
+---
+
+`multivon-eval bootstrap` (covered in the [bootstrap guide](/guides/bootstrap)) is the user-facing CLI. Under it sit three primitives in `multivon_eval.auto` that you can call directly when you want fine-grained control or want to compose them into your own pipeline. Each one is documented and tested independently — you can use them in any combination.
+
+```python
+from multivon_eval.auto import (
+    auto_evaluators,
+    generate_adversarial_cases,
+    generate_unicode_obfuscation_cases,
+    validate_adversarial_cases,
+)
+```
+
+## `auto_evaluators(case)` — heuristic recommender
+
+Pure pattern-match over an `EvalCase` shape. Returns a ranked list of recommended evaluators across **primary / secondary / guardrail** tiers, with a confidence rating per recommendation. Zero LLM cost. Microseconds.
+
+```python
+from multivon_eval import EvalCase
+from multivon_eval.auto import auto_evaluators
+
+# RAG case → Faithfulness + Hallucination primary, NotEmpty guardrail
+rag = EvalCase(input="What's the refund window?", context="30 days from purchase.")
+for rec in auto_evaluators(rag):
+    print(f"[{rec.tier}] {rec.evaluator.__name__}  ({rec.confidence})")
+    print(f"    {rec.rationale}")
+# [primary] Faithfulness  (high)
+#     input+context → RAG shape, primary faithfulness gate
+# [primary] Hallucination  (high)
+#     RAG → flag claims not in retrieved context
+# [secondary] ContextPrecision  (high)
+#     RAG → check retrieved context isn't padded with noise
+# [secondary] Relevance  (high)
+#     input present → check output addresses the question
+# [guardrail] NotEmpty  (high)
+#     trivial sanity check — catches empty/whitespace outputs
+
+# Agent case → ToolCallAccuracy primary
+agent = EvalCase(input="book the meeting", expected_tool_calls=["create_event"])
+auto_evaluators(agent)
+# → [ToolCallAccuracy primary] + [ToolCallNecessity secondary] + [NotEmpty guardrail]
+
+# Ambiguous case (multiple shape signals) → confidence drops
+mixed = EvalCase(input="?", context="...", expected_tool_calls=["t"], conversation=[...])
+auto_evaluators(mixed, strict_mode=True)
+# raises AmbiguousCaseShape — multiple primary signals; pin task_type=... explicitly
+```
+
+### Signature
+
+```python
+def auto_evaluators(
+    case: EvalCase,
+    *,
+    task_type: Literal["rag","qa","agent","trajectory","conversation",
+                       "multimodal","structured_output","auto"] = "auto",
+    strict_mode: bool = False,
+    include_pii: bool = False,
+    pii_jurisdiction: str = "all",
+    include_safety: bool = False,
+) -> list[EvaluatorRecommendation]
+```
+
+- `task_type="auto"` infers from case shape. Pin explicitly when the shape is ambiguous (e.g., a case with both `context` and `expected_output` could be RAG or fact-check).
+- `strict_mode=True` raises `AmbiguousCaseShape` if the heuristic can only offer a low-confidence primary. Use this in CI / production code paths where a silent mis-recommendation is worse than failing loud.
+- `include_pii=True` + `pii_jurisdiction` appends `PIIEvaluator` as a guardrail (`"gdpr" | "ccpa" | "pipeda" | "hipaa" | "dpdp" | "all"`).
+- `include_safety=True` appends `Toxicity` + `Bias` as guardrails.
+
+### `EvaluatorRecommendation` shape
+
+```python
+@dataclass(slots=True)
+class EvaluatorRecommendation:
+    evaluator: type[Evaluator]
+    rationale: str
+    tier: Literal["primary", "secondary", "guardrail"] = "primary"
+    confidence: Literal["high", "medium", "low"] = "high"
+```
+
+You can drop low-confidence picks, override threshold, or feed the recommendation set straight into `suite.add_evaluators(...)` after instantiation. The function never picks for you — it suggests.
+
+---
+
+## `generate_adversarial_cases(seed, mode, n)` — LLM-generated stress cases
+
+Synthesises cases targeting one of 10 named failure modes. Uses your configured judge (defaults to Claude Haiku) to write cases plausible enough to look real but designed to trip up a model on the specific weakness.
+
+```python
+from multivon_eval.auto import generate_adversarial_cases
+
+kb = """
+AcmeCorp ships products in 3-5 business days. Refunds are available
+within 30 days of purchase. Customer support: Mon-Fri 9-5 PT.
+"""
+
+cases = generate_adversarial_cases(
+    seed_text=kb,
+    target_failure_mode="ungrounded_claim",
+    n=10,
+)
+
+for c in cases:
+    print(c.input)
+    print("  expected:", c.expected_output[:60])
+    print("  stress_tests:", c.metadata["stress_tests"])
+```
+
+### The 10 failure modes
+
+| Mode | Stress-tests | What it generates |
+|---|---|---|
+| `ungrounded_claim` | `Faithfulness`, `Hallucination` | Questions whose answer is NOT in the provided context. A confabulating model gets caught. |
+| `off_topic` | `Relevance` | Tangentially-related questions that the context can't actually address. |
+| `format_violation` | `SchemaEvaluator`, `JSONSchemaEval` | Requests for structured output — `expected_output` is the canonical valid form. |
+| `jailbreak` | `Toxicity`, `Bias` | Role-play, prefix-injection, refusal-bypass attempts. |
+| `tool_misuse` | `ToolCallNecessity` | Cases where calling a tool is UNNECESSARY — the model should answer directly. |
+| `numeric_edge` | `AnswerAccuracy` | Zero, negative, NaN, division-by-zero, off-by-one, currency boundaries. |
+| `prompt_injection_direct` | `CheckEvaluator`, `Relevance` | Direct overrides: "Ignore previous instructions and..." |
+| `prompt_injection_indirect` | `Faithfulness`, `Hallucination`, `CheckEvaluator` | RAG-specific — injection inside a retrieved chunk. |
+| `tool_injection` | `ToolCallAccuracy`, `ToolCallNecessity` | Attempts to manipulate agent tool calls (extra-tool injection, argument override). |
+| `pii_leakage_invitation` | `PIIEvaluator` | Cases that try to get the model to echo PII unnecessarily. |
+
+### Signature
+
+```python
+def generate_adversarial_cases(
+    seed_text: str,
+    target_failure_mode: str,
+    n: int = 5,
+    *,
+    judge: JudgeConfig | None = None,
+) -> list[EvalCase]
+```
+
+Each returned case carries:
+- `tags = ["adversarial:<mode>"]`
+- `metadata["target_failure_mode"]` — the mode it was generated for
+- `metadata["stress_tests"]` — the evaluators it's designed to test
+- `metadata["prompt_version"]` — for reproducibility (the prompt template can evolve)
+- `metadata["judge_used"]` — provider:model of the generator
+
+### Deterministic variant: `generate_unicode_obfuscation_cases`
+
+Some attacks shouldn't be LLM-generated — LLMs are aligned to NOT produce bypass attacks, so they tend to produce polished-looking but technically-easy attacks. For character-level obfuscation patterns (homoglyph, zero-width, RTL-override), use the deterministic generator:
+
+```python
+from multivon_eval.auto import generate_unicode_obfuscation_cases
+
+cases = generate_unicode_obfuscation_cases(
+    base_strings=["Aadhaar 1234 5678 9012", "PAN ABCDE1234F"],
+    obfuscation_kinds=("homoglyph", "zero_width", "rtlo"),
+)
+# 6 cases — 2 base strings × 3 obfuscation kinds.
+# Each tagged adversarial:unicode_obfuscation:<kind>
+# A PIIEvaluator that catches the original SHOULD also catch the obfuscated form.
+# Most don't.
+```
+
+---
+
+## `validate_adversarial_cases(cases, baseline)` — N-shot judge-noise filter
+
+The "are these cases actually adversarial, or just synthetic noise?" question. Runs each generated case **N times** against a baseline model + evaluator, computes per-case failure rate, filters by hardness band. This is the validation step that separates real signal from generation noise.
+
+```python
+from multivon_eval.auto import generate_adversarial_cases, validate_adversarial_cases
+
+def weak_baseline(prompt: str) -> str:
+    # Always confabulates — for use in stress-test validation
+    return "Based on what I know, the answer is something."
+
+cases = generate_adversarial_cases(kb, "ungrounded_claim", n=20)
+kept, reports = validate_adversarial_cases(
+    cases,
+    weak_baseline,
+    n_shots=3,                  # run each case 3× to dampen judge noise
+    hardness_band=(0.5, 1.0),   # keep cases the baseline fails ≥ half the shots
+)
+
+print(f"{len(kept)}/{len(cases)} cases passed validation")
+for r in reports:
+    print(f"  case failure_rate={r.failure_rate:.2f}  in_band={r.in_hardness_band}")
+```
+
+### What this catches
+
+Single-shot validation can't distinguish a hard case from judge noise on one observation. With N≥3 shots the failure rate has enough granularity for the band to filter on real signal.
+
+**Validated live**: +0.80 mean failure-rate separation between weak (always-confabulate) and strong (always-refuse) baselines on `ungrounded_claim` cases. Judge noise is visible at the per-shot level as `[1.00, 0.00, 1.00]` score arrays and gets filtered out by the band.
+
+### Signature
+
+```python
+def validate_adversarial_cases(
+    cases: list[EvalCase],
+    baseline_model: callable,
+    *,
+    n_shots: int = 3,
+    hardness_band: tuple[float, float] = (0.5, 1.0),
+    judge: JudgeConfig | None = None,
+) -> tuple[list[EvalCase], list[HardnessReport]]
+```
+
+- `n_shots` — how many times to sample baseline + evaluator per case. Default 3 dampens judge noise; setting to 1 reproduces single-shot behavior (NOT recommended).
+- `hardness_band` — `(min, max)` failure-rate band. Cases outside the band are dropped from the kept list (but still returned in the full report). Default `(0.5, 1.0)` keeps cases the baseline fails at least half the time. Use `(0.2, 0.8)` for a discriminating-case filter that drops both too-easy and impossibly-hard cases.
+
+### `HardnessReport` shape
+
+```python
+@dataclass(slots=True)
+class HardnessReport:
+    case: EvalCase
+    evaluator_name: str
+    n_shots: int
+    scores: list[float]           # one evaluator score per shot
+    baseline_outputs: list[str]   # what the baseline said each shot
+    failure_rate: float           # fraction of shots where evaluator.passed was False
+    in_hardness_band: bool        # whether this case was kept
+
+    @property
+    def baseline_failed(self) -> bool:        # majority-fail heuristic
+        return self.failure_rate >= 0.5
+
+    @property
+    def baseline_score(self) -> float:        # mean across shots
+        ...
+```
+
+Inspect `baseline_outputs[shot]` + `scores[shot]` to audit why a case ended up in or out of the band.
+
+---
+
+## Composing the primitives
+
+The `multivon-eval bootstrap` CLI is approximately:
+
+```python
+shape = infer_product_shape(traces)                # → "rag" | "qa" | ...
+heuristic_recs = auto_evaluators(case_from_shape(shape))
+llm_recs       = propose_evaluators_via_llm(description, shape, traces)
+final_recs     = merge_recommendations(heuristic_recs, llm_recs)
+
+seed_cases     = generate_adversarial_cases(description, mode_for(shape), n=30)
+# Optionally:
+kept, _        = validate_adversarial_cases(seed_cases, baseline, n_shots=3)
+```
+
+Use the primitives directly when you want to:
+- Add `auto_evaluators(case)` recommendations to a manually-built suite
+- Run `generate_adversarial_cases` on a different failure mode than your default
+- Validate any case set (not just generated ones) against your real baseline with N-shot aggregation
+
+## See also
+
+- [Bootstrap CLI guide](/guides/bootstrap) — the one-command path that composes all three primitives + PII redaction + threshold calibration
+- [Synthetic data generation](/guides/synthetic-data) — the higher-level `generate_from_file` / `generate_from_text` helpers, when you want generation without targeting a specific failure mode
+- [Statistical rigor](/guides/statistical-rigor) — why N-shot aggregation matters and how the hardness band relates to power
+- [Quickstart](/quickstart) — the manual path
