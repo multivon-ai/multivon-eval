@@ -75,7 +75,7 @@ class Levenshtein(Evaluator):
 
     def evaluate(self, case: EvalCase, output: str) -> EvalResult:
         if case.expected_output is None:
-            return self._result(0.0, "No expected_output provided")
+            return self._skipped("Requires case.expected_output — supply the expected value to enable this evaluator.")
         a = output if self.case_sensitive else output.lower()
         b = case.expected_output if self.case_sensitive else case.expected_output.lower()
         if not a and not b:
@@ -169,7 +169,7 @@ class ChrfScore(Evaluator):
 
     def evaluate(self, case: EvalCase, output: str) -> EvalResult:
         if case.expected_output is None:
-            return self._result(0.0, "No expected_output provided")
+            return self._skipped("Requires case.expected_output — supply the expected value to enable this evaluator.")
         hyp = self._prepare(output)
         ref = self._prepare(case.expected_output)
         if not hyp and not ref:

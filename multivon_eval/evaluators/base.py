@@ -54,3 +54,24 @@ class Evaluator(ABC):
             reason=reason,
             metadata=metadata,
         )
+
+    def _skipped(self, reason: str) -> EvalResult:
+        """Return a passing EvalResult flagged as skipped.
+
+        Use when the case shape doesn't fit this evaluator (no context for
+        a RAG metric, no expected_output for an exact-match metric, no
+        agent_trace for a tool metric). Scoring 0.0 in those situations
+        punishes the user for the *absence* of ground truth rather than a
+        real quality failure, and contaminates aggregate pass rates.
+
+        The reason is prefixed with "[skipped]" so consumers can filter
+        on the reason string without inspecting metadata. metadata.skipped
+        is also set to True for structured filtering.
+        """
+        return EvalResult(
+            evaluator=self.name,
+            score=1.0,
+            passed=True,
+            reason=f"[skipped] {reason}",
+            metadata={"skipped": True},
+        )

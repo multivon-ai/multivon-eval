@@ -27,7 +27,7 @@ class ConversationRelevance(Evaluator):
 
     def evaluate(self, case: EvalCase, output: str) -> EvalResult:
         if not case.conversation:
-            return self._result(0.0, "No conversation provided")
+            return self._skipped("Requires case.conversation — add a multi-turn dialog to enable this evaluator.")
 
         ctx = f"Conversation history:\n{case.conversation_str()}\n\nLatest response: {output}"
         questions = [
@@ -57,7 +57,7 @@ class KnowledgeRetention(Evaluator):
 
     def evaluate(self, case: EvalCase, output: str) -> EvalResult:
         if not case.conversation:
-            return self._result(0.0, "No conversation provided")
+            return self._skipped("Requires case.conversation — add a multi-turn dialog to enable this evaluator.")
 
         # Extract facts from user turns earlier in conversation
         user_turns = [m["content"] for m in case.conversation if m["role"] == "user"]
@@ -94,7 +94,7 @@ class ConversationCompleteness(Evaluator):
 
     def evaluate(self, case: EvalCase, output: str) -> EvalResult:
         if not case.conversation:
-            return self._result(0.0, "No conversation provided")
+            return self._skipped("Requires case.conversation — add a multi-turn dialog to enable this evaluator.")
 
         # Infer the user's original goal from first user turn
         first_user = next(
@@ -129,7 +129,7 @@ class TurnConsistency(Evaluator):
 
     def evaluate(self, case: EvalCase, output: str) -> EvalResult:
         if not case.conversation:
-            return self._result(0.0, "No conversation provided")
+            return self._skipped("Requires case.conversation — add a multi-turn dialog to enable this evaluator.")
 
         ctx = (
             f"Conversation:\n{case.conversation_str()}\n\n"

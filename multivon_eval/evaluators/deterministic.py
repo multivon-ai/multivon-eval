@@ -31,7 +31,7 @@ class ExactMatch(Evaluator):
 
     def evaluate(self, case: EvalCase, output: str) -> EvalResult:
         if case.expected_output is None:
-            return self._result(0.0, "No expected_output provided")
+            return self._skipped("Requires case.expected_output — supply the expected value to enable this evaluator.")
         a, b = output.strip(), case.expected_output.strip()
         if not self.case_sensitive:
             a, b = a.lower(), b.lower()
@@ -189,7 +189,7 @@ class BLEU(Evaluator):
 
     def evaluate(self, case: EvalCase, output: str) -> EvalResult:
         if case.expected_output is None:
-            return self._result(0.0, "No expected_output provided")
+            return self._skipped("Requires case.expected_output — supply the expected value to enable this evaluator.")
         hyp = output.lower().split()
         ref = case.expected_output.lower().split()
         if not hyp:
@@ -242,7 +242,7 @@ class ROUGE(Evaluator):
 
     def evaluate(self, case: EvalCase, output: str) -> EvalResult:
         if case.expected_output is None:
-            return self._result(0.0, "No expected_output provided")
+            return self._skipped("Requires case.expected_output — supply the expected value to enable this evaluator.")
         hyp = output.lower().split()
         ref = case.expected_output.lower().split()
         if not hyp or not ref:
@@ -323,7 +323,7 @@ class BERTScore(Evaluator):
 
     def evaluate(self, case: EvalCase, output: str) -> EvalResult:
         if case.expected_output is None:
-            return self._result(0.0, "No expected_output provided")
+            return self._skipped("Requires case.expected_output — supply the expected value to enable this evaluator.")
         try:
             from bert_score import score as _bert_score
         except ImportError:

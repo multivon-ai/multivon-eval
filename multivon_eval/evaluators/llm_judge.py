@@ -70,6 +70,54 @@ def _parse_yes_no(text: str) -> bool:
     return "yes" in text[:50]
 
 
+# ── Refusal heuristic ──────────────────────────────────────────────────────
+#
+# Refusals deserve special handling for *content* metrics (Faithfulness,
+# Hallucination): "I don't have that information" is not a substantive
+# claim about the world, so there's nothing to ground or hallucinate. A
+# bot that correctly refuses an out-of-KB question shouldn't fail those
+# metrics — the prior behavior turned every correct refusal into a 0%
+# pass rate, which is the opposite of useful.
+#
+# (See Evaluator._skipped() in base.py for the general case-shape-mismatch
+# helper. _is_refusal is content-shape — independent of case shape.)
+
+_REFUSAL_PREFIXES = (
+    "i don't know",
+    "i don't have",
+    "i do not have",
+    "i cannot",
+    "i can't",
+    "i'm unable",
+    "i am unable",
+    "i'm not able",
+    "i am not able",
+    "sorry",
+    "i'm sorry",
+    "i am sorry",
+    "i apologize",
+    "unfortunately, i",
+    "unfortunately i",
+    "no information",
+    "not sure",
+)
+
+
+def _is_refusal(output: str) -> bool:
+    """Detect short refusal/disclaimer responses with no substantive claims.
+
+    Conservative: only fires on short (<240 char) responses that *start*
+    with a known refusal prefix. Long responses that happen to begin with
+    "I don't know..." but then provide content are not skipped.
+    """
+    if not output:
+        return False
+    text = output.strip().lower()
+    if len(text) > 240:
+        return False
+    return any(text.startswith(p) for p in _REFUSAL_PREFIXES)
+
+
 def _qag_eval(
     questions: list[tuple[str, bool]],
     context_prompt: str,
@@ -117,7 +165,17 @@ class Faithfulness(Evaluator):
 
     def evaluate(self, case: EvalCase, output: str) -> EvalResult:
         if not case.context:
-            return self._result(0.0, "No context provided — faithfulness requires case.context")
+            # Case shape doesn't fit faithfulness — no context to ground against.
+            # Skip rather than fail; preserves aggregate pass-rate semantics.
+            return self._skipped(
+                "Requires case.context — add retrieved context to enable Faithfulness.",
+            )
+        if _is_refusal(output):
+            # Short refusals make no claims to verify. Skipping here matches
+            # the intent: the model correctly declined; faithfulness is N/A.
+            return self._skipped(
+                "response is a refusal — no substantive claims to verify.",
+            )
         judge = resolve_judge(self._judge_cfg)
         self.threshold = self._resolve_threshold(judge)
         context = case.context_str()
@@ -182,7 +240,13 @@ class Hallucination(Evaluator):
 
     def evaluate(self, case: EvalCase, output: str) -> EvalResult:
         if not case.context:
-            return self._result(0.0, "No context provided — hallucination requires case.context")
+            return self._skipped(
+                "Requires case.context — add retrieved context to enable Hallucination.",
+            )
+        if _is_refusal(output):
+            return self._skipped(
+                "response is a refusal — no fabrications to flag.",
+            )
         judge = resolve_judge(self._judge_cfg)
         self.threshold = self._resolve_threshold(judge)
         context = case.context_str()
@@ -309,7 +373,7 @@ class Summarization(Evaluator):
 
     def evaluate(self, case: EvalCase, output: str) -> EvalResult:
         if not case.context:
-            return self._result(0.0, "No context provided — summarization requires case.context (source document)")
+            return self._skipped("Requires case.context — supply the source document to enable summarization scoring.")
         judge = resolve_judge(self._judge_cfg)
         ctx = f"Source document:\n{case.context_str()}\n\nSummary:\n{output}"
         questions = [
@@ -336,7 +400,7 @@ class AnswerAccuracy(Evaluator):
 
     def evaluate(self, case: EvalCase, output: str) -> EvalResult:
         if case.expected_output is None:
-            return self._result(0.0, "No expected_output provided")
+            return self._skipped("Requires case.expected_output — supply the canonical answer to enable AnswerAccuracy.")
         judge = resolve_judge(self._judge_cfg)
         ctx = (
             f"Question: {case.input}\n\n"
@@ -367,7 +431,9 @@ class ContextPrecision(Evaluator):
 
     def evaluate(self, case: EvalCase, output: str) -> EvalResult:
         if not case.context:
-            return self._result(0.0, "No context provided")
+            return self._skipped(
+                "Requires case.context — supply retrieved chunks to evaluate precision.",
+            )
         judge = resolve_judge(self._judge_cfg)
         chunks = case.context if isinstance(case.context, list) else [case.context]
         results, reasons = [], []
@@ -404,16 +470,9 @@ class ContextRecall(Evaluator):
 
     def evaluate(self, case: EvalCase, output: str) -> EvalResult:
         if not case.context or not case.expected_output:
-            # Skipped evaluations should not count as quality failures — they
-            # mean the data shape doesn't support this metric. Return a passing
-            # 1.0 with a clear "skipped" reason so the aggregate pass_rate
-            # reflects actual quality, not missing ground truth. The reason
-            # string starts with [skipped] so users can filter on it.
-            return EvalResult(
-                evaluator=self.name, score=1.0, passed=True,
-                reason="[skipped] Requires both case.context and case.expected_output — "
-                       "add expected_output to your case to enable ContextRecall.",
-                metadata={"skipped": True},
+            return self._skipped(
+                "Requires both case.context and case.expected_output — "
+                "add expected_output to your case to enable ContextRecall.",
             )
         judge = resolve_judge(self._judge_cfg)
         ctx = (

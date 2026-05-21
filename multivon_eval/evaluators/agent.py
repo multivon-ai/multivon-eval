@@ -71,17 +71,40 @@ class ToolCallAccuracy(Evaluator):
         self.penalize_unexpected = penalize_unexpected
 
     def evaluate(self, case: EvalCase, output: str) -> EvalResult:
-        if not case.agent_trace:
-            return self._result(0.0, "No agent_trace provided")
-        if not case.expected_tool_calls:
-            return self._result(0.0, "No expected_tool_calls provided")
+        # Distinguish the three cases sharply:
+        #   1. expected_tool_calls=None    → user didn't assert anything; skip.
+        #   2. expected_tool_calls=[]      → user explicitly says "no tools";
+        #                                    if trace has no tool calls too,
+        #                                    that's a PASS, not a skip.
+        #   3. expected_tool_calls=[...]   → real expectation; need a trace.
+        if case.expected_tool_calls is None:
+            return self._skipped(
+                "Requires case.expected_tool_calls — set it (or [] to assert no tools) to enable ToolCallAccuracy.",
+            )
 
         actual_calls = [
             tc.name
-            for step in case.agent_trace
+            for step in (case.agent_trace or [])
             for tc in step.tool_calls
         ]
         expected = case.expected_tool_calls
+
+        # Explicit "no tools should be called" assertion.
+        if expected == []:
+            if not actual_calls:
+                return self._result(1.0, "Correctly called no tools (expected: [])")
+            # Tools were called when none were expected — that's a real failure
+            # the user wants to see, even when penalize_unexpected=False.
+            return self._result(
+                0.0,
+                f"Unexpected tool calls — expected none, got: {actual_calls}",
+            )
+
+        # Real expectation but no trace — we can't compute anything meaningful.
+        if not case.agent_trace:
+            return self._skipped(
+                "Requires case.agent_trace to evaluate expected_tool_calls.",
+            )
 
         if self.require_order:
             # Ordered match
@@ -134,7 +157,9 @@ class ToolArgumentAccuracy(Evaluator):
 
     def evaluate(self, case: EvalCase, output: str) -> EvalResult:
         if not case.agent_trace:
-            return self._result(0.0, "No agent_trace provided")
+            return self._skipped(
+                "Requires case.agent_trace — no tool calls to inspect.",
+            )
 
         all_tool_calls = [tc for step in case.agent_trace for tc in step.tool_calls]
         if not all_tool_calls:
@@ -179,7 +204,7 @@ class PlanQuality(Evaluator):
 
     def evaluate(self, case: EvalCase, output: str) -> EvalResult:
         if not case.agent_trace:
-            return self._result(0.0, "No agent_trace provided")
+            return self._skipped("Requires case.agent_trace — no execution trace to score.")
 
         trace = _trace_str(case.agent_trace)
         ctx = f"Task: {case.input}\n\nAgent execution trace:\n{trace}\n\nFinal output: {output}"
@@ -238,7 +263,12 @@ class ToolCallNecessity(Evaluator):
 
     def evaluate(self, case: EvalCase, output: str) -> EvalResult:
         if not case.agent_trace:
-            return self._result(0.0, "No agent_trace provided")
+            # No trace + no claimed tool calls = "agent didn't call any tools",
+            # which is the correct, non-redundant outcome for many cases
+            # (e.g. trivial questions). Treat as PASS, not as a missing-data
+            # failure. Distinguishes from "user didn't supply trace at all" by
+            # the absence of expected_tool_calls — covered by accuracy evaluator.
+            return self._result(1.0, "No agent trace and no tool calls — nothing to flag as redundant.")
 
         all_tool_calls = [tc for step in case.agent_trace for tc in step.tool_calls]
         if not all_tool_calls:
@@ -294,7 +324,9 @@ class TrajectoryEfficiency(Evaluator):
 
     def evaluate(self, case: EvalCase, output: str) -> EvalResult:
         if not case.agent_trace:
-            return self._result(0.0, "No agent_trace provided")
+            return self._skipped(
+                "Requires case.agent_trace — no execution trace to score for efficiency.",
+            )
 
         trace = _trace_str(case.agent_trace)
         step_count = len(case.agent_trace)
@@ -369,7 +401,7 @@ class AgentMemoryEval(Evaluator):
 
     def evaluate(self, case: EvalCase, output: str) -> EvalResult:
         if not case.context:
-            return self._result(0.0, "No context provided — agent_memory requires prior session context")
+            return self._skipped("Requires case.context — supply prior session context to enable AgentMemoryEval.")
 
         ctx = (
             f"Prior session context:\n{case.context}\n\n"
@@ -404,7 +436,7 @@ class StepFaithfulness(Evaluator):
 
     def evaluate(self, case: EvalCase, output: str) -> EvalResult:
         if not case.agent_trace:
-            return self._result(0.0, "No agent_trace provided")
+            return self._skipped("Requires case.agent_trace — no execution trace to score.")
 
         results, reasons = [], []
         for i, step in enumerate(case.agent_trace[:8], 1):
