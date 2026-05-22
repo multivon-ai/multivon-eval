@@ -72,12 +72,23 @@ class EvalResult:
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
-class EvalGateFailure(SystemExit):
+class EvalGateFailure(Exception, SystemExit):
     """
     Raised when a gate on the run fails (pass_rate, budget, etc.).
 
-    Subclasses SystemExit so CI scripts see exit code 1. Can be caught
-    explicitly by callers that want to inspect the report before exiting.
+    Inherits from BOTH ``Exception`` and ``SystemExit`` so:
+      - Library callers can catch with ``except Exception`` or ``except
+        EvalGateFailure`` and inspect the report before deciding what to
+        do (e.g., in notebooks or test harnesses).
+      - CI scripts that leave the exception uncaught still get clean
+        process-exit semantics (non-zero exit code, no Python traceback
+        noise) — Python's default unhandled-exception handler treats it
+        as a SystemExit and prints just the message to stderr.
+
+    Field-reproduced (App 4 of the SDK deepdive): users running
+    ``report.assert_budget()`` inside their own ``except Exception`` blocks
+    couldn't catch the violation under the SystemExit-only base class
+    that shipped through 0.8.2.
 
     pass_rate and threshold are set for pass-rate gate failures and may be
     None for other gate types (e.g., budget violations).

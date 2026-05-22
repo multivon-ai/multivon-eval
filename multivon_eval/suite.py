@@ -437,6 +437,28 @@ class EvalSuite:
         if verbose:
             print_report(report)
 
+        # Judge-availability check — when most cases hit a judge_error,
+        # the run is meaningless quality data. Common cause: missing
+        # provider SDK (e.g. user pointed JudgeConfig at provider="google"
+        # without `pip install multivon-eval[google]`). Surface this loud
+        # whether or not the user set fail_threshold — otherwise they see
+        # pass_rate=0% / cost=$0 and assume the *model* failed.
+        if report.total > 0:
+            judge_err_count = report.errors_by_kind.get("judge_error", 0)
+            if judge_err_count >= max(2, report.total / 2):
+                first_judge_err = next(
+                    (cr.judge_error for cr in report.case_results if cr.judge_error),
+                    "(no detail)",
+                )
+                import sys as _sys
+                _sys.stderr.write(
+                    f"\n  ⚠ judge availability: {judge_err_count}/{report.total} case(s) "
+                    f"hit a judge error. The pass-rate above does NOT reflect quality.\n"
+                    f"    First error: {first_judge_err[:200]}\n"
+                    f"    Fix the judge configuration before trusting these results.\n\n"
+                )
+                _sys.stderr.flush()
+
         # Auto-save outputs when CLI flags are injected via env vars OR
         # via the save_* kwargs. Both run BEFORE the fail_threshold gate
         # so a failing eval still leaves a JSON for `multivon-eval view`
