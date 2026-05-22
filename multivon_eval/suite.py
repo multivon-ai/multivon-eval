@@ -892,17 +892,28 @@ class EvalSuite:
         judge_retry: "JudgeRetry | None" = None,
     ) -> list[CaseResult]:
         # ContextVars don't propagate to ThreadPoolExecutor workers
-        # automatically — copy the caller's context so each worker sees the
-        # active CostTracker, request-scoped judge config, etc. Without this,
-        # `report.costs` is empty whenever workers > 1.
+        # automatically — each submission needs its own snapshot of the
+        # caller's context so the active CostTracker, request-scoped
+        # judge config, etc. are visible inside the worker. Without
+        # this, `report.costs` is empty whenever workers > 1.
+        #
+        # Critically, the snapshot has to be PER-SUBMISSION. A single
+        # `parent_ctx = contextvars.copy_context()` reused across all
+        # threads triggers `RuntimeError: cannot enter context: ...
+        # is already entered` because a Context object cannot be
+        # entered more than once concurrently. Threads 1..N would
+        # silently swallow that error into their CaseResult via the
+        # except clause below, and the user would see N-1 cases with
+        # results=[] and actual_output="[ERROR: cannot enter ...]"
+        # while only case 0 ran. Field-reproduced in App 1 of the
+        # SDK deepdive.
         import contextvars
-        parent_ctx = contextvars.copy_context()
 
         results: dict[int, CaseResult] = {}
         with ThreadPoolExecutor(max_workers=workers) as pool:
             futures = {
                 pool.submit(
-                    parent_ctx.run,
+                    contextvars.copy_context().run,
                     self._run_case_with_retry, case, model_fn, runs,
                     None, False, judge_retry,
                 ): i
