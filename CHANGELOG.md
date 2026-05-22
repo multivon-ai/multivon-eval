@@ -2,6 +2,44 @@
 
 All notable changes to `multivon-eval`. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) as of 0.7.0.
 
+## [0.9.0] — 2026-05-23
+
+Field-report release. A fresh-user dogfood pass + a 5-app SDK deepdive surfaced a cluster of UX gaps and one parallel-execution regression. Most of the work is making the SDK behave the way its docs already promised.
+
+### Added
+
+- **`multivon-eval doctor`** — new pre-flight CLI that verifies Python version, API keys (Anthropic / OpenAI / Google), live provider pings, optional deps (presidio, opentelemetry, datasets), and `~/.multivon` writability. Rich-rendered by default; `--json` for CI consumption. Exits 0 / 1 / 2 for ok / error / warn so CI gates can branch on the outcome.
+- **`multivon-eval bootstrap --validate`** — optional N-shot judge-noise filter on the generated seed cases via the existing `validate_adversarial_cases` primitive. Drops cases outside the (0.5, 1.0) hardness band against a stub-refusal baseline. Adds a `hardness_report.jsonl` alongside the filtered `seed_cases.jsonl` so a reviewer can audit what was thrown out.
+- **`Evaluator._skipped(reason)` helper** — base-class method that returns `EvalResult(score=1.0, passed=True, reason="[skipped] ...", metadata={"skipped": True})`. Used by every evaluator that previously returned `score=0.0` when the case shape didn't fit (see Fixed below).
+- **Skip propagation across the evaluator catalog.** When the case shape doesn't fit an evaluator — no `context` for a RAG metric, no `expected_output` for an exact-match metric, no `agent_trace` for a tool metric — the evaluator now returns a skipped pass instead of a 0.0-score failure. Applies to `Faithfulness`, `Hallucination`, `ContextPrecision`, `AnswerAccuracy`, summarization checks, `ToolCallAccuracy`, `ToolCallNecessity`, `ToolArgumentAccuracy`, `TrajectoryEfficiency`, `PlanQuality`, `StepFaithfulness`, `AgentMemoryEval`, `ExactMatch` + 3 other deterministic, 2 text-metric evaluators, and all 4 conversation evaluators.
+- **Refusal detection on Faithfulness + Hallucination.** Short responses (<240 chars) starting with one of the known refusal prefixes ("I don't know", "I cannot", "Sorry", etc.) now skip these metrics — a correct refusal doesn't make substantive claims, so faithfulness is N/A.
+- **`ToolCallAccuracy` three-shape semantics.** `expected_tool_calls=None` skips. `expected_tool_calls=[]` + no calls = PASS ("Correctly called no tools"); `expected_tool_calls=[]` + any tool = FAIL. `expected_tool_calls=[...]` requires `agent_trace` to evaluate (skips if absent).
+- **Parallel execution by default.** `EvalSuite.run(workers=...)` now auto-picks `min(8, len(cases))` when no tracer is supplied (was 1). A 10-case × 6-evaluator RAG suite drops from ~167s serial to ~17s with workers=8.
+- **`PIIEvaluator` rewritten for full standards coverage** with checksum validation and per-pattern citations to source standards:
+  - HIPAA Safe Harbor (45 CFR § 164.514(b)(2)) — all 18 identifier categories where regex is feasible (13/18). MRN widened to 4–15 digits. PERSON_NAME via high-precision context-led pattern catches "Patient John Smith" / "Mr. Doe" / "Dr. Wilson". age_over_89 detection. Stricter admission/discharge/death-date patterns.
+  - GDPR (Reg EU 2016/679, Art.4(1)) — UK NI Number, NHS Number (Mod-11 validated), Spain DNI/NIE, Italy Codice Fiscale, France NIR, Germany Steuer-IdNr, Netherlands BSN, Poland PESEL, Sweden Personnummer, Denmark CPR, Ireland PPSN, Finland HETU, IBAN (Mod-97 validated per ISO 13616).
+  - DPDP India (Act 22 of 2023) — Aadhaar with Verhoeff checksum, PAN with structural validation, GSTIN, IFSC, Voter ID (EPIC), +91 mobile, Indian Driving License, Indian Passport, Vehicle Registration, Ration Card.
+  - CCPA (Cal. Civ. Code § 1798.140(o)) — context-anchored bank account, California Driver's License.
+  - New `strict=True` (default) runs Luhn / Verhoeff / Mod-97 / Mod-11 / structural validators to drop false positives on transaction IDs and order numbers.
+  - New `use_ner=True` lazy-imports `presidio_analyzer` for partial coverage of HIPAA categories regex can't reach (unprefixed names, free-form addresses). Silent no-op when Presidio isn't installed.
+- **Bootstrap discovery report deterministic from final evaluator list.** "Why this mix" prose is now generated from the committed `EvaluatorRecommendation[]` list, not a separate LLM prose pass. Eliminates the previous drift where the report said "we skip Hallucination" while the suite included it, or "add PIIEvaluator" while the suite omitted it. The LLM proposer's notes are moved to a clearly-labeled "Proposer notes (advisory)" footer. When traces contain PII but the suite omits `PIIEvaluator`, the report surfaces a `⚠ PII gap` callout with the exact `suite.add_evaluators(PIIEvaluator(...))` snippet to add.
+- **Calibration N-warning.** Bootstrap writes a stderr warning when `n_traces < 20` explaining that p25 over a small sample has wide CIs and the resulting thresholds shouldn't be treated as authoritative.
+- **`EvalReport` API reference docs page** (`docs/reference/eval-report.mdx`). Every public attribute and method documented with type + one-line description, plus a "common gotchas" section for the `cases` vs `case_results` / `summary` JSON-vs-attr / `passed_by_evaluator` method-vs-attr drifts.
+
+### Fixed
+
+- **CRITICAL: `_run_parallel` silently dropped all but the first case.** Regression introduced when parallel-by-default landed: a single `parent_ctx = contextvars.copy_context()` was reused across every `ThreadPoolExecutor` submission. Per Python docs, a single `Context` cannot be entered concurrently — `parent_ctx.run()` raises `RuntimeError` when another thread is already inside it. Threads 1..N silently captured the error into `CaseResult.actual_output` (`"[ERROR: cannot enter context: ... is already entered]"`) and the user saw all-but-the-first case appear to fail with empty results. Fixed by per-submission `contextvars.copy_context().run()` — each thread gets its own Context snapshot.
+- **`EvalGateFailure` now inherits from `Exception` AND `SystemExit`.** Previously a `SystemExit`-only base meant library users couldn't catch it with `except Exception:` — a common pattern in notebooks, test harnesses, and Jupyter. Dual-inherit keeps CI exit semantics (uncaught instances still exit non-zero cleanly without traceback noise) while making `except Exception as e:` work for budget gate handling.
+- **Loud stderr warning when most cases hit a judge error.** When `judge_error >= max(2, total/2)` after a run, `suite.run()` writes a block at end-of-run naming the first error verbatim. Catches the "I forgot `pip install multivon-eval[google]`" footgun — previously the user saw `pass_rate=0%, cost=$0, calls=0` and assumed the model failed; now they see the `JudgeUnavailable` message at the top of the block.
+- **Bootstrap `eval_suite.py` no longer truncates rationale into inline comments.** Full rationale lives in the module docstring; inline comments carry only the tier tag.
+
+### Notes
+
+- Existing 0.8.x users with custom `JudgeRetry` policies, custom adapters, or downstream code calling `report.assert_budget()` are unaffected by the `EvalGateFailure` base-class change.
+- The `--validate` flag on `bootstrap` is opt-in; default behavior is unchanged.
+- The skip-propagation change affects aggregate pass-rate numbers on existing suites — cases that previously failed at 0.0 because the data shape didn't fit will now appear as a passing-but-skipped result. Use `cr.results[i].metadata.get("skipped")` to filter when analyzing.
+- App 1–5 of the SDK deepdive (~$0.05 of real API spend across Anthropic / OpenAI / Gemini judges) serve as the integration smoke tests for the changes above.
+
 ## [0.8.2] — 2026-05-20
 
 Second dogfood pass after 0.8.1 surfaced a UX paper cut: `EvalSuite.for_rag()` auto-includes `ContextRecall`, but a RAG case without `expected_output` made it return `score=0.0, passed=False` with a "Requires …" reason — looking like a quality failure when the data shape just didn't support the metric.

@@ -20,7 +20,7 @@ class TestPIIEvaluator:
             "gdpr": "Contact me at jane@example.com and VAT DE123456789.",
             "ccpa": "Email jane@example.com and bank account 123456789012.",
             "pipeda": "Call me at 415-555-1212 or email jane@example.com.",
-            "dpdp": "Aadhaar 1234 5678 9012 and PAN ABCDE1234F linked to GSTIN 27ABCDE1234F1Z5.",
+            "dpdp": "Aadhaar 2341 2341 2346 and PAN BNZPM2501F linked to GSTIN 27BNZPM2501F1Z5.",
             "all": "Patient MRN 123456, VAT DE123456789, and email jane@example.com.",
         }
         for jurisdiction, output in outputs.items():
@@ -116,21 +116,21 @@ class TestPIIEvaluatorDPDPSpecific:
 
     def test_aadhaar_detected(self):
         result = PIIEvaluator(jurisdiction="dpdp").evaluate(
-            case(), "Customer KYC linked Aadhaar 1234 5678 9012 on file."
+            case(), "Customer KYC linked Aadhaar 2341 2341 2346 on file."
         )
         assert not result.passed
         assert "aadhaar" in result.reason.lower()
 
     def test_pan_detected(self):
         result = PIIEvaluator(jurisdiction="dpdp").evaluate(
-            case(), "Quoted PAN ABCDE1234F on invoice."
+            case(), "Quoted PAN BNZPM2501F on invoice."
         )
         assert not result.passed
         assert "pan" in result.reason.lower()
 
     def test_gstin_detected(self):
         result = PIIEvaluator(jurisdiction="dpdp").evaluate(
-            case(), "Vendor GSTIN 27ABCDE1234F1Z5 registered in Maharashtra."
+            case(), "Vendor GSTIN 27BNZPM2501F1Z5 registered in Maharashtra."
         )
         assert not result.passed
         assert "gstin" in result.reason.lower()

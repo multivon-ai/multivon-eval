@@ -35,8 +35,9 @@ class TestExactMatch:
     def test_case_sensitive(self):
         assert not ExactMatch(case_sensitive=True).evaluate(case(expected="paris"), "PARIS").passed
 
-    def test_no_expected_fails(self):
-        assert not ExactMatch().evaluate(case(), "anything").passed
+    def test_no_expected_skips(self):
+        r = ExactMatch().evaluate(case(), "anything")
+        assert r.passed and r.metadata.get("skipped") and r.reason.startswith("[skipped]")
 
 
 class TestContains:
@@ -110,8 +111,9 @@ class TestBLEU:
         r = BLEU(n=2).evaluate(case(expected="the quick brown fox"), "the quick fox")
         assert 0.0 < r.score < 1.0
 
-    def test_no_expected(self):
-        assert not BLEU().evaluate(case(), "anything").passed
+    def test_no_expected_skips(self):
+        r = BLEU().evaluate(case(), "anything")
+        assert r.passed and r.metadata.get("skipped") and r.reason.startswith("[skipped]")
 
 
 class TestROUGE:
@@ -164,9 +166,10 @@ class TestToolCallAccuracy:
         r = ToolCallAccuracy().evaluate(c, "done")
         assert r.score == 0.5
 
-    def test_no_trace(self):
+    def test_no_trace_skips(self):
         c = EvalCase(input="test", expected_tool_calls=["search"])
-        assert not ToolCallAccuracy().evaluate(c, "done").passed
+        r = ToolCallAccuracy().evaluate(c, "done")
+        assert r.passed and r.metadata.get("skipped") and r.reason.startswith("[skipped]")
 
     def test_ordered_correct(self):
         c = EvalCase(

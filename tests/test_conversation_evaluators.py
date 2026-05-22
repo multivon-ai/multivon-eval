@@ -40,8 +40,8 @@ class TestConversationRelevance:
 
     def test_edge_case_no_conversation(self):
         result = ConversationRelevance().evaluate(conversation_case(None), "Anything")
-        assert not result.passed
-        assert "No conversation provided" in result.reason
+        assert result.passed
+        assert result.reason.startswith("[skipped]")
 
 
 class TestKnowledgeRetention:
@@ -70,7 +70,7 @@ class TestKnowledgeRetention:
 
     def test_edge_case_no_conversation(self):
         result = KnowledgeRetention().evaluate(conversation_case(None), "Anything")
-        assert not result.passed
+        assert result.passed
 
 
 class TestConversationCompleteness:
@@ -92,7 +92,7 @@ class TestConversationCompleteness:
 
     def test_edge_case_no_conversation(self):
         result = ConversationCompleteness().evaluate(conversation_case(None), "Anything")
-        assert not result.passed
+        assert result.passed
 
 
 class TestTurnConsistency:
@@ -114,4 +114,4 @@ class TestTurnConsistency:
 
     def test_edge_case_no_conversation(self):
         result = TurnConsistency().evaluate(conversation_case(None), "Anything")
-        assert not result.passed
+        assert result.passed

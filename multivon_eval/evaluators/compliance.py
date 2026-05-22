@@ -349,6 +349,11 @@ _CASE_SENSITIVE = {
     "fr_nir", "pl_pesel", "se_personnummer", "dk_cpr", "ie_ppsn", "fi_hetu",
     "vin", "pan", "gstin", "ifsc", "voter_id", "in_driving_license",
     "in_passport", "in_vehicle_reg",
+    # patient_name relies on TitleCase guards ([A-Z][a-z'\-]+) to keep
+    # false-positive rate down. IGNORECASE would let "patient was" match
+    # because [A-Z] would accept lowercase letters too. Keep case-sensitive
+    # so the regex behaves as the comment block describes.
+    "patient_name",
 }
 
 

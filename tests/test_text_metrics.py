@@ -89,7 +89,7 @@ def test_levenshtein_missing_expected_output_returns_zero():
     ev = Levenshtein()
     case = EvalCase(input="x")  # no expected_output
     res = ev.evaluate(case, "anything")
-    assert res.score == 0.0
+    assert res.passed and res.metadata.get('skipped') and res.reason.startswith('[skipped]')
     assert "expected_output" in res.reason.lower()
 
 
