@@ -23,12 +23,13 @@ Experiment tracking (compare runs across versions):
     exp.compare(old_run_id, run_id)
 """
 
-__version__ = "0.9.0"
+__version__ = "0.9.1"
 
 from .suite import EvalSuite
 from .case import EvalCase, AgentStep, ToolCall
 from .judge import JudgeConfig, configure
 from .adapters import ModelAdapter, OpenAIAdapter, AnthropicAdapter, LiteLLMAdapter
+from .vision import call_vision  # vision-call dispatch for image/PDF inputs (0.9.1)
 from .integrations import (
     AgentTracer, CaseImporter,
     ManualTracer, LangChainTracer,

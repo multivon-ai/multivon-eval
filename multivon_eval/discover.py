@@ -1035,13 +1035,19 @@ def _call_judge(judge_cfg: JudgeConfig, system: str, user: str) -> str:
     if judge_cfg.provider == "anthropic":
         import anthropic
         client = anthropic.Anthropic()
-        resp = client.messages.create(
+        # Anthropic reasoning-tier models (claude-opus-4-7+, claude-opus-5+)
+        # reject the temperature parameter with a 400. Omit for those.
+        m = (judge_cfg.model or "").lower()
+        omit_temp = m.startswith("claude-opus-4-7") or m.startswith("claude-opus-5")
+        kwargs: dict = dict(
             model=judge_cfg.model,
             max_tokens=2048,
-            temperature=0.2,
             system=system,
             messages=[{"role": "user", "content": user}],
         )
+        if not omit_temp:
+            kwargs["temperature"] = 0.2
+        resp = client.messages.create(**kwargs)
         return resp.content[0].text
 
     if judge_cfg.provider == "openai":

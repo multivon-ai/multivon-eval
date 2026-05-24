@@ -310,6 +310,12 @@ class AnthropicAdapter(ModelAdapter):
                         from the ANTHROPIC_API_KEY environment variable.
         system_prompt:  Optional system message.
         temperature:    Sampling temperature (default 0.0 for determinism).
+                        Note: Anthropic's reasoning-tier models — claude-opus-4-7
+                        and the claude-opus-5+ family — deprecated this
+                        parameter and reject the request with a 400 if it's
+                        present. We detect those models by name and silently
+                        drop the field; older models still honour it. See
+                        ``_supports_temperature`` below.
         max_tokens:     Max output tokens (default 1024).
         **kwargs:       Extra keyword args forwarded to client.messages.create().
 
@@ -348,20 +354,47 @@ class AnthropicAdapter(ModelAdapter):
             )
         return anthropic.Anthropic()
 
+    def _supports_temperature(self) -> bool:
+        """Whether this model accepts the ``temperature`` parameter.
+
+        Anthropic's reasoning-tier models (claude-opus-4-7 and the
+        claude-opus-5+ family) reject ``temperature`` with a 400. We omit
+        the field for those models and let the SDK use the model's default
+        (effectively deterministic for the reasoning tier). Older models
+        (claude-3, claude-3-5, claude-haiku-4, claude-sonnet-4, claude-opus-3)
+        still accept and honour temperature, so we keep it for them.
+
+        Detection is name-prefix-based — covers ``claude-opus-4-7``,
+        ``claude-opus-4-7-20251101``, ``claude-opus-5``, ``claude-opus-5-1``,
+        etc. without listing every dated variant.
+        """
+        m = (self.model or "").lower()
+        return not (m.startswith("claude-opus-4-7") or m.startswith("claude-opus-5"))
+
     def _build_messages(self, input: str) -> list[dict[str, str]]:
         return [{"role": "user", "content": input}]
 
-    def __call__(self, input: str) -> str:
-        client = self._get_client()
+    def _build_kwargs(self, messages: list[dict], system: str = "") -> dict[str, Any]:
+        """Compose the kwargs for client.messages.create.
+
+        Centralised so both ``__call__`` and ``_call_with_case`` share the
+        same logic for omitting ``temperature`` on reasoning-tier models.
+        """
         kwargs: dict[str, Any] = dict(
             model=self.model,
-            messages=self._build_messages(input),
-            temperature=self._temperature,
+            messages=messages,
             max_tokens=self._max_tokens,
             **self._extra,
         )
-        if self._system_prompt:
-            kwargs["system"] = self._system_prompt
+        if self._supports_temperature():
+            kwargs["temperature"] = self._temperature
+        if system:
+            kwargs["system"] = system
+        return kwargs
+
+    def __call__(self, input: str) -> str:
+        client = self._get_client()
+        kwargs = self._build_kwargs(self._build_messages(input), self._system_prompt)
         response = client.messages.create(**kwargs)
         return response.content[0].text
 
@@ -381,14 +414,6 @@ class AnthropicAdapter(ModelAdapter):
         else:
             system = self._system_prompt
 
-        kwargs: dict[str, Any] = dict(
-            model=self.model,
-            messages=self._build_messages(case.input),
-            temperature=self._temperature,
-            max_tokens=self._max_tokens,
-            **self._extra,
-        )
-        if system:
-            kwargs["system"] = system
+        kwargs = self._build_kwargs(self._build_messages(case.input), system)
         response = client.messages.create(**kwargs)
         return response.content[0].text

@@ -2,6 +2,25 @@
 
 All notable changes to `multivon-eval`. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) as of 0.7.0.
 
+## [0.9.1] — 2026-05-24
+
+Patch release driven by the pdfhell mini-v4 eval-pipeline post-mortem (see `multivon-ai/pdfhell/pdfhell/research/CORRECTION_NOTICE.md`). Same Anthropic API change that silently broke every Opus 4-7 call in the pdfhell leaderboard would have broken any multivon-eval consumer using Opus 4-7 as a judge — this release closes that gap upstream.
+
+### Fixed
+
+- **`AnthropicAdapter` now omits `temperature` for the reasoning tier.** Anthropic's `claude-opus-4-7` and the `claude-opus-5+` family reject the parameter with a 400. The adapter detects those models by name prefix and drops the field; older models (`claude-haiku-4-5`, `claude-sonnet-4-6`, `claude-3-5-*`, etc.) still receive `temperature` unchanged. Same fix applied to `multivon_eval.discover._call_judge`. New helper `AnthropicAdapter._supports_temperature()` exposes the decision for subclassers.
+
+### Added
+
+- **`multivon_eval.vision`** — vision-call dispatch wrapped behind a single `call_vision(prompt, sources, judge, max_tokens)` function. Previously lived in `pdfhell.vision`; promoted here so any multivon-eval consumer (pdfhell, image-graded benchmarks, multimodal RAG audits) can grade documents/images without re-implementing per-provider content-block conversions. Providers: `anthropic`, `openai`, `google`, `ollama`. PDFs are rasterised via `pypdfium2` for ollama (which expects images, not PDFs).
+
+- **`ollama:` as a first-class `JudgeConfig` provider.** Previously you had to pass `provider="litellm"` and `model="ollama/llama3.2"`. Now `JudgeConfig(provider="ollama", model="llama3.2")` resolves to the same litellm-backed call internally. Matches the colon convention used by the rest of the SDK (`anthropic:`, `openai:`, `google:`). Both sync and async judge paths support it. `OLLAMA_HOST` env var sets the base URL (default `http://127.0.0.1:11434`).
+
+### Compatibility
+
+- No breaking changes. `AnthropicAdapter`'s constructor signature is unchanged — `temperature` is still accepted, just silently dropped for the reasoning tier. Existing pinned dependents (incl. `pdfhell>=0.5.0`) work without modification.
+- Tests: 19 new unit tests covering the temperature-fix matrix. Pre-existing test suite (`test_beginner_friendly.py`) has two pre-existing unrelated failures from a model-name issue independent of this release.
+
 ## [0.9.0] — 2026-05-23
 
 Field-report release. A fresh-user dogfood pass + a 5-app SDK deepdive surfaced a cluster of UX gaps and one parallel-execution regression. Most of the work is making the SDK behave the way its docs already promised.
