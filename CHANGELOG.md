@@ -2,6 +2,24 @@
 
 All notable changes to `multivon-eval`. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) as of 0.7.0.
 
+## [0.9.2] — 2026-05-27
+
+Patch release hardening the zero-setup paths. `python -m multivon_eval` and the local-judge flow (Ollama / LM Studio / vLLM) now work out of the box, even on a machine where a local server is running but no model is pulled.
+
+### Fixed
+
+- **Local OpenAI-compatible judges no longer fail with "Missing credentials."** When `JudgeConfig.base_url` is set (Ollama on `:11434`, LM Studio on `:1234`, vLLM, any OpenAI-compatible endpoint) and `OPENAI_API_KEY` is unset, the OpenAI SDK refused to even construct the client. The judge call now supplies a placeholder key for local endpoints, so the documented local-judge path works without a cloud key. Applies to both the sync and async judge paths.
+- **`python -m multivon_eval` never exits with a traceback.** Previously, a local server listening on `:11434` with no model pulled was auto-detected, an LLM-judge evaluator was added, and the resulting judge error propagated out of `suite.run()` as an uncaught `JudgeUnavailable` (exit 1 + stack trace) — contradicting the "30 seconds, no API key" promise. The demo now liveness-probes the detected judge before enabling it (and prints an honest header when it's unreachable), with a safety net around `suite.run()` that falls back to the deterministic tier if a judge dies mid-run.
+
+### Added
+
+- **`multivon-eval --version`** prints the installed version, for parity with the rest of the CLI surface.
+
+### Docs
+
+- Package metadata `Documentation` URL fixed (`evaldocs.multivon.ai` → `docs.multivon.ai`; the old host did not resolve).
+- Contributing clone instructions corrected (`cd llm-evals` → `cd multivon-eval`).
+
 ## [0.9.1] — 2026-05-24
 
 Patch release driven by the pdfhell mini-v4 eval-pipeline post-mortem (see `multivon-ai/pdfhell/pdfhell/research/CORRECTION_NOTICE.md`). Same Anthropic API change that silently broke every Opus 4-7 call in the pdfhell leaderboard would have broken any multivon-eval consumer using Opus 4-7 as a judge — this release closes that gap upstream.

@@ -278,7 +278,9 @@ def cmd_generate(args):
 
 
 def main():
+    from . import __version__
     parser = argparse.ArgumentParser(prog="multivon-eval", description="Multivon Eval CLI")
+    parser.add_argument("--version", action="version", version=f"multivon-eval {__version__}")
     sub = parser.add_subparsers(dest="command")
 
     # init — scaffold a starter project

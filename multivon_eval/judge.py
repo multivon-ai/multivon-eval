@@ -281,12 +281,26 @@ def _sync_anthropic_call(prompt: str, config: JudgeConfig) -> str:
     return response.content[0].text
 
 
-def _sync_openai_call(prompt: str, config: JudgeConfig) -> str:
-    import openai
+def _openai_client_kwargs(config: JudgeConfig) -> dict:
+    """Build kwargs for the OpenAI client.
+
+    Local OpenAI-compatible servers (Ollama, LM Studio, vLLM) don't need a real
+    key, but the OpenAI SDK still requires *some* api_key to construct the
+    client and raises "Missing credentials" otherwise. Supply a placeholder when
+    a base_url is set and the user hasn't exported OPENAI_API_KEY, so the
+    documented local-judge path works out of the box.
+    """
     client_kwargs: dict = {}
     if config.base_url:
         client_kwargs["base_url"] = config.base_url
-    client = openai.OpenAI(**client_kwargs)
+        if not os.getenv("OPENAI_API_KEY"):
+            client_kwargs["api_key"] = "sk-local-no-key-required"
+    return client_kwargs
+
+
+def _sync_openai_call(prompt: str, config: JudgeConfig) -> str:
+    import openai
+    client = openai.OpenAI(**_openai_client_kwargs(config))
     response = client.chat.completions.create(
         model=config.model,
         max_completion_tokens=config.max_tokens,
@@ -519,10 +533,7 @@ async def _async_anthropic_call(prompt: str, config: JudgeConfig) -> str:
 
 async def _async_openai_call(prompt: str, config: JudgeConfig) -> str:
     import openai
-    client_kwargs: dict = {}
-    if config.base_url:
-        client_kwargs["base_url"] = config.base_url
-    client = openai.AsyncOpenAI(**client_kwargs)
+    client = openai.AsyncOpenAI(**_openai_client_kwargs(config))
     response = await client.chat.completions.create(
         model=config.model,
         max_completion_tokens=config.max_tokens,

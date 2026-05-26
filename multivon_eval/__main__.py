@@ -60,6 +60,24 @@ def _detect_judge() -> tuple[str, str, str]:
     return "", "", ""
 
 
+def _judge_reachable(cfg) -> tuple[bool, str]:
+    """Liveness-probe the detected judge with one tiny call.
+
+    The "no setup" demo must never crash. A backend can be *detected* yet
+    unusable — e.g. Ollama is listening on :11434 but the model isn't pulled,
+    or a stale OPENAI_BASE_URL points at a dead server. Probing first lets the
+    demo fall back to the deterministic tier with a clear note instead of
+    dumping a traceback. Returns (ok, first_line_of_reason).
+    """
+    from multivon_eval.judge import make_judge_call
+    try:
+        make_judge_call("Reply with the single word: ok", cfg)
+        return True, ""
+    except Exception as exc:  # a demo probe must never raise
+        text = str(exc).strip()
+        return False, (text.splitlines()[0] if text else type(exc).__name__)
+
+
 # ── Demo ───────────────────────────────────────────────────────────────────────
 
 _RESPONSES: dict[str, str] = {
@@ -100,6 +118,7 @@ def _run_demo() -> None:
 
     provider, model_name, base_url = _detect_judge()
     has_llm = bool(provider)
+    judge_down_reason = ""
 
     suite = EvalSuite("multivon-eval demo · customer support bot")
     suite.add_cases(cases)
@@ -107,13 +126,19 @@ def _run_demo() -> None:
     # Tier 1 — always
     suite.add_evaluators(NotEmpty(), WordCount(min_words=5))
 
-    # Tier 2 / 3 — LLM judge
+    # Tier 2 / 3 — LLM judge. Probe the detected backend first so a
+    # detected-but-unreachable judge degrades to deterministic-only instead of
+    # crashing the "no setup" demo with a traceback.
     if has_llm:
-        from multivon_eval import Relevance
         cfg = JudgeConfig(provider=provider, model=model_name, base_url=base_url)
-        configure(cfg)
-        suite.add_evaluators(Relevance())
-        suite.add_check("Response directly answers the customer's question")
+        ok, judge_down_reason = _judge_reachable(cfg)
+        if ok:
+            from multivon_eval import Relevance
+            configure(cfg)
+            suite.add_evaluators(Relevance())
+            suite.add_check("Response directly answers the customer's question")
+        else:
+            has_llm = False
 
     # Header
     _sep = "─" * 56
@@ -127,6 +152,13 @@ def _run_demo() -> None:
         print(f"  LLM judge : {model_name}  [{src}]")
         print(f"  Tier 1    : NotEmpty, WordCount  (deterministic)")
         print(f"  Tier 2    : Relevance, add_check  (LLM-as-judge)")
+    elif judge_down_reason:
+        src = base_url if base_url else provider
+        print(f"  LLM judge : detected at [{src}] but unreachable — {judge_down_reason}")
+        print("  Tier 1    : NotEmpty, WordCount  (deterministic only)")
+        print()
+        print("  Running the deterministic tier only. Fix the judge above")
+        print("  (e.g. `ollama pull qwen2.5:14b`) to enable LLM evaluators.")
     else:
         print("  LLM judge : not detected")
         print("  Tier 1    : NotEmpty, WordCount  (deterministic only)")
@@ -139,7 +171,25 @@ def _run_demo() -> None:
 
     print(f"\n  {_sep}\n")
 
-    suite.run(_demo_model)
+    try:
+        suite.run(_demo_model)
+    except Exception as exc:
+        # The "no setup" demo must never end in a traceback. The liveness probe
+        # catches a dead judge up front, but a judge that passed the probe can
+        # still fail mid-run (transient outage, a local model that answers the
+        # one-word probe but errors on the longer QAG prompt). suite.run() calls
+        # evaluator.prepare() in a bare loop (suite.py) so that failure would
+        # otherwise propagate. Drop to the deterministic tier and finish clean.
+        if not has_llm:
+            raise  # deterministic-only never calls a judge — a real bug, don't mask it
+        text = str(exc).strip()
+        reason = text.splitlines()[0] if text else type(exc).__name__
+        print(f"  LLM judge failed mid-run ({reason}).")
+        print("  Re-running the deterministic tier only.\n")
+        det = EvalSuite("multivon-eval demo · customer support bot (deterministic only)")
+        det.add_cases(cases)
+        det.add_evaluators(NotEmpty(), WordCount(min_words=5))
+        det.run(_demo_model)
 
 
 # ── Entry point ────────────────────────────────────────────────────────────────

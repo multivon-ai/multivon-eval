@@ -436,7 +436,7 @@ Issues and PRs welcome.
 
 ```bash
 git clone https://github.com/multivon-ai/multivon-eval
-cd llm-evals
+cd multivon-eval
 pip install -e ".[dev]"
 pytest tests/
 ```
