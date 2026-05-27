@@ -2,6 +2,14 @@
 
 All notable changes to `multivon-eval`. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) as of 0.7.0.
 
+## [0.9.3] — 2026-05-28
+
+Patch release: cross-platform fix for lock-file verification.
+
+### Fixed
+
+- **`EvalSuite.verify_lock(<json string>)` no longer crashes on Linux.** The method probed its argument with `Path(s).exists()` to tell a file path from an inline JSON payload, but a lock JSON string is longer than the OS filename limit, so on Linux that raised `OSError: [Errno 36] File name too long` (macOS silently returned `False`). The filesystem probe is now guarded and falls back to parsing the string as JSON. Affects anyone passing a lock payload as a string — including the `eval-action` `lockfile:` input running on Linux runners.
+
 ## [0.9.2] — 2026-05-27
 
 Patch release hardening the zero-setup paths. `python -m multivon_eval` and the local-judge flow (Ollama / LM Studio / vLLM) now work out of the box, even on a machine where a local server is running but no model is pulled.
