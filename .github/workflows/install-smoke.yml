@@ -90,7 +90,12 @@ jobs:
           # exception — that's the contract we want to verify.
           ANTHROPIC_API_KEY: sk-ant-ci-smoke-test-not-real
         run: |
-          jupyter nbconvert --to notebook --execute --output /tmp/executed.ipynb notebooks/quickstart.ipynb || (echo "Notebook execution failed"; exit 1)
+          # --allow-errors: judge calls fail in CI (fake key, no live endpoint),
+          # and that's an acceptable outcome per the contract below. Without it
+          # nbconvert aborts on the first cell error and the API-shape post-check
+          # never runs. We let every cell execute, then fail only on API-shape
+          # regressions (AttributeError/TypeError), not on judge availability.
+          jupyter nbconvert --to notebook --execute --allow-errors --output /tmp/executed.ipynb notebooks/quickstart.ipynb || (echo "Notebook execution failed"; exit 1)
           python -c "
           import json
           nb = json.load(open('/tmp/executed.ipynb'))
