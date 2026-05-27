@@ -110,10 +110,22 @@ class EvalSuite:
         from .lockfile import SuiteLock, verify_suite_against_lock
         if isinstance(saved, SuiteLock):
             lock = saved
-        elif isinstance(saved, (str, _P)) and _P(str(saved)).exists():
-            lock = SuiteLock.from_json(_P(str(saved)).read_text(encoding="utf-8"))
-        elif isinstance(saved, str):
-            lock = SuiteLock.from_json(saved)
+        elif isinstance(saved, (str, _P)):
+            s = str(saved)
+            # A lock JSON payload can be longer than the OS filename limit, so
+            # probing it as a path raises OSError (ENAMETOOLONG) on Linux even
+            # though macOS tolerates it. Guard the FS check and fall back to
+            # parsing the string as JSON.
+            try:
+                is_path = _P(s).exists()
+            except OSError:
+                is_path = False
+            if is_path:
+                lock = SuiteLock.from_json(_P(s).read_text(encoding="utf-8"))
+            elif isinstance(saved, str):
+                lock = SuiteLock.from_json(saved)
+            else:
+                raise TypeError(f"verify_lock: lock file not found: {saved}")
         else:
             raise TypeError(f"verify_lock: unsupported argument {type(saved).__name__}")
         verify_suite_against_lock(self, lock)
