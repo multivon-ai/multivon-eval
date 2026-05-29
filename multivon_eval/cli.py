@@ -277,6 +277,85 @@ def cmd_generate(args):
     print(f"\n  Generated {len(cases)} cases.")
 
 
+def cmd_attribution(args) -> int:
+    """`multivon-eval attribution scan|diff` — structured prompt-diff (Phase 1).
+
+    No causal attribution claims (see multivon_eval/attribution package
+    docstring). The diff command emits Markdown ready to paste into a PR
+    comment.
+    """
+    from . import attribution as attr
+
+    if args.attribution_cmd == "scan":
+        records = attr.scan(args.path)
+        if args.format == "json":
+            import json
+            payload = [
+                {
+                    "call_site_id": r.call_site_id,
+                    "file_path": r.file_path,
+                    "line": r.line,
+                    "sdk": r.sdk,
+                    "call_site": r.call_site,
+                    "role": r.role,
+                    "role_position": r.role_position,
+                    "qualname": r.qualname,
+                    "fingerprint": r.fingerprint,
+                    "is_dynamic": r.is_dynamic,
+                    "text_preview": (r.text[:200] + ("…" if len(r.text) > 200 else "")),
+                }
+                for r in records
+            ]
+            print(json.dumps(payload, indent=2))
+        else:
+            if not records:
+                print(f"No SDK prompt call sites found under {args.path}.")
+            else:
+                print(f"Found {len(records)} prompt(s) across {len({r.file_path for r in records})} file(s):\n")
+                for r in records:
+                    dyn = "  [dynamic]" if r.is_dynamic else ""
+                    preview = r.text.split('\n')[0][:80]
+                    print(f"  {r.call_site_id}{dyn}")
+                    print(f"      qualname={r.qualname}  fp={r.fingerprint[:12]}…")
+                    if not r.is_dynamic:
+                        print(f"      first line: {preview!r}")
+        return 0
+
+    if args.attribution_cmd == "diff":
+        base_records = attr.scan(args.base)
+        head_records = attr.scan(args.head)
+        diffs = attr.diff_records(base_records, head_records)
+        if args.format == "markdown":
+            print(attr.render_markdown(diffs))
+        elif args.format == "json":
+            import json
+            payload = [
+                {
+                    "call_site_id": d.call_site_id,
+                    "change_type": d.change_type,
+                    "before_text": (d.before.text if d.before else None),
+                    "after_text": (d.after.text if d.after else None),
+                    "before_fingerprint": (d.before.fingerprint if d.before else None),
+                    "after_fingerprint": (d.after.fingerprint if d.after else None),
+                }
+                for d in diffs
+            ]
+            print(json.dumps(payload, indent=2))
+        else:
+            # text format
+            if not diffs:
+                print(f"No prompt changes between {args.base} and {args.head}.")
+            else:
+                print(f"{len(diffs)} prompt change(s) between {args.base} and {args.head}:\n")
+                for d in diffs:
+                    print(f"  [{d.change_type}] {d.call_site_id}")
+        return 0
+
+    print("Specify a subcommand: scan or diff. See `multivon-eval attribution --help`.",
+          file=sys.stderr)
+    return 2
+
+
 def main():
     from . import __version__
     parser = argparse.ArgumentParser(prog="multivon-eval", description="Multivon Eval CLI")
@@ -451,6 +530,38 @@ def main():
     boot_p.add_argument("--validate-n-shots", type=int, default=3,
                         help="N-shot count for --validate (default: 3)")
 
+    # attribution — structured prompt-diff (Phase 1; descriptive, no causal claims)
+    attr_p = sub.add_parser(
+        "attribution",
+        help="Structured prompt-diff for AI eval CI (descriptive only, no attribution claims)",
+    )
+    attr_sub = attr_p.add_subparsers(dest="attribution_cmd")
+
+    attr_scan_p = attr_sub.add_parser(
+        "scan",
+        help="Walk a Python repo and list all LLM-SDK prompt call sites",
+    )
+    attr_scan_p.add_argument(
+        "path",
+        help="Path to a Python repo (the working tree or a checkout). Walks recursively, "
+             "skips .venv / node_modules / __pycache__ and other build dirs.",
+    )
+    attr_scan_p.add_argument(
+        "--format", choices=["text", "json"], default="text",
+        help="text (human-readable, default) or json (machine-readable)",
+    )
+
+    attr_diff_p = attr_sub.add_parser(
+        "diff",
+        help="Compute the structured prompt diff between two repo checkouts (base vs head)",
+    )
+    attr_diff_p.add_argument("base", help="Path to the baseline repo checkout")
+    attr_diff_p.add_argument("head", help="Path to the HEAD repo checkout")
+    attr_diff_p.add_argument(
+        "--format", choices=["text", "markdown", "json"], default="markdown",
+        help="markdown (PR-comment-ready, default), text (compact summary), or json",
+    )
+
     args = parser.parse_args()
 
     if args.command == "init":
@@ -487,6 +598,8 @@ def main():
         sys.exit(cmd_doctor(args) or 0)
     elif args.command == "bootstrap":
         sys.exit(cmd_bootstrap(args) or 0)
+    elif args.command == "attribution":
+        sys.exit(cmd_attribution(args) or 0)
     else:
         parser.print_help()
 
