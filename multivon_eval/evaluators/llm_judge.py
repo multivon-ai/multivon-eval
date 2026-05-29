@@ -10,7 +10,7 @@ Judge model is configured via JudgeConfig — decoupled from the metric:
     configure(JudgeConfig(provider="openai", model="gpt-4o-mini"))
 
 Or per-evaluator:
-    Faithfulness(judge=JudgeConfig(provider="anthropic", model="claude-haiku-4-5"))
+    Faithfulness(judge=JudgeConfig(provider="anthropic", model="claude-haiku-4-5-20251001"))
 """
 from __future__ import annotations
 import json

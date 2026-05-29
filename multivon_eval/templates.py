@@ -209,7 +209,7 @@ def _auto_judge() -> JudgeConfig:
     ak = os.getenv("ANTHROPIC_API_KEY", "")
     ok = os.getenv("OPENAI_API_KEY", "")
     if ak.startswith("sk-ant-") and "..." not in ak:
-        return JudgeConfig(provider="anthropic", model="claude-haiku-4-5", temperature=0.0)
+        return JudgeConfig(provider="anthropic", model="claude-haiku-4-5-20251001", temperature=0.0)
     if ok.startswith("sk-") and "..." not in ok:
         return JudgeConfig(provider="openai", model="gpt-4o-mini", temperature=0.0)
     base = os.getenv("OPENAI_BASE_URL", "http://localhost:11434/v1")
@@ -349,7 +349,7 @@ def _have_judge() -> bool:
     ak = os.getenv("ANTHROPIC_API_KEY", "")
     ok = os.getenv("OPENAI_API_KEY", "")
     if ak.startswith("sk-ant-") and "..." not in ak:
-        configure(JudgeConfig(provider="anthropic", model="claude-haiku-4-5", temperature=0.0))
+        configure(JudgeConfig(provider="anthropic", model="claude-haiku-4-5-20251001", temperature=0.0))
         return True
     if ok.startswith("sk-") and "..." not in ok:
         configure(JudgeConfig(provider="openai", model="gpt-4o-mini", temperature=0.0))
@@ -575,7 +575,7 @@ def _auto_judge() -> JudgeConfig:
     ak = os.getenv("ANTHROPIC_API_KEY", "")
     ok = os.getenv("OPENAI_API_KEY", "")
     if ak.startswith("sk-ant-") and "..." not in ak:
-        return JudgeConfig(provider="anthropic", model="claude-haiku-4-5", temperature=0.0)
+        return JudgeConfig(provider="anthropic", model="claude-haiku-4-5-20251001", temperature=0.0)
     if ok.startswith("sk-") and "..." not in ok:
         return JudgeConfig(provider="openai", model="gpt-4o-mini", temperature=0.0)
     base = os.getenv("OPENAI_BASE_URL", "http://localhost:11434/v1")
@@ -710,7 +710,7 @@ def _auto_judge() -> JudgeConfig:
     ak = os.getenv("ANTHROPIC_API_KEY", "")
     ok = os.getenv("OPENAI_API_KEY", "")
     if ak.startswith("sk-ant-") and "..." not in ak:
-        return JudgeConfig(provider="anthropic", model="claude-haiku-4-5", temperature=0.0)
+        return JudgeConfig(provider="anthropic", model="claude-haiku-4-5-20251001", temperature=0.0)
     if ok.startswith("sk-") and "..." not in ok:
         return JudgeConfig(provider="openai", model="gpt-4o-mini", temperature=0.0)
     base = os.getenv("OPENAI_BASE_URL", "http://localhost:11434/v1")
@@ -866,7 +866,7 @@ def _chat_model():
     """Pick whichever chat model the user has configured."""
     if os.getenv("ANTHROPIC_API_KEY", "").startswith("sk-ant-"):
         from langchain_anthropic import ChatAnthropic
-        return ChatAnthropic(model="claude-haiku-4-5", temperature=0)
+        return ChatAnthropic(model="claude-haiku-4-5-20251001", temperature=0)
     if os.getenv("OPENAI_API_KEY", "").startswith("sk-"):
         from langchain_openai import ChatOpenAI
         return ChatOpenAI(model="gpt-4o-mini", temperature=0)

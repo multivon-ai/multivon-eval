@@ -516,8 +516,10 @@ def main():
                         help="Number of adversarial seed cases to generate (default: 30)")
     boot_p.add_argument("--pii-policy", default="redact",
                         choices=["redact", "strict", "allow"],
-                        help="PII handling: redact (default), strict (abort on detection), "
-                             "allow (send raw — requires confirmation)")
+                        help="PII handling. redact (default): mask detected PII in traces "
+                             "before any LLM call. strict: abort the entire bootstrap run "
+                             "on ANY PII detection (prevents accidental data leakage in "
+                             "regulated domains). allow: send raw — requires confirmation.")
     boot_p.add_argument("--skip-seed-cases", action="store_true",
                         help="Skip adversarial seed-case generation (saves ~$0.02)")
     boot_p.add_argument("--skip-calibration", action="store_true",
@@ -854,7 +856,7 @@ def _ping_anthropic() -> str:
     import anthropic
     client = anthropic.Anthropic()
     resp = client.messages.create(
-        model="claude-haiku-4-5",
+        model="claude-haiku-4-5-20251001",
         max_tokens=4,
         messages=[{"role": "user", "content": "Reply with the single word: ok"}],
     )

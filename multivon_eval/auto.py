@@ -604,7 +604,7 @@ def generate_adversarial_cases(
         from multivon_eval import configure, JudgeConfig, EvalSuite, Hallucination
         from multivon_eval.auto import generate_adversarial_cases
 
-        configure(JudgeConfig(provider="anthropic", model="claude-haiku-4-5"))
+        configure(JudgeConfig(provider="anthropic", model="claude-haiku-4-5-20251001"))
 
         kb = "Refunds within 30 days of purchase. Shipping in 3-5 business days."
         cases = generate_adversarial_cases(kb, "ungrounded_claim", n=5)

@@ -8,7 +8,7 @@ Precedence (highest to lowest):
   1. Per-evaluator JudgeConfig passed to the evaluator constructor
   2. Global config set via configure()
   3. Environment variables (JUDGE_PROVIDER, JUDGE_MODEL)
-  4. Built-in defaults (anthropic / claude-haiku-4-5)
+  4. Built-in defaults (anthropic / claude-haiku-4-5-20251001)
 
 Usage:
     from multivon_eval import configure, JudgeConfig
@@ -47,7 +47,7 @@ __all__ = ["JudgeConfig", "configure", "get_global_judge"]
 _SUPPORTED_PROVIDERS = {"anthropic", "openai", "google", "litellm", "ollama"}
 
 _DEFAULT_MODELS: dict[str, str] = {
-    "anthropic": "claude-haiku-4-5",
+    "anthropic": "claude-haiku-4-5-20251001",
     "openai": "gpt-4o-mini",
     "google": "gemini-2.5-flash",
     "litellm": "",  # User must specify; LiteLLM model strings vary by provider.
@@ -63,7 +63,7 @@ class JudgeConfig:
         provider:    "anthropic" or "openai". Defaults to JUDGE_PROVIDER env
                      var, then "anthropic".
         model:       Model name. Defaults to JUDGE_MODEL env var, then the
-                     provider's default (claude-haiku-4-5 / gpt-4o-mini).
+                     provider's default (claude-haiku-4-5-20251001 / gpt-4o-mini).
         base_url:    Custom API endpoint for OpenAI-compatible local servers.
                      Examples: "http://localhost:11434/v1" (Ollama),
                      "http://localhost:1234/v1" (LM Studio). Ignored for
