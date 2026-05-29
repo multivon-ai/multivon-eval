@@ -2,6 +2,20 @@
 
 All notable changes to `multivon-eval`. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) as of 0.7.0.
 
+## [Unreleased]
+
+Phase 1 of prompt-regression attribution. Adds `multivon_eval.attribution`, a small package that walks a Python repo for LLM SDK call sites, fingerprints prompt literals, and emits a structured diff across two refs. **Descriptive only — no causal attribution claims.** The hardened calibration spike of 2026-05-30 showed Haiku-based causal attribution failing catastrophically on mixed-cause regressions; the design doc at `multivon-strategy/positioning/feature_prompt_attribution_phase2_sidecar_design_2026_05_30.md` plans the v2 sidecar signal that closes that hole structurally.
+
+### Added
+
+- **`multivon_eval.attribution`** module — public API: `scan(repo_root)`, `diff_records(base, head)`, `render_markdown(diffs)`. Detects `anthropic.messages.create`, `openai.chat.completions.create`, and `litellm.completion`/`acompletion` call sites via suffix-based matching that handles both `client.messages.create(...)` and `anthropic.Anthropic().messages.create(...)`. Extracts string-literal `system=` kwargs and the `content` field of each `messages=[…]` entry. f-strings with zero runtime interpolation are treated as literals; runtime-interpolated f-strings and `Name` references are flagged `is_dynamic=True` with a stable placeholder. Skips `.venv`, `node_modules`, `__pycache__`, build directories.
+- **`multivon-eval attribution scan <repo>`** — list every detected prompt call site in a repo, with `--format text` (default) or `--format json`.
+- **`multivon-eval attribution diff <base> <head>`** — structured diff between two checkouts, with `--format markdown` (default; PR-comment-ready), `--format text`, or `--format json`.
+
+### Notes
+
+- Causal attribution (which prompt change caused which regression) is deliberately not shipped in v1. See the Phase 2 design doc for the sidecar plan that gates Haiku attribution behind a non-prompt-change detector to avoid HIGH-confidence-and-wrong failures on mixed-cause PRs.
+
 ## [0.9.3] — 2026-05-28
 
 Patch release: cross-platform fix for lock-file verification.
