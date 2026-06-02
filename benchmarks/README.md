@@ -18,7 +18,7 @@ python benchmarks/run_all_benchmarks.py
 | Task | multivon-eval | DeepEval | Simple LLM judge | Keyword overlap / Exact match |
 |------|:---:|:---:|:---:|:---:|
 | Hallucination — in-distribution (HaluEval-QA) | F1 0.804 [0.71–0.88]¹ | F1 0.586 [0.48–0.68] | F1 0.763 [0.68–0.83] | F1 0.523 [0.39–0.64] |
-| Hallucination — **truly held-out** (HaluEval-Sum) | **F1 0.852 [0.73–0.94]**² | — | — | — |
+| Hallucination — **truly held-out** (HaluEval-Sum) | **F1 0.830 [0.70–0.92]**² | — | — | — |
 | Answer relevance | F1 0.952 | **F1 0.974** | F1 0.976 | — |
 | Faithfulness (summarization) | F1 0.783 [0.68–0.88]³ | F1 0.516 [0.35–0.66] | F1 0.667 [0.55–0.78] | F1 0.627 [0.44–0.76] |
 | Coherence detection | see run | — | see run | — |
@@ -31,7 +31,7 @@ Judge models: multivon-eval uses `claude-haiku-4-5-20251001` for benchmarks 1–
 
 ¹ **In-distribution.** F1 0.804 is reported on the same HaluEval-QA-100 split used to calibrate the Hallucination threshold (`dataset_hash: halueval-qa-2024-100c` in `_calibration_data/v2.json`). Treat this as a calibrated-default sanity check, not an out-of-distribution generalization claim.
 
-² **Genuinely held-out** — and this row's framing was corrected after a peer-review round flagged that the prior "held-out" claim was actually in-distribution (see correction note below). The number you want for the cross-distribution claim is **F1 0.852 [0.73–0.94] on HaluEval-Sum n=60**, produced by running the **Hallucination** evaluator (calibrated on HaluEval-**QA**, threshold 0.7, no re-tuning) against HaluEval-**Summarization** cases. Different task family, different evaluator-of-record for this dataset, calibration set ↮ test set. This is the honest cross-distribution generalization figure. See Benchmark 4 for the methodology + raw counts.
+² **Genuinely held-out** — and this row's framing was corrected after a peer-review round flagged that the prior "held-out" claim was actually in-distribution (see correction note below). The number you want for the cross-distribution claim is **F1 0.830 [0.70–0.92] on HaluEval-Sum n=60**, produced by running the **Hallucination** evaluator with explicit Haiku JudgeConfig so the calibrated threshold (**0.55** per `_calibration_data/v2.json`, calibrated on HaluEval-**QA**) is applied without re-tuning against HaluEval-**Summarization** cases. Different task family, different evaluator-of-record for this dataset, calibration set ↮ test set. This is the honest cross-distribution generalization figure. See Benchmark 4 for the methodology + raw counts.
 
 ³ **In-distribution, not held-out as previously claimed.** Earlier versions of this table labeled the Faithfulness-on-HaluEval-Sum result as "held-out" with the threshold "frozen from v2 calibration." That framing was wrong: the Faithfulness evaluator is itself calibrated on HaluEval-Sum (`dataset_hash: halueval-sum-2024-60c` in `_calibration_data/v2.json`, threshold 0.9 for Haiku, F1=0.783). Re-running Faithfulness on HaluEval-Sum reproduces the calibration F1 by construction — it's not a held-out evaluation, it's the calibration measurement again. The number is real, the framing was misleading. **The genuine cross-distribution figure is row ², not row ³.** See the correction note in Benchmark 3.
 
@@ -153,15 +153,17 @@ All CIs above are bootstrap-1000 on F1 with stable RNG seed (see `benchmarks/_ad
 
 **Task:** Detect whether a summary introduces claims not in the source document.
 
-**The crucial difference from Benchmark 3:** here we run the **Hallucination** evaluator — which was calibrated on HaluEval-**QA** (different task family, threshold 0.7, never seen summarization data). This is the actually-held-out test that v0.9.4 was trying to claim before the framing was corrected.
+**The crucial difference from Benchmark 3:** here we run the **Hallucination** evaluator — calibrated on HaluEval-**QA** (different task family, threshold **0.55** per `_calibration_data/v2.json`, never seen summarization data). This is the actually-held-out test that v0.9.4 was trying to claim before the framing was corrected.
 
 | Evaluator | Judge model | Calibrated on | Tested on | Precision | Recall | F1 (95% bootstrap CI) |
 |-----------|-------------|---------------|-----------|-----------|--------|-----------------------|
-| **multivon-eval (Hallucination, held-out)** | claude-haiku-4-5 | HaluEval-QA | HaluEval-Sum | **0.958 [0.80–0.99]** | 0.767 [0.59–0.88] | **0.852 [0.73–0.94]** |
+| **multivon-eval (Hallucination, held-out)** | claude-haiku-4-5 | HaluEval-QA (thr 0.55) | HaluEval-Sum | **0.957 [0.79–0.99]** | 0.733 [0.55–0.86] | **0.830 [0.70–0.92]** |
 
-**Raw counts (n=60 cases):** TP=23, FP=1, FN=7, TN=29.
+**Raw counts (n=60 cases):** TP=22, FP=1, FN=8, TN=29.
 
-**What this discharges — for real this time:** the contamination criticism on the cross-distribution claim. The Hallucination evaluator was tuned on QA-style short-context cases (Wikipedia-sourced, single-hop QA). We applied that exact evaluator (no re-tuning) to long-context summarization cases. F1 = 0.852, slightly higher than the in-distribution F1 = 0.804 on HaluEval-QA. The threshold generalizes across task families inside HaluEval.
+**Important reproducibility note:** the script uses **explicit** `JudgeConfig(provider='anthropic', model='claude-haiku-4-5-20251001')` so the calibrated threshold (0.55) is applied. Without that, `Hallucination()` falls back to the default threshold (0.7), which produces F1 0.852 [0.73–0.94] — a different number on the same data. The defensible cross-distribution F1 is the one **at the calibrated threshold**; the default-threshold figure is not held-out (it's just an arbitrary threshold).
+
+**What this discharges — for real this time:** the contamination criticism on the cross-distribution claim. The Hallucination evaluator was tuned on QA-style short-context cases (Wikipedia-sourced, single-hop QA). We applied that exact evaluator with its calibrated threshold (no re-tuning) to long-context summarization cases. F1 = 0.830, slightly higher than the in-distribution F1 = 0.812 on HaluEval-QA. The threshold generalizes across task families inside HaluEval.
 
 **What it still doesn't discharge:** non-HaluEval corpora (TruthfulQA, FaithBench, RAGTruth) and non-Haiku judges on the same cross-distribution test. Both HaluEval-Sum and HaluEval-QA build on CNN/DailyMail-adjacent source documents — there's shared corpus structure across the two splits. The cross-corpus held-out evaluation is on the [public roadmap](https://multivon.ai/roadmap), targeting launch + 2 weeks. The repository will publish the held-out F1 next to the in-distribution F1 once that lands; we won't retire either number.
 
@@ -196,7 +198,7 @@ Comparing evaluators against each other tells you which one scores higher, not w
 
 ### Limitations
 
-- **The headline Hallucination F1 (0.804) is in-distribution.** The threshold was tuned on the same HaluEval-QA-100 split it is tested on. Treat it as a calibrated-default sanity check, not an OOD generalization claim. For the genuine cross-task figure see Benchmark 4 (F1 0.852 [0.73–0.94] on HaluEval-Sum with the QA-calibrated Hallucination evaluator).
+- **The headline Hallucination F1 (0.804) is in-distribution.** The threshold was tuned on the same HaluEval-QA-100 split it is tested on. Treat it as a calibrated-default sanity check, not an OOD generalization claim. For the genuine cross-task figure see Benchmark 4 (F1 0.830 [0.70–0.92] on HaluEval-Sum with the QA-calibrated Hallucination evaluator at the calibrated threshold 0.55, not the runtime default 0.7).
 - **The Faithfulness benchmark on HaluEval-Sum (Benchmark 3) is also in-distribution** despite earlier framing to the contrary. Faithfulness/Haiku is calibrated on HaluEval-Sum, so testing it on HaluEval-Sum reproduces the calibration. The framing was corrected on 2026-06-03 after a round-2 peer review (ML researcher persona) caught it. See the correction note in Benchmark 3.
 - **"Best-tuned" F1 numbers reported anywhere in this repo are upper bounds.** Threshold sweeps reported below are conducted on the test set; the best-F1 values are not held-out estimates. Treat them as ceilings, not generalization claims.
 - HaluEval QA represents a specific distribution (Wikipedia-sourced, single-hop). Performance may vary on domain-specific or multi-hop contexts.

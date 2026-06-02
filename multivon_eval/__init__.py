@@ -23,7 +23,7 @@ Experiment tracking (compare runs across versions):
     exp.compare(old_run_id, run_id)
 """
 
-__version__ = "0.9.6"
+__version__ = "0.9.7"
 
 from .suite import EvalSuite
 from .case import EvalCase, AgentStep, ToolCall

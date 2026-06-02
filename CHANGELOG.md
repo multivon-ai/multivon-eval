@@ -2,6 +2,23 @@
 
 All notable changes to `multivon-eval`. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) as of 0.7.0.
 
+## [0.9.7] — 2026-06-03
+
+Iter-3 confirmation hotfix. The ML researcher persona caught a more subtle inconsistency in the 0.9.5 held-out test: the run was reporting threshold 0.7 in its print output (the init-time default of `Hallucination()`) but never asserted that the calibrated threshold 0.55 was being applied. Without an explicit `JudgeConfig` argument, `Hallucination()` falls back to the default threshold instead of looking up the calibrated value for Haiku in `_calibration_data/v2.json`. The result is a different F1 on the same data — 0.852 at threshold 0.7 vs 0.830 at the actually-calibrated threshold 0.55. Only the 0.830 figure is defensible as "held-out at the calibrated threshold."
+
+### Fixed
+
+- **`benchmarks/run_truly_held_out.py` now passes explicit `JudgeConfig(provider='anthropic', model='claude-haiku-4-5-20251001')`** to `Hallucination(...)` so the v2-calibrated threshold (0.55) is applied. Reports the post-resolve threshold (the value actually used at runtime), not the init-time default.
+- **`benchmarks/results/hallucination_held_out.json` updated** with the corrected run: F1 0.830 [0.70–0.92] (was 0.852 [0.73–0.94] at the wrong threshold). Raw counts: TP=22, FP=1, FN=8, TN=29.
+- **`benchmarks/README.md` Benchmark 4** rewritten to cite the correct threshold (0.55) and the corrected F1. Added an explicit reproducibility note explaining the default-vs-calibrated threshold gotcha so future contributors don't repeat it.
+- **multivon.ai/eval tile** updated to show F1 0.83 [0.70–0.92] with the corrected sublabel.
+
+### Discipline note
+
+The framework's whole pitch is "what we do is what we say." Catching this gotcha in iter-3 review and publishing the correction is the same discipline 0.9.5 demonstrated on the bigger contamination flag. Three same-day releases (0.9.5 fixing the held-out framing, 0.9.6 fixing the bootstrap template runtime, 0.9.7 fixing the threshold-vs-default mismatch) is the cost of shipping during a public launch review — and the cost is the right kind of public if the fixes land within hours and the historical record stays intact.
+
+---
+
 ## [0.9.6] — 2026-06-03
 
 Round-2 review hotfix: r/Python persona caught three runtime blockers in the bootstrap-generated `eval_suite.py` that v0.9.4 shipped. Anyone who ran `multivon-eval bootstrap` then `python eval_suite.py` would have hit a TypeError on the third line.
