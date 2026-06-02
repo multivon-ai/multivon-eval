@@ -2,6 +2,23 @@
 
 All notable changes to `multivon-eval`. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) as of 0.7.0.
 
+## [0.9.6] — 2026-06-03
+
+Round-2 review hotfix: r/Python persona caught three runtime blockers in the bootstrap-generated `eval_suite.py` that v0.9.4 shipped. Anyone who ran `multivon-eval bootstrap` then `python eval_suite.py` would have hit a TypeError on the third line.
+
+### Fixed
+
+- **Generated `eval_suite.py` used non-existent `suite.run(cases=...)` kwarg.** `EvalSuite.run` takes `(model_fn, runs=..., ...)` — cases go through `suite.add_cases(...)` before the run call. Template now calls `suite.add_cases(cases)` then `suite.run(stub_model, runs=args.runs)`.
+- **Generated `eval_suite.py` called `report.print_summary()` which doesn't exist.** Replaced with inline printing of `report.pass_rate`, `report.passed`, `report.total`, `report.failed`, `report.errors` — all real EvalReport public methods.
+- **`stub_model` signature was `(case: EvalCase)` but `EvalSuite.run` expects `Callable[[str], str]`.** Fixed to `stub_model(prompt: str) -> str`.
+- **`multivon_eval/discover.py:_call_judge` rejected local providers.** Same pattern as the `auto.py:_call_judge_raw` fix in 0.9.4 — `ollama` and `litellm` now route through `make_judge_call`. The bootstrap pipeline now genuinely runs end-to-end on a local judge, not just at the CLI argparse level.
+
+### Tested
+
+End-to-end smoke test: generated a real `eval_suite.py` template, dropped a 2-case `seed_cases.jsonl` next to it, ran `python eval_suite.py --runs 1`. Suite executes, summary prints, exit code reflects pass rate. The framework's own "judge availability" warning fires correctly when no API key is loaded — exactly the user-facing signal you want when the env is misconfigured.
+
+---
+
 ## [0.9.5] — 2026-06-03
 
 Same-day correction for 0.9.4. The round-2 peer review (ML researcher persona) caught that the "held-out HaluEval-Sum F1 0.783" claim in 0.9.4 was actually in-distribution: the Faithfulness evaluator's Haiku threshold is itself calibrated on HaluEval-Sum, so testing Faithfulness on HaluEval-Sum reproduces the calibration F1 by construction. 0.9.4 patched the most visible dunk from round 1 (the HaluEval-QA contamination) and accidentally repackaged the same contamination on HaluEval-Sum. We caught it within hours.

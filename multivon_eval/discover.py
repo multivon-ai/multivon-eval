@@ -903,7 +903,7 @@ import sys
 from pathlib import Path
 
 {import_line}
-from multivon_eval import EvalCase, load_jsonl
+from multivon_eval import load_jsonl
 
 
 def make_suite() -> EvalSuite:
@@ -914,12 +914,12 @@ def make_suite() -> EvalSuite:
     return suite
 
 
-def load_cases(path: Path) -> list[EvalCase]:
+def load_cases(path: Path):
     """Load cases from a JSONL file.
 
     Accepts the seed_cases.jsonl shape (input/expected_output/context/
-    metadata) and the broader trace-dump aliases (query/answer/etc.) —
-    routed through ``multivon_eval.load_jsonl`` which understands both.
+    metadata) — routed through ``multivon_eval.load_jsonl`` which
+    handles the canonical schema. Returns a list of EvalCase objects.
     """
     if not path.exists():
         raise FileNotFoundError(
@@ -927,11 +927,11 @@ def load_cases(path: Path) -> list[EvalCase]:
             f"Run with --cases pointing at your own JSONL, or keep "
             f"the bootstrap-emitted seed_cases.jsonl next to this file."
         )
-    return list(load_jsonl(path))
+    return list(load_jsonl(str(path)))
 
 
-def stub_model(case: EvalCase) -> str:
-    """Placeholder model. Replace with your real model function.
+def stub_model(prompt: str) -> str:
+    """Placeholder model function. Replace with your real model.
 
     The bootstrap doesn't know what your model is — that's the one
     thing it can't infer. Swap this for a call into your real LLM
@@ -962,10 +962,14 @@ def main() -> int:
 
     suite = make_suite()
     cases = load_cases(args.cases)
+    suite.add_cases(cases)
     print(f"Suite: {{len(suite.evaluators)}} evaluators, {{len(cases)}} cases, {{args.runs}} run(s).")
 
-    report = suite.run(stub_model, cases=cases, runs=args.runs)
-    report.print_summary()
+    report = suite.run(stub_model, runs=args.runs)
+    print()
+    print(f"Pass rate: {{report.pass_rate:.1%}}  ({{report.passed}}/{{report.total}})")
+    if report.failed:
+        print(f"Failed: {{report.failed}}, errors: {{report.errors}}")
     return 0 if report.pass_rate >= 0.50 else 1
 
 
@@ -1205,7 +1209,17 @@ def _call_judge(judge_cfg: JudgeConfig, system: str, user: str) -> str:
         )
         return resp.text or ""
 
-    raise ValueError(f"unsupported judge provider for bootstrap: {judge_cfg.provider}")
+    if judge_cfg.provider in ("ollama", "litellm"):
+        # Route local + LiteLLM providers through the unified judge.call path
+        # so they pick up OLLAMA_HOST, OpenAI-shim dummy keys, and base-url
+        # overrides — same pattern auto.py:_call_judge_raw uses.
+        from .judge import make_judge_call
+        return make_judge_call(f"{system}\n\n---\n\n{user}", judge_cfg)
+
+    raise ValueError(
+        f"unsupported judge provider for bootstrap: {judge_cfg.provider}. "
+        f"Supported: anthropic, openai, google, ollama, litellm."
+    )
 
 
 # Rough per-1M-token cost for Claude Haiku (input/output). Used only for
