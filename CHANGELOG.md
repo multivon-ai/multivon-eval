@@ -2,6 +2,30 @@
 
 All notable changes to `multivon-eval`. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) as of 0.7.0.
 
+## [0.9.8] — 2026-06-03
+
+Post-iter-3 documentation + DX polish pass. The headline ship is a one-command installer for the bundled Claude Code skills so the wheel doesn't just contain them, it wires them up. Plus a README rewrite that leads with the credibility story (κ=0.03, F1 0.830 held-out, the 0.9.4 → 0.9.7 self-correction sequence) instead of bootstrap CLI feature copy. The release sequence IS the audit trail — the README opening now says so explicitly.
+
+### Added
+
+- **`multivon-eval install-skills` CLI subcommand** — symlinks the three bundled Claude Code skills (eval-bootstrap, eval-audit, eval-explain) from the installed wheel into `~/.claude/skills/`. Defaults to symlinks (so `pip install -U multivon-eval` propagates SKILL.md edits without re-running install); falls back to `shutil.copytree` on Windows or where directory symlinks are refused. Supports `--dry-run` to preview and `--force` to replace existing entries. One command, no `ln -sf` shell incantation.
+
+### Changed
+
+- **README rewrite — credibility story leads.** The opening now leads with the κ=0.03 three-framework disagreement finding, the F1 0.830 [0.70–0.92] cross-distribution held-out result, and the 0.9.4 → 0.9.5 → 0.9.6 → 0.9.7 self-correction sequence as the credibility narrative. Bootstrap is now a feature paragraph, not the hook. All existing content preserved — only the order changed.
+- **Unified the DeepEval F1 comparison number.** Several paragraphs cited slightly different values (0.79, 0.804, 0.787) across the README. All now consistently report **F1 0.804 [0.71–0.88]** vs DeepEval **F1 0.586 [0.48–0.68]** — the value in `benchmarks/results/hallucination.json` and `benchmarks/README.md`.
+- **"As of May 2026" → "as of June 2026"** in the comparison-table footnote.
+- **SKILL.md frontmatter cleanup** for all three bundled skills. Removed non-spec keys (`trigger_phrases`, `provides`, `requires`) that aren't part of the Anthropic skill schema; folded that info into the `description` body so it's still discoverable. Added the correct `allowed-tools` per skill: eval-bootstrap = Bash/Read/Edit/Write/Glob; eval-audit = Bash/Read/Grep/Edit; eval-explain = Read/Grep/WebFetch.
+- **eval-bootstrap local-judge fallback** no longer hard-codes `qwen2.5:14b`. The skill now instructs the agent to run `ollama list` to detect what is pulled and pick the strongest instruction-tuned model available; common picks documented (`qwen2.5:72b`, `llama3.3:70b-instruct`, `deepseek-r1:32b`).
+
+### Fixed
+
+- **`benchmarks/README.md` "Planned benchmarks"** — Benchmark 5 (SummEval) is written; marked the planned-benchmark item complete and removed the stale "run to fill TBD above" leftover.
+- **Broken Marketplace URL** in `multivon_eval/_skills/eval-bootstrap/SKILL.md` replaced with a pointer to the [multivon-ai/eval-action GitHub repo](https://github.com/multivon-ai/eval-action) until the Marketplace listing is published.
+- **Dead Anthropic skills doc link** in `multivon_eval/_skills/README.md` (was `docs.anthropic.com/claude/skills`, 404) updated to `docs.claude.com/en/docs/agents-and-tools/agent-skills`.
+
+---
+
 ## [0.9.7] — 2026-06-03
 
 Iter-3 confirmation hotfix. The ML researcher persona caught a more subtle inconsistency in the 0.9.5 held-out test: the run was reporting threshold 0.7 in its print output (the init-time default of `Hallucination()`) but never asserted that the calibrated threshold 0.55 was being applied. Without an explicit `JudgeConfig` argument, `Hallucination()` falls back to the default threshold instead of looking up the calibrated value for Haiku in `_calibration_data/v2.json`. The result is a different F1 on the same data — 0.852 at threshold 0.7 vs 0.830 at the actually-calibrated threshold 0.55. Only the 0.830 figure is defensible as "held-out at the calibrated threshold."

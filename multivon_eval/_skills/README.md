@@ -51,5 +51,5 @@ it. The Quarkdown / Anthropic skill-creator / gstack ecosystems are all
 converging on this pattern.
 
 If you want to extend or fork these skills, the SKILL.md spec
-([reference](https://docs.anthropic.com/claude/skills)) is plain
-Markdown with YAML frontmatter — no DSL to learn.
+([reference](https://docs.claude.com/en/docs/agents-and-tools/agent-skills))
+is plain Markdown with YAML frontmatter — no DSL to learn.

@@ -273,7 +273,7 @@ python benchmarks/run_threshold_calibration.py
 
 ## Planned benchmarks
 
-- [x] SummEval Spearman correlation — coherence and relevance (`run_summeval_benchmark.py`, run to fill TBD above)
+- [x] SummEval Spearman correlation — coherence and relevance (`run_summeval_benchmark.py`) — see Benchmark 5.
 - [ ] Agent tool call accuracy — custom golden set from real agent traces
 - [ ] RAGAS comparison — faithfulness and context precision on real RAG pipelines
 - [ ] Cost per evaluation — tokens used and cost vs. accuracy tradeoff table

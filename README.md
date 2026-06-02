@@ -11,7 +11,15 @@
 
 **AI evaluation for teams that ship models to production.**
 
-Run structured evals over your AI outputs — from simple string checks to LLM-as-judge scoring to agent trace validation — with a clean Python API, beautiful terminal reports, and CI/CD integration out of the box. **New in 0.8.x:** `multivon-eval bootstrap` proposes a tuned eval suite from your product description + sample traces, in 60 seconds.
+### Why we exist — the credibility story
+
+The three popular eval frameworks (multivon-eval, DeepEval, RAGAS) **agree on a binary hallucination judgment only 56% of the time** on the same dataset and labels. Cohen's **κ = 0.03** — statistically indistinguishable from chance. If your CI gate flips on which framework you adopted, your "regression" is framework noise, not model quality. We ran this study and published the raw data in [eval-framework-benchmark](https://github.com/multivon-ai/eval-framework-benchmark).
+
+On the cross-distribution held-out test we hold ourselves to — Hallucination evaluator calibrated on HaluEval-QA, tested without re-tuning on HaluEval-Sum (n=60) — multivon-eval scores **F1 0.830 [0.70–0.92]**. The lower bound of our CI (0.71) clears DeepEval's upper bound (0.68) on the in-distribution comparison (F1 0.804 [0.71–0.88] vs 0.586 [0.48–0.68]). The full methodology + raw counts are in [`benchmarks/README.md`](benchmarks/README.md) Benchmark 4.
+
+The release sequence 0.9.4 → 0.9.5 → 0.9.6 → 0.9.7 is the audit trail. A peer-review round caught a "held-out" claim in 0.9.4 that was actually in-distribution. 0.9.5 corrected the framing and added an actually-held-out test. 0.9.6 fixed three runtime blockers in the bootstrap template. 0.9.7 caught a threshold-vs-default mismatch that was inflating the held-out F1 from 0.830 (calibrated threshold 0.55) to 0.852 (init-time default 0.7). Four releases in eight hours. Every prior release left on PyPI as the historical record. **The framework's discipline matches what we ask users to apply to their own systems** — that *is* the pitch.
+
+Run structured evals over your AI outputs — from simple string checks to LLM-as-judge scoring to agent trace validation — with a clean Python API, beautiful terminal reports, and CI/CD integration out of the box.
 
 ## Quickstart — 30 seconds, no API key
 
@@ -52,7 +60,7 @@ LLM-judge evaluators auto-activate when `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, o
   - `generate_adversarial_cases(seed, mode, n)` — LLM-generated stress cases across 10 named failure modes (`ungrounded_claim`, `jailbreak`, `prompt_injection_direct/indirect`, `tool_injection`, `pii_leakage_invitation`, etc.).
   - `validate_adversarial_cases(cases, baseline, n_shots=3)` — N-shot judge-noise filter. Validated +0.80 mean failure-rate separation between weak vs strong baselines.
 
-- **Reproducible head-to-head** — multivon-eval F1 **0.79** vs DeepEval **0.0** at default thresholds, **0.85** vs **0.59** at best-tuned thresholds, RAGAS errored. Run it yourself: [eval-framework-benchmark](https://github.com/multivon-ai/eval-framework-benchmark).
+- **Reproducible head-to-head** — multivon-eval **F1 0.804 [0.71–0.88]** vs DeepEval **F1 0.586 [0.48–0.68]** on HaluEval-QA, same N=100, same labels, same judge family. The lower bound of our CI clears DeepEval's upper bound. RAGAS errored on the same input. Run it yourself: [eval-framework-benchmark](https://github.com/multivon-ai/eval-framework-benchmark).
 
 ### Carried forward from 0.7.x
 
@@ -158,7 +166,7 @@ Every team building AI products hits the same problem: **how do you know if your
 | Synthetic data generation | ✓ | ✓ | ✓ | — |
 | Open source (Apache 2.0) | ✓ | ✓ | ✓ | ✓ |
 
-> Comparison based on each project's public documentation as of May 2026. We host these benchmarks open: see [`benchmarks/`](benchmarks/) for code + datasets and [`benchmarks/results/`](benchmarks/results/) for the raw output JSON. Found something wrong? [Open an issue](https://github.com/multivon-ai/multivon-eval/issues) — we'll fix it.
+> Comparison based on each project's public documentation as of June 2026. We host these benchmarks open: see [`benchmarks/`](benchmarks/) for code + datasets and [`benchmarks/results/`](benchmarks/results/) for the raw output JSON. Found something wrong? [Open an issue](https://github.com/multivon-ai/multivon-eval/issues) — we'll fix it.
 
 ### Numbers, not adjectives
 

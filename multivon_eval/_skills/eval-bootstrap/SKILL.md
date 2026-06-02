@@ -7,23 +7,18 @@ description: |
   eval_suite.py + 30 adversarial seed cases + EVALS.md.
 
   Invoke when the user says "add evals to this project", "set up
-  evaluation", "eval this codebase", or when you detect an LLM-touching
-  project (imports from anthropic/openai/google/litellm) with no
-  existing eval/ or tests/eval/ directory.
-trigger_phrases:
-  - "add evals"
-  - "set up evaluation"
-  - "eval this codebase"
-  - "evaluate this project"
-  - "what evaluators should I run"
-provides:
-  - multivon-eval bootstrap workflow
-  - EVALS.md scaffold
-  - eval_suite.py with stub_model replaced by detected provider
-requires:
-  - multivon-eval >= 0.9.4 (pip install multivon-eval)
-  - either ANTHROPIC_API_KEY / OPENAI_API_KEY / GOOGLE_API_KEY in env,
-    OR a running Ollama instance for fully local bootstrap
+  evaluation", "eval this codebase", "evaluate this project", or "what
+  evaluators should I run" — or when you detect an LLM-touching project
+  (imports from anthropic/openai/google/litellm) with no existing
+  eval/ or tests/eval/ directory.
+
+  Provides: the multivon-eval bootstrap workflow, an EVALS.md scaffold,
+  and an eval_suite.py with stub_model replaced by the detected provider.
+
+  Requires: multivon-eval >= 0.9.8 (pip install multivon-eval) and
+  either an ANTHROPIC_API_KEY / OPENAI_API_KEY / GOOGLE_API_KEY in env,
+  OR a running Ollama instance for fully local bootstrap.
+allowed-tools: Bash, Read, Edit, Write, Glob
 ---
 
 # eval-bootstrap
@@ -99,14 +94,19 @@ Do NOT auto-invoke if:
 ## Local-judge path (no API key)
 
 If no cloud API key is in env, check for a running Ollama instance
-(`curl -s http://localhost:11434/api/tags`). If present, use:
+(`curl -s http://localhost:11434/api/tags`). If present, run `ollama list`
+first to see what the user has actually pulled, then pick the strongest
+instruction-tuned model available. Common picks (in rough order of judge
+quality): `qwen2.5:72b`, `llama3.3:70b-instruct`, `deepseek-r1:32b`,
+`qwen2.5:14b`. Pass it via `--judge-model`:
 
 ```bash
+ollama list                                          # see what's available
 multivon-eval bootstrap \
     --product PRODUCT.md \
     --traces sample_traces.jsonl \
     --judge-provider ollama \
-    --judge-model qwen2.5:14b  # or whichever model the user has pulled
+    --judge-model <picked_model>                     # e.g. qwen2.5:72b
 ```
 
 Bootstrap with a local judge is slower (~5× wall-clock vs Haiku) but
@@ -145,5 +145,6 @@ ls eval-bootstrap/
 python eval-bootstrap/eval_suite.py --runs 1
 ```
 
-If the user wants this wired into CI gating, suggest installing
-[eval-action](https://github.com/marketplace/actions/multivon-eval).
+If the user wants this wired into CI gating, suggest installing the
+[multivon-ai/eval-action GitHub repo](https://github.com/multivon-ai/eval-action)
+(Marketplace listing pending — use the repo directly for now).

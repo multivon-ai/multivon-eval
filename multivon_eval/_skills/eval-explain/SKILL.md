@@ -8,21 +8,16 @@ description: |
 
   Invoke when the user asks "why did multivon recommend Faithfulness
   here", "what does this evaluator measure", "is this the right eval
-  for my use case", or right after /eval-bootstrap completes.
-trigger_phrases:
-  - "why did multivon recommend"
-  - "what does this evaluator measure"
-  - "is this the right eval"
-  - "explain this threshold"
-  - "why this evaluator"
-provides:
-  - 3-sentence rationale per evaluator
-  - 1-2 example cases that exercise the evaluator
-  - Links to methodology + benchmark page
-requires:
-  - multivon-eval >= 0.9.4
-  - Either a DISCOVERY_REPORT.md (from /eval-bootstrap) in the project,
-    or the evaluator name is known
+  for my use case", "explain this threshold", "why this evaluator",
+  or right after /eval-bootstrap completes.
+
+  Provides: a 3-sentence rationale per evaluator, 1-2 example cases
+  that exercise the evaluator, and links to the methodology +
+  benchmark page.
+
+  Requires: multivon-eval >= 0.9.8, and either a DISCOVERY_REPORT.md
+  (from /eval-bootstrap) in the project or a known evaluator name.
+allowed-tools: Read, Grep, WebFetch
 ---
 
 # eval-explain

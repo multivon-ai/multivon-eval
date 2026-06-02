@@ -277,6 +277,86 @@ def cmd_generate(args):
     print(f"\n  Generated {len(cases)} cases.")
 
 
+def cmd_install_skills(args) -> int:
+    """`multivon-eval install-skills` — symlink the bundled Claude Code skills.
+
+    The three SKILL.md packages ship inside the wheel at
+    ``multivon_eval/_skills/{eval-bootstrap,eval-audit,eval-explain}``.
+    Claude Code auto-discovers anything in ``~/.claude/skills/`` so we
+    just need to wire each one in. Prefers symlinks (so a `pip install -U
+    multivon-eval` picks up SKILL.md edits without re-running this
+    command); falls back to a recursive copy on Windows / refused symlink
+    perms.
+
+    Flags:
+        --dry-run   Print what would happen, touch nothing.
+        --force     Replace existing entries at the target paths.
+    """
+    import shutil
+    import multivon_eval
+
+    skill_names = ["eval-bootstrap", "eval-audit", "eval-explain"]
+    pkg_dir = Path(multivon_eval.__file__).parent
+    skills_src_root = pkg_dir / "_skills"
+    target_root = Path.home() / ".claude" / "skills"
+
+    if not skills_src_root.is_dir():
+        print(f"error: bundled skills directory not found: {skills_src_root}",
+              file=sys.stderr)
+        return 1
+
+    if args.dry_run:
+        print(f"[dry-run] would ensure target dir: {target_root}")
+    else:
+        target_root.mkdir(parents=True, exist_ok=True)
+
+    installed = 0
+    for name in skill_names:
+        src = skills_src_root / name
+        dst = target_root / name
+        if not src.is_dir():
+            print(f"  warn: source skill missing, skipping: {src}",
+                  file=sys.stderr)
+            continue
+
+        # If something already lives at the target, --force removes it
+        # first; otherwise we skip with a clear note.
+        if dst.exists() or dst.is_symlink():
+            if not args.force:
+                print(f"  skip {name}: already exists at {dst} (re-run with --force to overwrite)")
+                continue
+            if args.dry_run:
+                print(f"[dry-run] would remove existing {dst}")
+            else:
+                if dst.is_symlink() or dst.is_file():
+                    dst.unlink()
+                else:
+                    shutil.rmtree(dst)
+
+        if args.dry_run:
+            print(f"[dry-run] would symlink {dst} -> {src}")
+            installed += 1
+            continue
+
+        try:
+            dst.symlink_to(src, target_is_directory=True)
+        except (OSError, NotImplementedError) as exc:
+            # Windows without symlink perms, or some FUSE mounts, refuse
+            # directory symlinks. Fall back to a recursive copy — the
+            # tradeoff is that `pip install -U` won't auto-pick-up edits
+            # until the user re-runs install-skills, which the printed
+            # note flags.
+            print(f"  note: symlink failed for {name} ({exc}); copying tree instead")
+            shutil.copytree(src, dst)
+
+        print(f"  ok   {name}  ->  {dst}")
+        installed += 1
+
+    suffix = "(dry-run)" if args.dry_run else ""
+    print(f"\n[OK] installed {installed} skill(s) to {target_root} {suffix}".rstrip())
+    return 0
+
+
 def cmd_attribution(args) -> int:
     """`multivon-eval attribution scan|diff` — structured prompt-diff (Phase 1).
 
@@ -542,6 +622,17 @@ def main():
     boot_p.add_argument("--validate-n-shots", type=int, default=3,
                         help="N-shot count for --validate (default: 3)")
 
+    # install-skills — symlink bundled Claude Code skills into ~/.claude/skills/
+    skills_p = sub.add_parser(
+        "install-skills",
+        help="Symlink bundled Claude Code skills (eval-bootstrap / eval-audit / "
+             "eval-explain) into ~/.claude/skills/",
+    )
+    skills_p.add_argument("--dry-run", action="store_true",
+                          help="Print actions without writing anything")
+    skills_p.add_argument("--force", action="store_true",
+                          help="Overwrite existing symlinks/directories at the target paths")
+
     # attribution — structured prompt-diff (Phase 1; descriptive, no causal claims)
     attr_p = sub.add_parser(
         "attribution",
@@ -610,6 +701,8 @@ def main():
         sys.exit(cmd_doctor(args) or 0)
     elif args.command == "bootstrap":
         sys.exit(cmd_bootstrap(args) or 0)
+    elif args.command == "install-skills":
+        sys.exit(cmd_install_skills(args) or 0)
     elif args.command == "attribution":
         sys.exit(cmd_attribution(args) or 0)
     else:

@@ -8,24 +8,19 @@ description: |
 
   Invoke between /review and /ship when the PR diff touches prompts,
   model calls, system prompts, tool definitions, or anything in an
-  evaluator-recommended code path. Also invoke when the user says
-  "audit this prompt change" or "will this regress evals".
-trigger_phrases:
-  - "audit this prompt"
-  - "will this regress evals"
-  - "check this against evals"
-  - "eval impact of this PR"
-  - "regression check"
-provides:
-  - Targeted eval run on changed surfaces
-  - Per-evaluator delta vs main
-  - Wilson CI / paired McNemar on each regression
-  - Pre-ship block on safety-class regressions
-requires:
-  - multivon-eval >= 0.9.4
-  - Repo has an existing eval suite (eval_suite.py from /eval-bootstrap,
-    or a hand-written multivon_eval.EvalSuite)
-  - git baseline reachable (default: origin/main)
+  evaluator-recommended code path. Also invoke on user phrases:
+  "audit this prompt", "will this regress evals", "check this against
+  evals", "eval impact of this PR", or "regression check".
+
+  Provides: a targeted eval run on changed surfaces, per-evaluator delta
+  vs main, Wilson CI / paired McNemar on each regression, and a
+  pre-ship block on safety-class regressions.
+
+  Requires: multivon-eval >= 0.9.8, a repo with an existing eval suite
+  (eval_suite.py from /eval-bootstrap or a hand-written
+  multivon_eval.EvalSuite), and a reachable git baseline
+  (default: origin/main).
+allowed-tools: Bash, Read, Grep, Edit
 ---
 
 # eval-audit
