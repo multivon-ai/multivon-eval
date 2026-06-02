@@ -2,6 +2,26 @@
 
 All notable changes to `multivon-eval`. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) as of 0.7.0.
 
+## [0.9.5] — 2026-06-03
+
+Same-day correction for 0.9.4. The round-2 peer review (ML researcher persona) caught that the "held-out HaluEval-Sum F1 0.783" claim in 0.9.4 was actually in-distribution: the Faithfulness evaluator's Haiku threshold is itself calibrated on HaluEval-Sum, so testing Faithfulness on HaluEval-Sum reproduces the calibration F1 by construction. 0.9.4 patched the most visible dunk from round 1 (the HaluEval-QA contamination) and accidentally repackaged the same contamination on HaluEval-Sum. We caught it within hours.
+
+### Added
+
+- **`benchmarks/run_truly_held_out.py`** — the actually-held-out reproducer. Runs the **Hallucination** evaluator (which IS calibrated on HaluEval-QA, threshold 0.7, never seen summarization data) against HaluEval-**Sum**. Result: F1 = 0.852 [0.73–0.94] on n=60. Different task family, different evaluator-of-record for this dataset, calibration set ↮ test set. This is the cross-distribution generalization figure the previous release was trying to make.
+- **`benchmarks/results/hallucination_held_out.json`** — raw numbers for the corrected held-out test: TP=23, FP=1, FN=7, TN=29. Wilson CIs on precision/recall + bootstrap CI on F1 included.
+
+### Changed
+
+- **`benchmarks/README.md` Benchmark 3 carries a correction note at the top.** The framing changed from "held-out: threshold calibrated on HaluEval-QA" (wrong) to "in-distribution — corrected" (right). The data didn't change; the label did. Both numbers stay in the README; only the framing changes. The summary table's footnote ² now points at the new Benchmark 4 (genuinely held-out) instead of falsely labeling Benchmark 3 as held-out.
+- **Summary table's "cross-distribution" row** is now F1 0.852 [0.73–0.94] (Hallucination evaluator on HaluEval-Sum), not F1 0.783 (which was the in-distribution Faithfulness number relabeled).
+
+### Notes
+
+The original v0.9.4 release is left on PyPI. The historical record matters: we shipped a wrong claim and corrected it within a few hours. Yanking the prior release would erase that. Anyone who pulled 0.9.4 and re-reads can do `pip install --upgrade multivon-eval` to get the corrected framing.
+
+---
+
 ## [0.9.4] — 2026-06-03
 
 Launch-prep release driven by the 7-persona launch simulation (HN top-commenter, HN early adopter, r/LocalLLaMA, r/MachineLearning, r/MLOps, r/Python, CTO procurement). Closes the cross-persona convergent findings: load-traces silent skips, half-done bootstrap output, cloud-only judge in the bootstrap CLI, in-distribution-only headline F1, and missing CIs on shipped numbers.

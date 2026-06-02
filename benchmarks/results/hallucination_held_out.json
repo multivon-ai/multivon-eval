@@ -1,0 +1,26 @@
+{
+  "benchmark": "hallucination_held_out_on_halueval_sum",
+  "dataset": "halueval_summarization",
+  "n_cases": 60,
+  "evaluator": "Hallucination",
+  "evaluator_calibration_dataset": "HaluEval QA (different task)",
+  "evaluator_calibration_threshold": 0.55,
+  "note": "Genuinely held-out: Hallucination threshold calibrated on QA, tested on Summarization. Cross-task within HaluEval corpora.",
+  "results": {
+    "multivon_eval (Hallucination, held-out)": {
+      "precision": 0.9583,
+      "recall": 0.7667,
+      "f1": 0.8519,
+      "tp": 23,
+      "fp": 1,
+      "fn": 7,
+      "tn": 29,
+      "precision_ci_lo": 0.7976,
+      "precision_ci_hi": 0.9926,
+      "recall_ci_lo": 0.5907,
+      "recall_ci_hi": 0.8821,
+      "f1_ci_lo": 0.7273,
+      "f1_ci_hi": 0.9362
+    }
+  }
+}

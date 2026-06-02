@@ -17,9 +17,10 @@ python benchmarks/run_all_benchmarks.py
 
 | Task | multivon-eval | DeepEval | Simple LLM judge | Keyword overlap / Exact match |
 |------|:---:|:---:|:---:|:---:|
-| Hallucination detection | **F1 0.804 [0.71–0.88]**¹ | F1 0.586 [0.48–0.68] | F1 0.763 [0.68–0.83] | F1 0.523 [0.39–0.64] |
+| Hallucination — in-distribution (HaluEval-QA) | F1 0.804 [0.71–0.88]¹ | F1 0.586 [0.48–0.68] | F1 0.763 [0.68–0.83] | F1 0.523 [0.39–0.64] |
+| Hallucination — **truly held-out** (HaluEval-Sum) | **F1 0.852 [0.73–0.94]**² | — | — | — |
 | Answer relevance | F1 0.952 | **F1 0.974** | F1 0.976 | — |
-| Faithfulness (summarization, **held-out**) | **F1 0.783 [0.68–0.88]**² | F1 0.516 [0.35–0.66] | F1 0.667 [0.55–0.78] | F1 0.627 [0.44–0.76] |
+| Faithfulness (summarization) | F1 0.783 [0.68–0.88]³ | F1 0.516 [0.35–0.66] | F1 0.667 [0.55–0.78] | F1 0.627 [0.44–0.76] |
 | Coherence detection | see run | — | see run | — |
 | Answer accuracy | see run | — | see run | see run |
 | SummEval coherence (Spearman ρ) | **0.587** (Haiku) | 0.431 (gpt-4o-mini) | — | — |
@@ -28,9 +29,13 @@ python benchmarks/run_all_benchmarks.py
 
 Judge models: multivon-eval uses `claude-haiku-4-5-20251001` for benchmarks 1–4; DeepEval uses `gpt-4o-mini`. SummEval benchmark (5) runs 5 judges. Judge always disclosed per run.
 
-¹ **In-distribution**: F1 0.804 is reported on the same HaluEval-QA-100 split used to calibrate the Hallucination threshold (`dataset_hash: halueval-qa-2024-100c` in `_calibration_data/v2.json`). Treat this as a calibrated-default sanity check, not an out-of-distribution generalization claim.
+¹ **In-distribution.** F1 0.804 is reported on the same HaluEval-QA-100 split used to calibrate the Hallucination threshold (`dataset_hash: halueval-qa-2024-100c` in `_calibration_data/v2.json`). Treat this as a calibrated-default sanity check, not an out-of-distribution generalization claim.
 
-² **Held-out**: F1 0.783 is reported on HaluEval-Summarization n=60 with the threshold **frozen** from the v2 calibration (no re-tuning on this set). HaluEval-Sum is a different task (summarization, not QA) on different source documents — so this is a genuine cross-distribution check. The 0.04 drop from in-distribution (0.804 → 0.783) sits well inside the bootstrap CI overlap, suggesting calibrated thresholds generalize across HaluEval task families. A larger held-out evaluation against TruthfulQA + FaithBench is on the [public roadmap](https://multivon.ai/roadmap).
+² **Genuinely held-out** — and this row's framing was corrected after a peer-review round flagged that the prior "held-out" claim was actually in-distribution (see correction note below). The number you want for the cross-distribution claim is **F1 0.852 [0.73–0.94] on HaluEval-Sum n=60**, produced by running the **Hallucination** evaluator (calibrated on HaluEval-**QA**, threshold 0.7, no re-tuning) against HaluEval-**Summarization** cases. Different task family, different evaluator-of-record for this dataset, calibration set ↮ test set. This is the honest cross-distribution generalization figure. See Benchmark 4 for the methodology + raw counts.
+
+³ **In-distribution, not held-out as previously claimed.** Earlier versions of this table labeled the Faithfulness-on-HaluEval-Sum result as "held-out" with the threshold "frozen from v2 calibration." That framing was wrong: the Faithfulness evaluator is itself calibrated on HaluEval-Sum (`dataset_hash: halueval-sum-2024-60c` in `_calibration_data/v2.json`, threshold 0.9 for Haiku, F1=0.783). Re-running Faithfulness on HaluEval-Sum reproduces the calibration F1 by construction — it's not a held-out evaluation, it's the calibration measurement again. The number is real, the framing was misleading. **The genuine cross-distribution figure is row ², not row ³.** See the correction note in Benchmark 3.
+
+**Correction note (2026-06-03):** v0.9.4 launched with a "held-out" Faithfulness claim that the round-2 peer review correctly flagged as in-distribution. v0.9.4.1 replaces that row with the actually-held-out test (Hallucination evaluator on HaluEval-Sum), reports the new F1 [CI], and acknowledges the original mislabeling here. The data didn't lie — the label did. Issue + commit history preserved.
 
 All CIs above are bootstrap-1000 on F1 with stable RNG seed (see `benchmarks/_add_cis.py`). Cells where CIs overlap are NOT reported as wins.
 
@@ -104,7 +109,7 @@ All CIs above are bootstrap-1000 on F1 with stable RNG seed (see `benchmarks/_ad
 
 ---
 
-## Benchmark 3 — Faithfulness (Summarization)
+## Benchmark 3 — Faithfulness (Summarization, **in-distribution — corrected**)
 
 **Dataset:** [HaluEval Summarization](https://github.com/RUCAIBox/HaluEval) — 30 document-summary pairs (60 cases) with human-annotated faithful and hallucinated summaries.
 
@@ -112,11 +117,17 @@ All CIs above are bootstrap-1000 on F1 with stable RNG seed (see `benchmarks/_ad
 
 **Ground truth:** Human labels (1 = hallucinated summary, 0 = faithful summary). Balanced 50/50.
 
-> **Held-out:** the Faithfulness threshold was calibrated on HaluEval-QA (different task, different split). The F1 below uses that calibrated threshold **frozen** — no re-tuning on this set. This is the cross-task generalization check.
+> ### Correction note (2026-06-03)
+>
+> v0.9.4 launched this section labeled "held-out: threshold calibrated on HaluEval-QA." That was wrong. The Faithfulness evaluator's Haiku threshold is itself calibrated on HaluEval-Sum (`dataset_hash: halueval-sum-2024-60c` in `_calibration_data/v2.json`), not on HaluEval-QA. Running Faithfulness on HaluEval-Sum with the v2 default threshold reproduces the calibration F1 by construction — it's the calibration measurement again, not a held-out test.
+>
+> The round-2 peer review (ML researcher persona) caught this within hours of launch. v0.9.4.1 corrects the framing here and replaces the cross-distribution row in the summary table with the **actually-held-out** result: the Hallucination evaluator (calibrated on HaluEval-QA) run on HaluEval-Sum. That's Benchmark 4 below.
+>
+> The data didn't lie — the label did. Both numbers stay in the README; only the framing changes.
 
 | Evaluator | Judge model | Precision | Recall | F1 (95% bootstrap CI) | Avg latency |
 |-----------|-------------|-----------|--------|-----------------------|-------------|
-| **multivon-eval (Faithfulness)** | claude-haiku-4-5 | 0.692 | **0.900** | **0.783 [0.68–0.88]** | 7309ms |
+| multivon-eval (Faithfulness, in-dist.) | claude-haiku-4-5 | 0.692 | **0.900** | **0.783 [0.68–0.88]** | 7309ms |
 | Simple LLM judge (1-10) | claude-haiku-4-5 | 0.500 | **1.000** | 0.667 [0.55–0.78] | 1044ms |
 | Keyword overlap (no LLM) | — | **0.762** | 0.533 | 0.627 [0.44–0.76] | <1ms |
 | DeepEval (HallucinationMetric) | gpt-4o-mini | 0.500 | 0.533 | 0.516 [0.35–0.66] | 5269ms |
@@ -130,17 +141,35 @@ All CIs above are bootstrap-1000 on F1 with stable RNG seed (see `benchmarks/_ad
 | Keyword overlap | 16 | 5 | 14 | 25 |
 | DeepEval | 16 | 16 | 14 | 14 |
 
-**Key findings — held-out generalization works:**
+**What this section shows:** the Faithfulness evaluator hits F1 0.783 [0.68–0.88] on the dataset it was calibrated for — i.e., this is a calibration-sanity-check row, the same class as Benchmark 1's F1 0.804. The win over DeepEval (0.783 vs 0.516, lower bound 0.68 clears upper bound 0.66) survives the bootstrap CI test, so the head-to-head comparison stands even after the framing correction. But this is not the cross-distribution generalization claim — that's Benchmark 4.
 
-- **multivon-eval Faithfulness F1 = 0.783 [0.68–0.88]** on this held-out HaluEval-Sum split, with the threshold **frozen** from the v2 calibration (which used HaluEval-QA, not HaluEval-Sum). The 0.04 drop from in-distribution (0.804 → 0.783) sits well inside the bootstrap CI overlap.
-- **The win over DeepEval (0.783 vs 0.516) survives the bootstrap CI test:** multivon-eval's lower bound (0.68) clears DeepEval's upper bound (0.66). Not a coin-flip difference.
-- **Simple judge still pegs recall at 1.0** by flagging every summary as hallucinated — same pattern as Benchmark 1. High recall, no actionable signal.
+**Earlier published numbers superseded:** prior versions of this README cited F1 0.480 for multivon-eval on this benchmark (a single-run snapshot at an older threshold/judge configuration). The 0.783 figure is the current benchmark output with the v2 calibration. Reproduce via `python benchmarks/run_faithfulness_benchmark.py`.
 
-**What this discharges:** the "you tuned thresholds on the same set you tested on" criticism. The calibrated threshold (0.90 for Haiku faithfulness) was set on HaluEval-QA-50; here we apply it without modification to HaluEval-Sum-60. F1 holds. Calibration transfers across task families inside HaluEval.
+---
 
-**What it doesn't discharge:** TruthfulQA, FaithBench, and non-HaluEval-corpora generalization. Both HaluEval-Sum and HaluEval-QA build on CNN/DailyMail-adjacent source documents — there is shared corpus structure even across the two splits. A larger held-out evaluation against TruthfulQA + FaithBench is on the [public roadmap](https://multivon.ai/roadmap), targeting launch + 2 weeks.
+## Benchmark 4 — Hallucination evaluator on HaluEval-Sum (truly held-out)
 
-**Earlier published numbers superseded:** prior versions of this README cited F1 0.480 for multivon-eval on this benchmark. That was a single-run snapshot at an older threshold/judge configuration. The 0.783 figure above is the current benchmark output with the v2 calibration. Reproduce via `python benchmarks/run_faithfulness_benchmark.py`.
+**Dataset:** [HaluEval Summarization](https://github.com/RUCAIBox/HaluEval) — 30 document-summary pairs (60 cases). Same data as Benchmark 3.
+
+**Task:** Detect whether a summary introduces claims not in the source document.
+
+**The crucial difference from Benchmark 3:** here we run the **Hallucination** evaluator — which was calibrated on HaluEval-**QA** (different task family, threshold 0.7, never seen summarization data). This is the actually-held-out test that v0.9.4 was trying to claim before the framing was corrected.
+
+| Evaluator | Judge model | Calibrated on | Tested on | Precision | Recall | F1 (95% bootstrap CI) |
+|-----------|-------------|---------------|-----------|-----------|--------|-----------------------|
+| **multivon-eval (Hallucination, held-out)** | claude-haiku-4-5 | HaluEval-QA | HaluEval-Sum | **0.958 [0.80–0.99]** | 0.767 [0.59–0.88] | **0.852 [0.73–0.94]** |
+
+**Raw counts (n=60 cases):** TP=23, FP=1, FN=7, TN=29.
+
+**What this discharges — for real this time:** the contamination criticism on the cross-distribution claim. The Hallucination evaluator was tuned on QA-style short-context cases (Wikipedia-sourced, single-hop QA). We applied that exact evaluator (no re-tuning) to long-context summarization cases. F1 = 0.852, slightly higher than the in-distribution F1 = 0.804 on HaluEval-QA. The threshold generalizes across task families inside HaluEval.
+
+**What it still doesn't discharge:** non-HaluEval corpora (TruthfulQA, FaithBench, RAGTruth) and non-Haiku judges on the same cross-distribution test. Both HaluEval-Sum and HaluEval-QA build on CNN/DailyMail-adjacent source documents — there's shared corpus structure across the two splits. The cross-corpus held-out evaluation is on the [public roadmap](https://multivon.ai/roadmap), targeting launch + 2 weeks. The repository will publish the held-out F1 next to the in-distribution F1 once that lands; we won't retire either number.
+
+**Reproduce:**
+```bash
+python benchmarks/run_truly_held_out.py    # script in repo
+# or inspect: benchmarks/results/hallucination_held_out.json
+```
 
 ---
 
@@ -167,7 +196,8 @@ Comparing evaluators against each other tells you which one scores higher, not w
 
 ### Limitations
 
-- **The headline Hallucination F1 (0.804) is in-distribution.** The threshold was tuned on the same HaluEval-QA-100 split it is tested on. Treat it as a calibrated-default sanity check, not an OOD generalization claim. See the held-out HaluEval-Sum result (Benchmark 3) for the cross-task figure.
+- **The headline Hallucination F1 (0.804) is in-distribution.** The threshold was tuned on the same HaluEval-QA-100 split it is tested on. Treat it as a calibrated-default sanity check, not an OOD generalization claim. For the genuine cross-task figure see Benchmark 4 (F1 0.852 [0.73–0.94] on HaluEval-Sum with the QA-calibrated Hallucination evaluator).
+- **The Faithfulness benchmark on HaluEval-Sum (Benchmark 3) is also in-distribution** despite earlier framing to the contrary. Faithfulness/Haiku is calibrated on HaluEval-Sum, so testing it on HaluEval-Sum reproduces the calibration. The framing was corrected on 2026-06-03 after a round-2 peer review (ML researcher persona) caught it. See the correction note in Benchmark 3.
 - **"Best-tuned" F1 numbers reported anywhere in this repo are upper bounds.** Threshold sweeps reported below are conducted on the test set; the best-F1 values are not held-out estimates. Treat them as ceilings, not generalization claims.
 - HaluEval QA represents a specific distribution (Wikipedia-sourced, single-hop). Performance may vary on domain-specific or multi-hop contexts.
 - The answer relevance golden set is self-curated. It has not been externally reviewed.
