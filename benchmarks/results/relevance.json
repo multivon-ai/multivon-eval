@@ -12,7 +12,13 @@
       "tp": 20,
       "fp": 2,
       "fn": 0,
-      "tn": 18
+      "tn": 18,
+      "precision_ci_lo": 0.7219,
+      "precision_ci_hi": 0.9747,
+      "recall_ci_lo": 0.8389,
+      "recall_ci_hi": 1.0,
+      "f1_ci_lo": 0.875,
+      "f1_ci_hi": 1.0
     },
     "simple_judge (yes/no)": {
       "precision": 0.952,
@@ -22,7 +28,13 @@
       "tp": 20,
       "fp": 1,
       "fn": 0,
-      "tn": 19
+      "tn": 19,
+      "precision_ci_lo": 0.7733,
+      "precision_ci_hi": 0.9915,
+      "recall_ci_lo": 0.8389,
+      "recall_ci_hi": 1.0,
+      "f1_ci_lo": 0.913,
+      "f1_ci_hi": 1.0
     },
     "deepeval (GPT-4o-mini)": {
       "precision": 1.0,
@@ -32,7 +44,13 @@
       "tp": 19,
       "fp": 0,
       "fn": 1,
-      "tn": 20
+      "tn": 20,
+      "precision_ci_lo": 0.8318,
+      "precision_ci_hi": 1.0,
+      "recall_ci_lo": 0.7639,
+      "recall_ci_hi": 0.9911,
+      "f1_ci_lo": 0.9091,
+      "f1_ci_hi": 1.0
     }
   }
 }

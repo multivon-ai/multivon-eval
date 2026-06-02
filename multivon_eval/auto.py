@@ -919,5 +919,18 @@ def _call_judge_raw(judge_cfg: JudgeConfig, prompt: str) -> str:
         )
         return resp.text
 
+    elif judge_cfg.provider in ("ollama", "litellm"):
+        # Route local / litellm providers through the unified judge.call path
+        # so they pick up the OLLAMA_HOST resolution, OpenAI-shim dummy-key
+        # injection, and base-url overrides that the cloud branches above
+        # don't share. This is the path that lets ``--judge-provider ollama
+        # --judge-model qwen2.5:14b`` work end-to-end in bootstrap, not just
+        # at evaluator runtime.
+        from .judge import make_judge_call
+        return make_judge_call(prompt, judge_cfg)
+
     else:
-        raise ValueError(f"unknown provider for adversarial generation: {judge_cfg.provider}")
+        raise ValueError(
+            f"unknown provider for adversarial generation: {judge_cfg.provider}. "
+            f"Supported: anthropic, openai, google, ollama, litellm."
+        )

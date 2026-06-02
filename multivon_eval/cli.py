@@ -510,8 +510,18 @@ def main():
                         help="Judge model for LLM proposal + calibration "
                              "(default: claude-haiku-4-5-20251001)")
     boot_p.add_argument("--judge-provider", default="anthropic",
-                        choices=["anthropic", "openai", "google"],
-                        help="Judge provider (default: anthropic)")
+                        choices=["anthropic", "openai", "google", "ollama", "litellm"],
+                        help="Judge provider. Cloud: anthropic, openai, google. "
+                             "Local: ollama (e.g. --judge-provider ollama "
+                             "--judge-model qwen2.5:14b), litellm (any LiteLLM "
+                             "provider string). Local judges respect OLLAMA_HOST "
+                             "and OpenAI-shim base URLs — see judge.py. Default: anthropic.")
+    boot_p.add_argument("--judge-base-url", default=None,
+                        help="Override base URL for the judge provider (vLLM, "
+                             "LM Studio, custom Ollama host, OpenAI-compatible "
+                             "shim). When set with --judge-provider openai, "
+                             "a dummy API key is injected if OPENAI_API_KEY is "
+                             "absent so local-shim servers Just Work.")
     boot_p.add_argument("--n-seed-cases", type=int, default=30,
                         help="Number of adversarial seed cases to generate (default: 30)")
     boot_p.add_argument("--pii-policy", default="redact",

@@ -2,19 +2,36 @@
 
 All notable changes to `multivon-eval`. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) as of 0.7.0.
 
-## [Unreleased]
+## [0.9.4] — 2026-06-03
 
-Phase 1 of prompt-regression attribution. Adds `multivon_eval.attribution`, a small package that walks a Python repo for LLM SDK call sites, fingerprints prompt literals, and emits a structured diff across two refs. **Descriptive only — no causal attribution claims.** The hardened calibration spike of 2026-05-30 showed Haiku-based causal attribution failing catastrophically on mixed-cause regressions; the design doc at `multivon-strategy/positioning/feature_prompt_attribution_phase2_sidecar_design_2026_05_30.md` plans the v2 sidecar signal that closes that hole structurally.
+Launch-prep release driven by the 7-persona launch simulation (HN top-commenter, HN early adopter, r/LocalLLaMA, r/MachineLearning, r/MLOps, r/Python, CTO procurement). Closes the cross-persona convergent findings: load-traces silent skips, half-done bootstrap output, cloud-only judge in the bootstrap CLI, in-distribution-only headline F1, and missing CIs on shipped numbers.
 
 ### Added
 
-- **`multivon_eval.attribution`** module — public API: `scan(repo_root)`, `diff_records(base, head)`, `render_markdown(diffs)`. Detects `anthropic.messages.create`, `openai.chat.completions.create`, and `litellm.completion`/`acompletion` call sites via suffix-based matching that handles both `client.messages.create(...)` and `anthropic.Anthropic().messages.create(...)`. Extracts string-literal `system=` kwargs and the `content` field of each `messages=[…]` entry. f-strings with zero runtime interpolation are treated as literals; runtime-interpolated f-strings and `Name` references are flagged `is_dynamic=True` with a stable placeholder. Skips `.venv`, `node_modules`, `__pycache__`, build directories.
-- **`multivon-eval attribution scan <repo>`** — list every detected prompt call site in a repo, with `--format text` (default) or `--format json`.
-- **`multivon-eval attribution diff <base> <head>`** — structured diff between two checkouts, with `--format markdown` (default; PR-comment-ready), `--format text`, or `--format json`.
+- **`benchmarks/_add_cis.py`** — walks `benchmarks/results/*.json` and writes Wilson CIs on precision/recall + bootstrap CIs (1000 resamples, stable seed 20260603) on F1. Idempotent. Adds `precision_ci_lo/hi`, `recall_ci_lo/hi`, `f1_ci_lo/hi` fields on every metrics block that has TP/FP/FN/TN counts. Closes the "framework preaches CIs but doesn't ship them on its own published numbers" eat-own-dogfood violation.
+- **Held-out faithfulness benchmark on HaluEval-Sum** — re-ran `benchmarks/run_faithfulness_benchmark.py` with the v2-calibrated threshold *frozen* (no re-tuning on the held-out split). New result: **F1 0.783 [0.68–0.88]** on n=60. Discharges the "you tuned thresholds on the same set you tested on" criticism for cross-task generalization. See `benchmarks/README.md` Benchmark 3 for the full update.
+- **`multivon_eval.discover.load_traces` accepts field aliases.** LangSmith (`query`/`answer`/`retrieved_context`), LangFuse (`prompt`/`completion`), Phoenix (`input`/`output`) all auto-rename to the canonical shape. Loud one-line summary to stderr: "loaded N/M traces · renamed K input/output/context fields · skipped X rows with no input/query/prompt field." Silent skip behavior removed — the previous failure mode was real users thinking their dump was empty when 198/200 rows had used `query` instead of `input`. Pass `verbose=False` to suppress.
+- **Bootstrap-generated `eval_suite.py` is now runnable end-to-end.** Previously emitted a literal `TODO: add your cases here` comment and stopped. Now scaffolds an `argparse` CLI, a `load_cases()` helper that reads `seed_cases.jsonl` by default (or `--cases path/to/real.jsonl`), and a `stub_model()` placeholder with an obvious replace-me prompt. `python eval_suite.py --runs 1` runs cleanly after bootstrap — only thing the user has to swap is the stub model function.
+- **`multivon-eval bootstrap --judge-provider` accepts `ollama` and `litellm`.** The SDK judge layer always supported local providers (judge.py respects `OLLAMA_HOST`, injects dummy keys for OpenAI-shim servers), but the bootstrap CLI argparse hard-restricted to cloud. Now `--judge-provider ollama --judge-model qwen2.5:14b` works end-to-end. Added `--judge-base-url` for vLLM / LM Studio / custom Ollama endpoints. `auto.py::_call_judge_raw` (the adversarial seed generator) routes local providers through `make_judge_call` instead of its bespoke switch, so it stops hard-failing on non-cloud providers.
+- **`skills/` directory** — three Claude Code skills (`eval-bootstrap`, `eval-audit`, `eval-explain`) shipping with the framework. SKILL.md files following the Anthropic skill model. Install via symlink into `~/.claude/skills/`. See `skills/README.md`.
 
-### Notes
+### Changed
 
-- Causal attribution (which prompt change caused which regression) is deliberately not shipped in v1. See the Phase 2 design doc for the sidecar plan that gates Haiku attribution behind a non-prompt-change detector to avoid HIGH-confidence-and-wrong failures on mixed-cause PRs.
+- **`benchmarks/README.md`** — headline Hallucination F1 (0.804) now labeled in-distribution with a footnote citing the calibration dataset hash. Benchmark 3 (Faithfulness) updated with the held-out HaluEval-Sum result and a "what this discharges vs doesn't" explanation. All F1 numbers in the summary table now carry their 95% bootstrap CI. Limitations section opens with the in-distribution caveat and the post-hoc threshold-sweep caveat — the framework's own page now applies the standard the framework preaches.
+
+---
+
+## [Unreleased]
+
+(reserved for in-flight work — empty)
+
+---
+
+### Phase 1 attribution (carried forward from 0.9.4)
+
+- `multivon_eval.attribution` — public API: `scan(repo_root)`, `diff_records(base, head)`, `render_markdown(diffs)`. Descriptive only; causal attribution intentionally not shipped (see the Phase 2 sidecar design doc).
+- `multivon-eval attribution scan <repo>` — text or JSON output.
+- `multivon-eval attribution diff <base> <head>` — markdown / text / JSON output.
 
 ## [0.9.3] — 2026-05-28
 

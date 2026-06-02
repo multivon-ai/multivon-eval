@@ -12,7 +12,13 @@
       "tp": 41,
       "fp": 11,
       "fn": 9,
-      "tn": 39
+      "tn": 39,
+      "precision_ci_lo": 0.6597,
+      "precision_ci_hi": 0.8776,
+      "recall_ci_lo": 0.692,
+      "recall_ci_hi": 0.9023,
+      "f1_ci_lo": 0.7083,
+      "f1_ci_hi": 0.8829
     },
     "keyword_overlap": {
       "precision": 0.605,
@@ -22,7 +28,13 @@
       "tp": 23,
       "fp": 15,
       "fn": 27,
-      "tn": 35
+      "tn": 35,
+      "precision_ci_lo": 0.4472,
+      "precision_ci_hi": 0.744,
+      "recall_ci_lo": 0.3297,
+      "recall_ci_hi": 0.596,
+      "f1_ci_lo": 0.3864,
+      "f1_ci_hi": 0.6374
     },
     "simple_judge (1-10)": {
       "precision": 0.617,
@@ -32,7 +44,13 @@
       "tp": 50,
       "fp": 31,
       "fn": 0,
-      "tn": 19
+      "tn": 19,
+      "precision_ci_lo": 0.5084,
+      "precision_ci_hi": 0.7155,
+      "recall_ci_lo": 0.9287,
+      "recall_ci_hi": 1.0,
+      "f1_ci_lo": 0.6777,
+      "f1_ci_hi": 0.8346
     },
     "deepeval (GPT-4o-mini)": {
       "precision": 0.456,
@@ -42,7 +60,13 @@
       "tp": 41,
       "fp": 49,
       "fn": 9,
-      "tn": 1
+      "tn": 1,
+      "precision_ci_lo": 0.3566,
+      "precision_ci_hi": 0.5582,
+      "recall_ci_lo": 0.692,
+      "recall_ci_hi": 0.9023,
+      "f1_ci_lo": 0.4769,
+      "f1_ci_hi": 0.6755
     }
   }
 }

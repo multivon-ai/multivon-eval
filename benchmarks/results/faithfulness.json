@@ -5,14 +5,20 @@
   "n_cases": 60,
   "results": {
     "multivon_eval (Faithfulness)": {
-      "precision": 0.6,
-      "recall": 0.4,
-      "f1": 0.48,
-      "avg_latency_ms": 5071,
-      "tp": 12,
-      "fp": 8,
-      "fn": 18,
-      "tn": 22
+      "precision": 0.692,
+      "recall": 0.9,
+      "f1": 0.783,
+      "avg_latency_ms": 7309,
+      "tp": 27,
+      "fp": 12,
+      "fn": 3,
+      "tn": 18,
+      "precision_ci_lo": 0.5358,
+      "precision_ci_hi": 0.8143,
+      "recall_ci_lo": 0.7438,
+      "recall_ci_hi": 0.9654,
+      "f1_ci_lo": 0.6761,
+      "f1_ci_hi": 0.881
     },
     "keyword_overlap": {
       "precision": 0.762,
@@ -22,27 +28,45 @@
       "tp": 16,
       "fp": 5,
       "fn": 14,
-      "tn": 25
+      "tn": 25,
+      "precision_ci_lo": 0.5491,
+      "precision_ci_hi": 0.8937,
+      "recall_ci_lo": 0.3614,
+      "recall_ci_hi": 0.6977,
+      "f1_ci_lo": 0.4444,
+      "f1_ci_hi": 0.7636
     },
     "simple_judge (1-10)": {
       "precision": 0.5,
       "recall": 1.0,
       "f1": 0.667,
-      "avg_latency_ms": 782,
+      "avg_latency_ms": 1044,
       "tp": 30,
       "fp": 30,
       "fn": 0,
-      "tn": 0
+      "tn": 0,
+      "precision_ci_lo": 0.3774,
+      "precision_ci_hi": 0.6226,
+      "recall_ci_lo": 0.8865,
+      "recall_ci_hi": 1.0,
+      "f1_ci_lo": 0.5542,
+      "f1_ci_hi": 0.7755
     },
     "deepeval (GPT-4o-mini)": {
-      "precision": 0.464,
-      "recall": 0.433,
-      "f1": 0.448,
-      "avg_latency_ms": 3028,
-      "tp": 13,
-      "fp": 15,
-      "fn": 17,
-      "tn": 15
+      "precision": 0.5,
+      "recall": 0.533,
+      "f1": 0.516,
+      "avg_latency_ms": 5269,
+      "tp": 16,
+      "fp": 16,
+      "fn": 14,
+      "tn": 14,
+      "precision_ci_lo": 0.3363,
+      "precision_ci_hi": 0.6637,
+      "recall_ci_lo": 0.3614,
+      "recall_ci_hi": 0.6977,
+      "f1_ci_lo": 0.3529,
+      "f1_ci_hi": 0.6571
     }
   }
 }
