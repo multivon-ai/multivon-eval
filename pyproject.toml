@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "multivon-eval"
-version = "0.9.3"
+version = "0.9.4"
 description = "AI evaluation for teams that ship models to production"
 readme = "README.md"
 license = { text = "Apache-2.0" }
@@ -73,6 +73,7 @@ include = ["multivon_eval*"]
 
 [tool.setuptools.package-data]
 "multivon_eval._calibration_data" = ["*.json"]
+"multivon_eval._skills" = ["*.md", "*/SKILL.md"]
 
 [tool.ruff]
 line-length = 100

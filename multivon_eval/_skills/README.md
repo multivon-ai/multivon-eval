@@ -15,16 +15,16 @@ auto-discovers them.
 ## Install
 
 The skills ship in the `multivon-eval` PyPI package under
-`multivon_eval/skills/`. To make them available to Claude Code, symlink
-them into your skills directory:
+`multivon_eval/_skills/`. To make them available to Claude Code,
+symlink them into your skills directory:
 
 ```bash
 # After: pip install multivon-eval
 PKG_PATH=$(python -c "import multivon_eval, pathlib; print(pathlib.Path(multivon_eval.__file__).parent)")
 mkdir -p ~/.claude/skills
-ln -sf "$PKG_PATH/../skills/eval-bootstrap" ~/.claude/skills/eval-bootstrap
-ln -sf "$PKG_PATH/../skills/eval-audit"     ~/.claude/skills/eval-audit
-ln -sf "$PKG_PATH/../skills/eval-explain"   ~/.claude/skills/eval-explain
+ln -sf "$PKG_PATH/_skills/eval-bootstrap" ~/.claude/skills/eval-bootstrap
+ln -sf "$PKG_PATH/_skills/eval-audit"     ~/.claude/skills/eval-audit
+ln -sf "$PKG_PATH/_skills/eval-explain"   ~/.claude/skills/eval-explain
 ```
 
 Or for the convenience-CLI path (recommended once shipped):
