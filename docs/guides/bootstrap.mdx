@@ -24,7 +24,9 @@ You get four artifacts:
 | `thresholds.yaml`         | Per-evaluator thresholds calibrated from your traces (p25 of scores) |
 | `DISCOVERY_REPORT.md`     | An eval design review you can forward to your team                  |
 
-Total cost: ~$0.01–0.15 per bootstrap depending on options. Latency: under 60 seconds for default settings.
+Total cost: ~$0.12 per bootstrap on default settings (or **$0.00 with `--judge-provider ollama`**). Latency: under 60 seconds for default settings; ~5× wall-clock for the local-judge path.
+
+As of 0.9.4 the emitted `eval_suite.py` is genuinely runnable end-to-end — `python eval_suite.py --runs 1` executes the full suite without further edits. (0.9.4 also fixed a stale `suite.run(cases=...)` kwarg and `report.print_summary()` call that previously broke the generated file; if you hit those on a 0.9.3-and-earlier install, upgrade.)
 
 ## What the inputs look like
 
@@ -70,6 +72,10 @@ Only `input` is required. Optional keys are detected and used to infer product s
 | `metadata.image_url`     | Multimodal detection → adds VQAFaithfulness                 |
 
 If you don't have output traces yet (pre-launch), the tool still proposes evaluators based on the product description alone — threshold calibration is the only step that's skipped.
+
+<Note>
+**`load_traces` accepts your existing dump shape.** As of 0.9.4, the loader auto-aliases field names from LangSmith (`query` → `input`, `answer` → `output`, `retrieved_context` → `context`), LangFuse (`prompt` / `completion`), and Phoenix (`input` / `output`). It prints a one-line summary to stderr — `loaded 287/300 traces · renamed 814 fields · skipped 13 (missing input)` — so you can see exactly what was renamed and what was dropped. The silent-skip behavior from earlier releases is gone.
+</Note>
 
 ## How the recommendation works
 
@@ -130,11 +136,29 @@ multivon-eval bootstrap --help
 | `--traces`, `-t`     | required                         | Path to traces JSONL                                     |
 | `--output`, `-o`     | `./eval-bootstrap`               | Output directory (created if absent)                     |
 | `--judge-model`      | `claude-haiku-4-5-20251001`      | Judge model for the proposal call                        |
-| `--judge-provider`   | `anthropic`                      | `anthropic` \| `openai` \| `google`                      |
+| `--judge-provider`   | `anthropic`                      | `anthropic` \| `openai` \| `google` \| `ollama` \| `litellm` |
+| `--judge-base-url`   | unset                            | OpenAI-compatible base URL (vLLM, LM Studio, custom Ollama host) |
 | `--n-seed-cases`     | `30`                             | Adversarial cases to generate (set to 0 to skip)         |
 | `--pii-policy`       | `redact`                         | `redact` \| `strict` \| `allow`                          |
 | `--skip-seed-cases`  | off                              | Save ~$0.02 if you don't need adversarial cases          |
 | `--skip-calibration` | off                              | Use proposed thresholds without trace-side scoring       |
+
+## Local judge — run bootstrap fully offline
+
+The whole pipeline routes through `make_judge_call` as of 0.9.4 / 0.9.6 — including the adversarial seed-case generator (`auto.py`). That means `--judge-provider ollama` (or `litellm`) runs end-to-end, not just at argparse level.
+
+```bash
+multivon-eval bootstrap \
+  --judge-provider ollama \
+  --judge-model qwen2.5:14b \
+  --product product.md \
+  --traces traces.jsonl
+```
+
+- `OLLAMA_HOST` env var controls the daemon address (default `127.0.0.1:11434`).
+- `--judge-base-url http://localhost:8000/v1` overrides for vLLM, LM Studio, or a remote Ollama.
+- Wall-clock is roughly **5× the Haiku default** at default `--n-seed-cases 30`. Cost: $0.00.
+- Cases generated under a local judge carry `metadata['judge_used'] = "ollama:qwen2.5:14b"` and `metadata['prompt_version']` for downstream replay.
 
 ## Programmatic API
 
@@ -163,3 +187,4 @@ print(f"artifacts: {result.artifacts}")
 - [Intelligent eval primitives](/guides/intelligent-eval) — full reference for the three primitives the bootstrap composes (`auto_evaluators`, `generate_adversarial_cases`, `validate_adversarial_cases`). Use these directly when you want fine-grained control or want to compose them into your own pipeline.
 - [Synthetic data generation](/guides/synthetic-data) — the higher-level `generate_from_file` / `generate_from_text` helpers, when you want generation without targeting a specific failure mode.
 - [Quickstart](/quickstart) — the manual path: write `EvalCase` objects directly.
+- [/eval-bootstrap Claude Code skill](/skills/eval-bootstrap) — the auto-invoking wrapper around this CLI for Claude Code users. Install with `multivon-eval install-skills`.

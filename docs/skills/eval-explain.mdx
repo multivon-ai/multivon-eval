@@ -1,0 +1,80 @@
+---
+title: eval-explain
+description: Claude Code skill that explains in exactly 3 sentences why multivon-eval picked a particular evaluator, threshold, or methodology.
+icon: message-circle-question
+---
+
+`eval-explain` closes the "black box recommender" DX gap. Bootstrap picks evaluators based on the inferred shape of your product and traces; this skill explains why a specific evaluator showed up. The answer is exactly three sentences plus an optional one-case illustration — short enough to read inline, dense enough to act on.
+
+## When it auto-invokes
+
+The skill auto-invokes in two situations:
+
+- **Right after [`eval-bootstrap`](/skills/eval-bootstrap) completes** — it surfaces the rationale for the top one or two evaluators that were picked, so you understand what you just got without scrolling `DISCOVERY_REPORT.md`.
+- **On user phrases** — any of:
+  - "why did multivon recommend X"
+  - "what does X evaluator do"
+  - "is X the right eval for my use case"
+  - "explain this threshold"
+
+## allowed-tools
+
+```yaml
+allowed-tools: Read, Grep, WebFetch
+```
+
+The skill reads `DISCOVERY_REPORT.md` and `seed_cases.jsonl` locally, greps the evaluator class for its docstring, and optionally fetches the methodology or benchmark page for cross-reference. It never writes files and never executes the eval suite — explanation only.
+
+## What it does
+
+<Steps>
+  <Step title="Locate the source of truth">
+    First checks for `DISCOVERY_REPORT.md` next to `eval_suite.py` (written by [`eval-bootstrap`](/skills/eval-bootstrap)) and reads the rationale block for the named evaluator. If no report exists, falls back to the evaluator's docstring:
+    ```bash
+    python -c "from multivon_eval import Faithfulness; print(Faithfulness.__doc__)"
+    ```
+  </Step>
+  <Step title="Find an example case">
+    Locates one or two example cases that exercise the evaluator — from `seed_cases.jsonl` if present, or by generating one via `generate_hallucination_pairs` for hallucination / faithfulness evaluators.
+  </Step>
+  <Step title="Answer in exactly 3 sentences">
+    The skill is constrained to a three-sentence shape:
+
+    1. **What** the evaluator measures (paraphrase the docstring, do not quote it).
+    2. **Why** bootstrap picked it for *this* project — citing the trace pattern or product-shape signal that drove the pick.
+    3. **What alternatives** exist and when you would use them instead.
+  </Step>
+</Steps>
+
+## Example prompt and output
+
+**You:**
+
+```text
+Why did multivon recommend Faithfulness here?
+```
+
+**Skill output:**
+
+> Faithfulness measures whether your agent's answer is grounded in the retrieved context — it generates yes/no questions about claims in the answer and scores by the fraction the context supports. Bootstrap picked it because your traces contain a `context` field on every row (RAG shape) and your product description mentions "answers from our internal docs." If your context were short (1-2 sentences), Hallucination would be the better pick; if it were long-form generated text without retrieval, Coherence + AnswerAccuracy would be the right pair instead.
+>
+> Example case:
+> ```text
+> input: "what is the company's return policy?"
+> context: "Returns accepted within 30 days with receipt..."
+> output: "We accept returns within 60 days with no receipt."
+> expected: faithfulness LOW — output contradicts context on both
+>           the time window and the receipt requirement
+> ```
+
+## What it doesn't do
+
+- **Doesn't argue with your choice.** If you want to override bootstrap's recommendation, the skill surfaces why bootstrap picked X and then steps back. You have context bootstrap doesn't.
+- **Doesn't lecture about statistical methodology.** Explanation stays scoped to the chosen evaluator's behavior — not eval theory.
+- **Doesn't generate cases you didn't ask for.** The example case is illustrative, not material you have to keep.
+
+## See also
+
+- [eval-bootstrap](/skills/eval-bootstrap) — runs first; this skill explains its output.
+- [eval-audit](/skills/eval-audit) — when an evaluator flags a regression and the question becomes "wait, what does this even measure?"
+- [LLM-judge evaluators reference](/evaluators/llm-judge) — the full evaluator catalog the skill draws its docstrings from.

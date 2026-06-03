@@ -12,7 +12,29 @@ pip install multivon-eval
 multivon-eval bootstrap --product product.md --traces traces.jsonl --output ./eval-bootstrap/
 ```
 
-Returns four files: `eval_suite.py` (runnable), `seed_cases.jsonl` (30 adversarial cases), `thresholds.yaml` (calibrated from your traces), and `DISCOVERY_REPORT.md` (an eval design review). Cost: ~$0.01 per bootstrap. **[Full walkthrough →](/guides/bootstrap)**
+Returns four files: `eval_suite.py` (runnable), `seed_cases.jsonl` (30 adversarial cases), `thresholds.yaml` (calibrated from your traces), and `DISCOVERY_REPORT.md` (an eval design review). Cost: ~$0.12 default (or free with `--judge-provider ollama`). **[Full walkthrough →](/guides/bootstrap)**
+
+Run it fully offline with a local judge:
+
+```bash
+multivon-eval bootstrap \
+  --judge-provider ollama --judge-model qwen2.5:14b \
+  --product product.md --traces traces.jsonl --output ./eval-bootstrap/
+```
+
+## Wire it into Claude Code with `install-skills`
+
+```bash
+multivon-eval install-skills
+```
+
+Symlinks three bundled Claude Code skills into `~/.claude/skills/`. From that point on:
+
+- Say *"add evals to this project"* → Claude Code auto-invokes `/eval-bootstrap`.
+- Ask *"why did multivon recommend Faithfulness?"* → `/eval-explain` answers.
+- Before `/ship` on a PR that touches prompts or tool defs → `/eval-audit` runs only the cases that exercise the changed surface and gates the PR.
+
+See [/guides/install-skills](/guides/install-skills) and [/skills/overview](/skills/overview).
 
 ## Or try the canned demo
 
@@ -190,5 +212,8 @@ exp.compare(old_run_id, run_id)
   </Card>
   <Card title="CI/CD integration" href="/guides/ci-cd">
     Run evals as a quality gate
+  </Card>
+  <Card title="Install Claude Code skills" icon="wand-magic-sparkles" href="/guides/install-skills">
+    Auto-invoke bootstrap, audit, and explain skills
   </Card>
 </CardGroup>

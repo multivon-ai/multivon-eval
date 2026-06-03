@@ -69,22 +69,34 @@
             ]
           },
           {
+            "group": "Claude Code Skills",
+            "pages": [
+              "skills/index",
+              "skills/eval-bootstrap",
+              "skills/eval-audit",
+              "skills/eval-explain"
+            ]
+          },
+          {
             "group": "Guides",
             "pages": [
               "guides/bootstrap",
+              "guides/install-skills",
               "guides/intelligent-eval",
+              "guides/statistical-rigor",
+              "guides/reliability",
               "reference/eval-report",
               "guides/examples",
               "guides/generate",
               "guides/experiments",
-              "guides/reliability",
               "guides/factory-suites",
-              "guides/statistical-rigor",
               "guides/compliance",
               "guides/datasets",
               "guides/synthetic-data",
               "guides/ci-cd",
+              "guides/agent-trace",
               "guides/integrations",
+              "guides/attribution",
               "guides/production-targets",
               "guides/custom-evaluators"
             ]

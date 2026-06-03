@@ -1,0 +1,117 @@
+---
+title: eval-bootstrap
+description: Claude Code skill that turns a product description plus a handful of traces into a runnable eval suite in under three minutes.
+icon: rocket
+---
+
+`eval-bootstrap` wraps the [`multivon-eval bootstrap`](/guides/bootstrap) CLI in a Claude Code workflow. A fresh project goes from "no eval scaffolding" to "first eval running" without you typing CLI flags. The skill picks the judge provider from your environment, finds sample traces in conventional locations, rewrites the generated `stub_model` to call your real model, and writes an `EVALS.md` so the next session picks up where this one left off.
+
+## Trigger phrases
+
+The skill auto-invokes on any of these:
+
+- "add evals to this project"
+- "set up evaluation"
+- "eval this codebase"
+- "evaluate this project"
+- "what evaluators should I run"
+
+It also auto-invokes when Claude Code detects that the current repo imports from `anthropic`, `openai`, `google.genai`, `litellm`, `langchain`, or `llama_index` AND has no `eval/`, `evals/`, `tests/eval/`, or `evaluation/` directory.
+
+It does NOT auto-invoke if the repo already has a working eval suite. In that case it suggests [`eval-audit`](/skills/eval-audit) instead.
+
+## allowed-tools
+
+```yaml
+allowed-tools: Bash, Read, Edit, Write, Glob
+```
+
+The skill runs the bootstrap CLI in a fresh terminal the user can inspect, reads existing call sites to learn the project's LLM client setup, and writes `eval_suite.py` plus `EVALS.md`. It has no Network or MCP access beyond what the CLI itself uses.
+
+## Step-by-step flow
+
+<Steps>
+  <Step title="Scope check">
+    Reads `pyproject.toml` or `package.json` to identify the LLM provider in use. If multiple providers are detected, the skill asks which one to target — it never silently picks for you.
+  </Step>
+  <Step title="Trace collection">
+    Looks for sample traces in this order: `traces/*.jsonl`, `data/traces/*.jsonl`, `notebooks/*/traces.jsonl`. If none are found, it asks you to paste 5–20 sample `(input, output)` pairs into a temp file. If the project uses LangSmith / LangFuse / Phoenix, the skill prompts for a dump command — those are your secrets, the skill never runs the dump itself.
+  </Step>
+  <Step title="Product description">
+    Uses `PRODUCT.md`, `OVERVIEW.md`, or the top-level `README.md` as the product description. Falls back to asking you for two or three sentences if none exist.
+  </Step>
+  <Step title="Run bootstrap">
+    Executes `multivon-eval bootstrap` with the detected provider as `--judge-provider`, a sensible default model, and `--pii-policy redact`. The CLI emits four artifacts: `eval_suite.py`, `seed_cases.jsonl`, `thresholds.yaml`, `DISCOVERY_REPORT.md`.
+  </Step>
+  <Step title="Rewrite stub_model">
+    The generated `eval_suite.py` ships with a placeholder `stub_model()`. The skill reads one or two existing LLM call sites in your repo and rewrites `stub_model` to use the same client setup — no reinvention.
+  </Step>
+  <Step title="Write EVALS.md">
+    A short doc the next Claude Code session reads first. It lists which evaluators were picked and why (one sentence each), the CLI command to re-run the suite, and a TODO link to [`eval-audit`](/skills/eval-audit) for PR gating.
+  </Step>
+  <Step title="Sanity-check">
+    Runs `python eval_suite.py --runs 1` once. If the first one or two cases fail, the skill surfaces the error with a clear "this is a config issue at line N, not a model issue" framing.
+  </Step>
+</Steps>
+
+## Local-judge path — no API key required
+
+If no `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GOOGLE_API_KEY` is in env, the skill checks for a running Ollama instance via `curl -s http://localhost:11434/api/tags`. If Ollama responds, it runs `ollama list` first to see what models you have actually pulled, then picks the strongest instruction-tuned model available. Rough order of judge quality:
+
+1. `qwen2.5:72b`
+2. `llama3.3:70b-instruct`
+3. `deepseek-r1:32b`
+4. `qwen2.5:14b`
+
+The picked model is passed as `--judge-model`:
+
+```bash
+ollama list                                          # see what's available
+multivon-eval bootstrap \
+    --product PRODUCT.md \
+    --traces sample_traces.jsonl \
+    --judge-provider ollama \
+    --judge-model qwen2.5:72b
+```
+
+<Warning>
+The shipped thresholds in `_calibration_data/v2.json` are calibrated for cloud judges. Local-judge bootstrap is roughly 5× wall-clock and uses those same thresholds — if you care about per-judge threshold accuracy, re-run calibration locally:
+
+```bash
+python -m multivon_eval.benchmarks.run_calibration_v2 \
+    --judges "ollama:qwen2.5:72b-instruct"
+```
+</Warning>
+
+## Costs
+
+| Path | Cost | Wall-clock |
+|---|---|---|
+| Cloud (claude-haiku-4-5 judge, default) | ~$0.12 per run, hard ceiling $0.15 | under 60 seconds |
+| Local (Ollama) | free | ~5× cloud wall-clock |
+
+## How to extend
+
+The skill is a `SKILL.md` file under `multivon_eval/_skills/eval-bootstrap/` inside the installed package. Two ways to customize:
+
+1. **Edit the symlinked file.** `install-skills` writes a directory symlink by default — `~/.claude/skills/eval-bootstrap/SKILL.md` points at the package copy, and `pip install -U multivon-eval` overwrites your edits. To customize safely, copy the directory out of the symlink chain first:
+   ```bash
+   rm ~/.claude/skills/eval-bootstrap
+   cp -R $(python -c "import multivon_eval, pathlib; print(pathlib.Path(multivon_eval.__file__).parent)")/_skills/eval-bootstrap ~/.claude/skills/eval-bootstrap
+   ```
+2. **Fork the entire skills set.** Vendor `_skills/` into your own repo, point the symlinks at your fork, and PR upstream changes back to [multivon-ai/multivon-eval](https://github.com/multivon-ai/multivon-eval) when they're broadly useful.
+
+The `SKILL.md` spec is documented in [Anthropic's Agent Skills reference](https://docs.claude.com/en/docs/agents-and-tools/agent-skills) — plain Markdown with YAML frontmatter, no DSL.
+
+## What it doesn't do
+
+- Doesn't promise the generated suite covers everything you should evaluate. It covers the shape it can infer from traces plus the product description. Treat the output as a starting point.
+- Doesn't replace `pytest` or your existing test suite.
+- Doesn't ship a hosted dashboard — output is plain JSON, Markdown, and runnable Python.
+- Doesn't gate PRs by itself. Pair with [`eval-audit`](/skills/eval-audit) (Claude Code) or [`eval-action`](https://github.com/multivon-ai/eval-action) (GitHub Actions) for CI gating.
+
+## See also
+
+- [Bootstrap CLI guide](/guides/bootstrap) — the underlying CLI this skill wraps, with full flag reference and the PII handling policies.
+- [eval-audit](/skills/eval-audit) — the PR-time counterpart that runs the suite this skill generates.
+- [eval-explain](/skills/eval-explain) — the skill that explains why a particular evaluator was picked, right after bootstrap finishes.

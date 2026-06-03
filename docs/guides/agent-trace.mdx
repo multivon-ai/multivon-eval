@@ -1,0 +1,406 @@
+---
+title: "Agent traces"
+description: "Capture multi-step agent execution and score it with eight trace-aware evaluators."
+icon: "route"
+---
+
+Most LLM evals stop at the final string. Agent evals can't — the same output can come
+from a clean three-step plan or a thirty-call death spiral, and you want to fail the
+death spiral. `multivon-eval` ships a framework-agnostic trace model, three tracer
+adapters, and eight evaluators that score the trajectory itself.
+
+This page covers the data model, the tracers, the evaluators, and a runnable
+LangGraph example.
+
+## The trace data model
+
+Two dataclasses, defined in
+[`multivon_eval/case.py`](https://github.com/multivon-ai/multivon-eval/blob/main/multivon_eval/case.py):
+
+```python
+from dataclasses import dataclass, field
+from typing import Any
+
+@dataclass
+class ToolCall:
+    name: str
+    arguments: dict[str, Any] = field(default_factory=dict)
+    result: Any = None
+
+@dataclass
+class AgentStep:
+    thought: str = ""
+    tool_calls: list[ToolCall] = field(default_factory=list)
+    output: str = ""
+```
+
+An agent trace is `list[AgentStep]`, attached to an `EvalCase` as `agent_trace`.
+The semantic unit is **one `AgentStep` per LLM/agent turn**, not per framework
+event. A ReAct loop that thinks, decides to call three tools in parallel, and then
+incorporates the results produces ONE step with three `ToolCall` entries — not three
+steps. This choice is enforced by every shipped tracer and is what the evaluators
+assume.
+
+<Note>
+  `EvalCase.expected_tool_calls` is the assertion surface. `ToolCall.arguments` and
+  `ToolCall.result` are captured automatically by the tracers — you don't write
+  them by hand unless you're using `ManualTracer`.
+</Note>
+
+## Tracer adapters
+
+A tracer wraps your `model_fn` so the suite gets back not just a string but a
+`list[AgentStep]`. All three implement the `AgentTracer` ABC from
+[`multivon_eval/integrations/base.py`](https://github.com/multivon-ai/multivon-eval/blob/main/multivon_eval/integrations/base.py).
+
+<CardGroup cols={3}>
+  <Card title="LangGraphTracer" icon="diagram-project">
+    Callback-based tracer for LangGraph compiled graphs. Step boundary = each
+    `on_llm_start`, so tools fire into the step that decided to call them.
+  </Card>
+  <Card title="OpenAIAgentsTracer" icon="circle-nodes">
+    Two modes: post-hoc `capture(result)` parses `RunResult.new_items`; live
+    `run_hooks()` uses per-run isolated buffers.
+  </Card>
+  <Card title="ManualTracer" icon="hand">
+    For custom agents and frameworks without integration. You call
+    `tracer.step(...)` inside your agent code.
+  </Card>
+</CardGroup>
+
+### LangGraphTracer
+
+A `CallbackTracer` subclass — it builds a `BaseCallbackHandler` and injects it via
+`config={"callbacks": [...]}` on the compiled graph's `invoke`. Implementation in
+[`integrations/langgraph.py`](https://github.com/multivon-ai/multivon-eval/blob/main/multivon_eval/integrations/langgraph.py).
+
+```python
+from multivon_eval.integrations.langgraph import LangGraphTracer
+
+tracer = LangGraphTracer()
+
+def model_fn(input_text: str, **kwargs) -> str:
+    result = graph.invoke(
+        {"messages": [HumanMessage(content=input_text)]},
+        config={"callbacks": kwargs.get("callbacks", [])},
+    )
+    return result["messages"][-1].content
+
+suite.run(model_fn, tracer=tracer)
+```
+
+The tracer uses LangGraph metadata (`langgraph_node`, `langgraph_checkpoint_ns`,
+`graph:step:N` tags) to attribute calls to the right node. The `tools` node of a
+ReAct graph collapses into the preceding LLM turn — that's the semantic unit
+evaluators score against.
+
+<Warning>
+  **Known v1 limitations** (file an issue if you hit them): `graph.stream(...)` and
+  `graph.ainvoke(...)` emit the same callback events but aren't end-to-end verified;
+  parallel branches via `Send` share `_current_step` and may cross-attribute — use a
+  separate tracer instance per branch; multi-agent handoffs land as adjacent steps
+  with no first-class handoff event.
+</Warning>
+
+Install with `pip install 'multivon-eval[langgraph]'`. Compatible with LangGraph
+≥ 0.2, verified through 0.5+.
+
+### OpenAIAgentsTracer
+
+For the OpenAI Agents SDK. Two integration paths, both shipped from
+[`integrations/openai_agents.py`](https://github.com/multivon-ai/multivon-eval/blob/main/multivon_eval/integrations/openai_agents.py).
+
+**Post-hoc (default, recommended):** the tracer reads `RunResult.new_items` after
+the run completes. No global state, no thread-safety concerns.
+
+```python
+from multivon_eval.integrations.openai_agents import OpenAIAgentsTracer
+from agents import Runner
+
+tracer = OpenAIAgentsTracer()
+
+def model_fn(input_text: str) -> str:
+    result = Runner.run_sync(my_agent, input_text)
+    tracer.capture(result)               # MUST happen inside model_fn
+    return result.final_output
+
+suite.run(model_fn, tracer=tracer)
+```
+
+**Live RunHooks** (when you need event-time interception — streaming, cancel-on-guardrail):
+
+```python
+hooks = tracer.run_hooks()                # PRIVATE buffer per run
+result = await Runner.run(my_agent, input_text, hooks=hooks)
+tracer.merge(hooks)                       # fold into trace
+```
+
+Each `run_hooks()` call returns a `RunHooksBase` with its own buffer — concurrent
+runs do not interleave. `merge` is idempotent: the second call is a no-op because
+the first clears the buffer.
+
+Install with `pip install 'multivon-eval[openai-agents]'`. Items the SDK ships but
+the tracer doesn't fully model yet (`CompactionItem`, `ToolApprovalItem`, MCP /
+ComputerCall / CodeInterpreter / ToolSearch items) are preserved as visible
+`[ItemClassName]` markers in the trace rather than silently dropped.
+
+### ManualTracer
+
+Your fallback for any agent that isn't LangGraph or the OpenAI SDK. You record
+steps explicitly. Source in
+[`integrations/manual.py`](https://github.com/multivon-ai/multivon-eval/blob/main/multivon_eval/integrations/manual.py).
+
+```python
+from multivon_eval.integrations.manual import ManualTracer
+
+tracer = ManualTracer()
+
+def my_agent(input_text: str) -> str:
+    with tracer.step(thought="Searching for context") as s:
+        result = my_search_tool(input_text)
+        s.record_tool_call("search", {"q": input_text}, result)
+    with tracer.step(thought="Synthesizing answer") as s:
+        answer = my_llm(result)
+        s.set_output(answer)
+    return answer
+
+suite.run(my_agent, tracer=tracer)
+```
+
+`step()` returns a `_StepRecorder` context manager that flushes on exit.
+`record_tool_call` and `record_output` are also available without a step block —
+they create implicit single-call steps. ManualTracer is what powers most custom
+agents in production: it's the lowest-friction adapter and has zero framework
+dependencies.
+
+<Tip>
+  Even when a framework adapter exists, ManualTracer is useful for **fallback
+  coverage**: if your agent has a code path the framework adapter doesn't see (a
+  direct API call, a non-LangChain tool), record those steps manually and the
+  evaluators will score them alongside the auto-captured ones.
+</Tip>
+
+## The eight agent-trace evaluators
+
+All eight live in
+[`multivon_eval/evaluators/agent.py`](https://github.com/multivon-ai/multivon-eval/blob/main/multivon_eval/evaluators/agent.py).
+Two are deterministic; six use an LLM judge (the QAG eval pattern documented in
+[Evaluators](/guides/evaluators)). Every evaluator returns a skipped pass — not a
+0.0 — when the case shape doesn't fit it (e.g. no `agent_trace`, no
+`expected_tool_calls`). This was hardened in
+[0.9.0](https://github.com/multivon-ai/multivon-eval/blob/main/CHANGELOG.md#090--2026-05-23).
+
+| Evaluator | Deterministic? | Requires |
+|---|---|---|
+| `ToolCallAccuracy` | yes | `expected_tool_calls` (and `agent_trace` when non-empty) |
+| `ToolArgumentAccuracy` | no (judge) | `agent_trace` |
+| `PlanQuality` | no (judge) | `agent_trace` |
+| `TaskCompletion` | no (judge) | output (and `agent_trace` if available) |
+| `StepFaithfulness` | no (judge) | `agent_trace` |
+| `ToolCallNecessity` | no (judge) | `agent_trace` |
+| `TrajectoryEfficiency` | no (judge) | `agent_trace` |
+| `AgentMemoryEval` | no (judge) | `context` (prior session) + current `input` |
+
+### ToolCallAccuracy and its three input shapes
+
+The most-used evaluator on the list. The shape of `expected_tool_calls` triggers
+three different behaviors, formalized in
+[0.9.0](https://github.com/multivon-ai/multivon-eval/blob/main/CHANGELOG.md#090--2026-05-23):
+
+<Steps>
+  <Step title="None — skip">
+    `expected_tool_calls=None` returns a skipped pass with the reason
+    *"Requires case.expected_tool_calls — set it (or [] to assert no tools) to enable
+    ToolCallAccuracy."* You haven't asserted anything, so the evaluator doesn't
+    score.
+  </Step>
+  <Step title="Empty list — assert no tools">
+    `expected_tool_calls=[]` says "the agent must NOT call any tools." If the
+    trace has zero calls → score 1.0 ("Correctly called no tools"). If any tool
+    fires → score 0.0 with the unexpected calls listed. This is the trivial-question
+    assertion: "for *what's 2 + 2*, don't reach for a calculator."
+  </Step>
+  <Step title="Populated list — real expectation">
+    `expected_tool_calls=["lookup_order", "issue_refund"]` is the standard case.
+    Requires `agent_trace`; skips if missing. Default scoring is
+    *fraction of expected tools called*. Two modifiers tune the strictness:
+
+    - `require_order=True` — positional match instead of set match. Use when call
+      order matters (auth before query, validate before commit).
+    - `penalize_unexpected=True` — `score = matched / (expected ∪ unexpected)`,
+      so every extra tool drags the score down. Use for negative cases like *"the
+      agent must NOT call `refund_order` on an already-refunded order"* where
+      extra calls are the failure mode you care about.
+  </Step>
+</Steps>
+
+### The judge-driven six
+
+The remaining seven are sketched here; for the judge resolution logic, see
+[Calibration](/guides/calibration) and
+[Statistical rigor](/guides/statistical-rigor).
+
+- **`ToolArgumentAccuracy`** — per-call yes/no judge prompt: *"Are these arguments
+  appropriate and well-formed for `<tool>` given the task?"* Capped at the first
+  8 calls to bound judge cost.
+- **`PlanQuality`** — 5-question QAG over the full trace: addresses task,
+  logical order, no redundancy, follows from prior steps, expert-efficient.
+- **`TaskCompletion`** — 4-question QAG. Includes a negated check (*"Did the
+  agent fail / error?"*) so an error trace can't slip through with a confident
+  partial-credit score.
+- **`StepFaithfulness`** — per-step judge: *"Does this step follow logically
+  from the task and prior steps, without introducing contradictions or
+  hallucinated information?"* Catches reasoning drift that other evaluators miss.
+- **`ToolCallNecessity`** — per-call: *"Is this call strictly necessary, or
+  redundant given prior calls?"* Detects the "call tools just in case"
+  failure mode. An empty trace is a PASS (nothing to flag as redundant) — not
+  a skip — distinguishing "no expectation set" from "agent correctly did nothing."
+- **`TrajectoryEfficiency`** — 3-question QAG plus an error-recovery bonus:
+  if any tool result contains `error`, an extra judge call asks whether the
+  agent recovered well, penalizing 0.2 if not.
+- **`AgentMemoryEval`** — multi-session memory check. Requires `case.context`
+  (prior session summary) and scores correct recall, no hallucination, no use
+  of stale info. Aligned with AMA-Bench (2025).
+
+## Runnable example: LangGraph + ToolCallAccuracy + TrajectoryEfficiency
+
+End-to-end: a tiny LangGraph agent, two cases (one positive, one negative), a
+ManualTracer fallback for an adversarial case that bypasses LangGraph.
+
+```python title="agent_eval.py"
+from langchain_core.messages import HumanMessage
+from langchain_core.tools import tool
+from langgraph.prebuilt import create_react_agent
+
+from multivon_eval import EvalCase, EvalSuite
+from multivon_eval.evaluators.agent import (
+    ToolCallAccuracy,
+    TrajectoryEfficiency,
+)
+from multivon_eval.integrations.langgraph import LangGraphTracer
+from multivon_eval.integrations.manual import ManualTracer
+
+
+@tool
+def lookup_order(order_id: str) -> dict:
+    """Look up an order by ID."""
+    return {"id": order_id, "status": "refunded", "total": 42.0}
+
+
+@tool
+def issue_refund(order_id: str, amount: float) -> dict:
+    """Issue a refund. Fails for already-refunded orders."""
+    return {"error": "already refunded"}
+
+
+graph = create_react_agent(model="openai:gpt-4o-mini",
+                           tools=[lookup_order, issue_refund])
+
+tracer = LangGraphTracer()
+
+def model_fn(input_text: str, **kwargs) -> str:
+    result = graph.invoke(
+        {"messages": [HumanMessage(content=input_text)]},
+        config={"callbacks": kwargs.get("callbacks", [])},
+    )
+    return result["messages"][-1].content
+
+
+suite = EvalSuite(
+    cases=[
+        # Positive: agent should look up first, then refund.
+        EvalCase(
+            input="Please refund order 1234.",
+            expected_tool_calls=["lookup_order", "issue_refund"],
+        ),
+        # Negative: order is already refunded — agent must NOT re-call issue_refund.
+        EvalCase(
+            input="Refund order 1234, which was already refunded yesterday.",
+            expected_tool_calls=["lookup_order"],
+            metadata={"strict": True},
+        ),
+    ],
+    evaluators=[
+        ToolCallAccuracy(require_order=True),                       # positive
+        ToolCallAccuracy(penalize_unexpected=True),                 # negative
+        TrajectoryEfficiency(threshold=0.7),                        # both
+    ],
+)
+
+# workers=1 is required (and auto-set) when a tracer is attached;
+# tracers are stateful so the suite serializes case execution.
+report = suite.run(model_fn, tracer=tracer)
+print(report.summary())
+```
+
+If LangGraph isn't available — or you want to score a case the framework adapter
+can't see — fall back to `ManualTracer`:
+
+```python
+manual = ManualTracer()
+
+def custom_agent(input_text: str) -> str:
+    with manual.step(thought="Looking up order") as s:
+        order = lookup_order.invoke({"order_id": "1234"})
+        s.record_tool_call("lookup_order", {"order_id": "1234"}, order)
+    if order["status"] == "refunded":
+        answer = f"Order {order['id']} was already refunded."
+        manual.record_output(answer)
+        return answer
+    # ...continue with refund flow...
+
+report = suite.run(custom_agent, tracer=manual)
+```
+
+The same `ToolCallAccuracy` and `TrajectoryEfficiency` instances score both —
+the evaluators don't care which tracer captured the trace.
+
+## Inspecting and debugging traces
+
+`AgentTracer.format_trace()` and `tracer.print_trace()` pretty-print a captured
+trace. Use them inside a notebook when a case fails and you want to see what the
+agent actually did:
+
+```python
+for cr in report.case_results:
+    if not cr.passed:
+        print(f"--- {cr.case_input!r} ---")
+        print(AgentTracer.format_trace(cr.agent_trace))
+```
+
+`CaseResult.agent_trace` was added in
+[0.7.0](https://github.com/multivon-ai/multivon-eval/blob/main/CHANGELOG.md#070--2026-05-16)
+so notebooks can iterate steps from the report without reaching back into the
+suite.
+
+## Importing existing traces
+
+If your traces already live in LangSmith, LangFuse, Phoenix, Datadog, or any
+other observability store, you don't have to re-run the agent.
+`AgentTracer`'s sibling abstraction `CaseImporter` (defined in the same
+`integrations/base.py`) pulls runs as `EvalCase` objects with `agent_trace`
+populated, and `importer.as_model_fn(cases)` gives you a passthrough that
+replays the stored outputs in order:
+
+```python
+importer = MyImporter(project="prod-agent")
+cases = importer.load(limit=200)
+suite.add_cases(cases)
+report = suite.run(importer.as_model_fn(cases))
+```
+
+[`load_traces`](https://github.com/multivon-ai/multivon-eval/blob/main/multivon_eval/discover.py)
+accepts field aliases for the common platforms — LangSmith's
+`query`/`answer`/`retrieved_context`, LangFuse's `prompt`/`completion`,
+Phoenix's `input`/`output` all auto-rename to the canonical shape. See
+[Bootstrap workflow](/guides/bootstrap) for the end-to-end import → score → ship
+loop.
+
+## Related
+
+- [Evaluators](/guides/evaluators) — full evaluator catalog and the QAG eval pattern
+- [Bootstrap workflow](/guides/bootstrap) — generate a tuned agent suite from product + traces
+- [Statistical rigor](/guides/statistical-rigor) — Wilson + bootstrap CIs on agent pass rates
+- [Compliance](/guides/compliance) — hash-chained audit logs over agent runs
+- [`multivon_eval/integrations/`](https://github.com/multivon-ai/multivon-eval/tree/main/multivon_eval/integrations) — tracer source
+- [`multivon_eval/evaluators/agent.py`](https://github.com/multivon-ai/multivon-eval/blob/main/multivon_eval/evaluators/agent.py) — evaluator source

@@ -13,12 +13,41 @@ All runs use `claude-haiku-4-5-20251001` as the judge ([source](https://github.c
 
 | Evaluator | Precision | False positives | F1 |
 |---|---:|---:|---:|
-| **multivon-eval (QAG)** | **0.788** | **11** | **0.804** |
-| DeepEval (GPT-4o-mini)  | 0.456 | 49 | 0.586 |
-| Simple LLM judge (1-10) | 0.617 | 31 | 0.763 |
-| Keyword overlap          | 0.605 | 15 | 0.523 |
+| **multivon-eval (QAG)**[^indist] | **0.788 [0.68–0.87]** | **11** | **0.804 [0.71–0.88]** |
+| DeepEval (GPT-4o-mini)  | 0.456 [0.36–0.56] | 49 | 0.586 [0.48–0.68] |
+| Simple LLM judge (1-10) | 0.617 [0.51–0.71] | 31 | 0.763 [0.66–0.84] |
+| Keyword overlap          | 0.605 [0.45–0.74] | 15 | 0.523 [0.41–0.63] |
+
+[^indist]: In-distribution number — HaluEval-QA, the same dataset whose distribution thresholds are tuned against. See the held-out cross-distribution result in the next section.
 
 **What this means.** Binary yes/no questions (QAG) are a more reliable scoring signal than numeric rubrics. The simple 1-10 judge ships ~3× more false positives at the same precision — every false positive in a CI gate is wasted developer time.
+
+## Cross-distribution held-out F1 — HaluEval-Sum, N=60
+
+The in-distribution F1 above is the headline; the held-out number is the answer to *"did you tune thresholds on the data you're testing against?"* The Hallucination evaluator's threshold is calibrated on HaluEval-QA (threshold `0.55` for `claude-haiku-4-5`). We then test it against a different task family — HaluEval-Sum (summarization hallucination) — without changing anything else.
+
+| Setup | F1 | Precision | Recall | TP | FP | FN | TN |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| **Hallucination, calibrated threshold 0.55, held-out HaluEval-Sum** | **0.830 [0.70–0.92]** | **0.957** | **0.733** | 22 | 1 | 8 | 29 |
+
+[Source — `benchmarks/results/hallucination_held_out.json`](https://github.com/multivon-ai/multivon-eval/blob/main/benchmarks/results/hallucination_held_out.json).
+
+A calibrated evaluator that holds its precision (0.957) when moved to a different task distribution is the actual product claim. Anyone can score well on the validation set they tuned against.
+
+## Three-framework agreement — κ=0.03
+
+We ran multivon-eval, DeepEval, and RAGAS on the same 100 HaluEval-QA cases. Pairwise Cohen's κ across all three pairings: **κ=0.03 — essentially independent**. The frameworks are not measuring the same thing on the same task, despite the marketing copy. Pick the framework whose calibration trail and held-out generalization you can audit — the one that earns its precision number on data it didn't tune against.
+
+## The 0.9.4→0.9.7 self-correction sequence — what credibility actually looks like
+
+A framework that publishes numbers has to publish corrections. The four-release sequence below is the discipline we hold ourselves to:
+
+- **0.9.5** caught that 0.9.4's *"held-out HaluEval-Sum F1 0.783"* was actually in-distribution — Faithfulness's threshold is calibrated on HaluEval-Sum, so testing it back against HaluEval-Sum is leakage. Relabeled with a correction note same-day. [CHANGELOG 0.9.5](https://github.com/multivon-ai/multivon-eval/blob/main/CHANGELOG.md).
+- **0.9.6** noticed the eval_suite.py emitted by `bootstrap` called `suite.run(cases=...)` (non-existent kwarg) and `report.print_summary()` (non-existent method) — both fixed, regression test added.
+- **0.9.7** caught that 0.9.5's held-out test was reporting threshold `0.7` in stderr but the calibrated value for Haiku on Hallucination is `0.55`. Same dataset, same model — different F1 (0.852 vs 0.830). The threshold-vs-default gotcha is now an explicit reproducibility note in [`benchmarks/README.md`](https://github.com/multivon-ai/multivon-eval/blob/main/benchmarks/README.md).
+- **0.9.8** propagated the corrected numbers and the κ=0.03 finding to the README.
+
+Same-day correction with a public trail is the standard. If a number on these pages diverges from what you measure, [open an issue](https://github.com/multivon-ai/multivon-eval/issues) — we'll fix it.
 
 ## Multi-judge agreement — HaluEval QA, N=50, temp=0
 
@@ -26,11 +55,11 @@ Different judges disagree more than you'd expect. The calibrated-thresholds laye
 
 | Judge | Accuracy vs human | Precision | F1 |
 |---|---:|---:|---:|
-| **gemini-2.5-flash**  | **0.860** | **0.950** | **0.844** |
-| gpt-4o-mini           | 0.820 | 0.900 | 0.800 |
-| claude-haiku-4-5      | 0.800 | 0.895 | 0.773 |
-| gpt-4o                | 0.780 | 0.792 | 0.776 |
-| claude-sonnet-4-6     | 0.720 | 0.720 | 0.720 |
+| **gemini-2.5-flash**  | **0.860 [0.74–0.93]** | **0.950 [0.83–0.99]** | **0.844 [0.74–0.91]** |
+| gpt-4o-mini           | 0.820 [0.69–0.90] | 0.900 [0.77–0.96] | 0.800 [0.69–0.88] |
+| claude-haiku-4-5      | 0.800 [0.67–0.89] | 0.895 [0.76–0.96] | 0.773 [0.65–0.86] |
+| gpt-4o                | 0.780 [0.65–0.87] | 0.792 [0.65–0.89] | 0.776 [0.65–0.86] |
+| claude-sonnet-4-6     | 0.720 [0.58–0.83] | 0.720 [0.58–0.83] | 0.720 [0.58–0.83] |
 
 Pairwise Cohen's κ: 0.60–0.80 — substantial agreement on most pairs. `gemini-2.5-flash` leads every metric in this run; `claude-haiku-4-5` and `gpt-4o-mini` are close seconds with cheaper tokens. Pick by your cost / latency / sovereignty constraints — calibrated thresholds ship for each. claude-sonnet-4-6 is a useful diversity judge in multi-judge runs, not a default.
 
@@ -86,4 +115,4 @@ python run_all_benchmarks.py
 
 All datasets are public. Judge model versions are pinned. If a number on this page diverges from what you measure, [open an issue](https://github.com/multivon-ai/multivon-eval/issues) — we'll fix it.
 
-> Comparison numbers reflect each project's public releases as of May 2026.
+> Comparison numbers reflect each project's public releases as of June 2026. All CIs are Wilson 95% on precision/recall and 1000-resample bootstrap 95% on F1 (seed `20260603`).

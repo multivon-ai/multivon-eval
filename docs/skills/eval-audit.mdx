@@ -1,0 +1,123 @@
+---
+title: eval-audit
+description: Claude Code skill that gates a PR on eval regressions — runs only the cases that stress the changed surface and blocks safety-class drops.
+icon: shield-check
+---
+
+`eval-audit` is eval as a pre-flight check, not a nightly batch. It sits between `/review` and `/ship`: on a PR diff that touches prompts, model calls, or tool definitions, the skill runs only the eval cases that stress the changed surface, computes per-evaluator deltas vs the baseline, and blocks the ship if any safety-class evaluator regresses at p < 0.05. Targeted runs fit in under 60 seconds on a typical PR.
+
+## When it auto-invokes
+
+The skill auto-invokes in two situations:
+
+**Post-`/review` triggers.** After `/review` succeeds AND the diff touches any of:
+
+- Files with LLM call sites (`anthropic` / `openai` / `google` / `litellm` imports plus `.create()` or `.completion()` calls).
+- System prompts or instruction-tuned templates.
+- Tool definitions (the `tools=` argument, function-call schemas).
+- Retrieval pipeline code (chunkers, embedders, rerankers).
+- Evaluator threshold YAML or `_calibration_data/`.
+
+**User-phrase triggers.** Any of:
+
+- "audit this prompt change"
+- "will this regress evals"
+- "regression check before I ship"
+- "eval impact of this PR"
+
+It does NOT auto-invoke for diffs that touch only tests, docs, type stubs, comments, or infra (CI YAML, Dockerfile) — unless the eval pipeline itself is being changed.
+
+## allowed-tools
+
+```yaml
+allowed-tools: Bash, Read, Grep, Edit
+```
+
+The skill needs Bash to run `git diff` and the eval entrypoint, Read and Grep to scope the change, and Edit only for writing the audit JSON output file. It does not Write new source files.
+
+## What it does
+
+<Steps>
+  <Step title="Scope the diff">
+    Runs `git diff --name-only origin/main...HEAD` to enumerate changed files. Cross-references against `multivon_eval.attribution.scan` (added in 0.9.4) to find which prompt fingerprints actually changed — not every code change touches a prompt-relevant surface.
+  </Step>
+  <Step title="Identify stressing cases">
+    Reads the existing `eval_suite.py`. For each evaluator, marks which seed cases exercise the changed surface — a system-prompt edit affects all cases, while a single tool definition change only affects cases whose `expected_tool_calls` reference that tool.
+  </Step>
+  <Step title="Targeted run">
+    Executes only the marked cases. Aims for under 60 seconds wall-clock. For flaky-sensitive evaluators, re-runs multiple times to surface real signal vs noise via `python eval_suite.py --runs 3`. The `--runs` flag belongs to your eval-suite entrypoint (it threads `runs=` into `EvalSuite.run`), not to the `multivon-eval` CLI itself.
+  </Step>
+  <Step title="Compare against baseline">
+    Loads `baseline_report.json` if a previous `/ship` committed one, otherwise re-runs against `origin/main`. Computes per-evaluator delta, Wilson CI, and paired-McNemar p-value via `multivon_eval.compare_reports` — the skill does not reimplement the math.
+  </Step>
+  <Step title="Render verdict">
+    Prints one of three verdicts (below) in 5–10 lines. The summary tells you what changed, what regressed and by how much, the one-line statistical justification, and what to do next.
+  </Step>
+</Steps>
+
+## The three verdicts
+
+PASS — no regression at p < 0.05:
+
+```text
+✓ eval-audit PASS — 4/4 stressed cases held at baseline (n=12 reruns,
+  no eval regressed at p<0.05). Safe to ship.
+```
+
+WARN — non-safety regression or change within noise:
+
+```text
+⚠ eval-audit WARN — Faithfulness dropped 4pp (0.78 → 0.74) on 6/6
+  stressed cases. Wilson CI overlap [0.61–0.85] vs baseline
+  [0.65–0.89], paired McNemar p=0.14. Within noise but worth noting
+  in the PR description.
+```
+
+BLOCK — safety-class regression at p < 0.05:
+
+```text
+✗ eval-audit BLOCK — PII evaluator regressed 12pp (0.95 → 0.83) on
+  the 8 cases that exercise the changed input-sanitization path.
+  Paired McNemar p=0.003, CIs do not overlap. SAFETY-CLASS — do not
+  ship. See benchmarks/results/eval-audit/<sha>.json for the failing
+  cases.
+```
+
+## Safety-class auto-escalation
+
+Any evaluator whose name contains `safety`, `toxicity`, `bias`, `pii`, or `hallucination` is treated as safety-class. A regression at p < 0.05 on a safety-class evaluator is always BLOCK — never WARN, never PASS-with-note. Non-safety regressions at the same statistical strength surface as WARN with delta plus CI so you can decide.
+
+<Warning>
+"Block" means the skill prints a `✗` verdict and tells you not to ship. It does not modify your git state or refuse to run subsequent commands — that's a discipline decision, not an enforcement decision. For hard enforcement, use [`eval-action`](https://github.com/multivon-ai/eval-action) in CI.
+</Warning>
+
+## Output path convention
+
+The audit JSON is written to the first existing location among:
+
+1. `benchmarks/results/eval-audit/<head_sha>.json` — if the repo uses the multivon-eval `benchmarks/results/` pattern.
+2. `evals/results/eval-audit/<head_sha>.json` — if the repo has an `evals/` directory from [`eval-bootstrap`](/skills/eval-bootstrap).
+3. `.eval-audit/<head_sha>.json` at the repo root — otherwise.
+
+The path appears in the BLOCK summary so you can `cat | jq` straight to the failing cases:
+
+```bash
+cat <path-from-summary> | jq '.summary'
+# verdict, cases_run, evaluators_assessed, regressions, baseline_sha, head_sha
+```
+
+## CI-side counterpart
+
+`eval-audit` is the pre-ship local check. For post-merge runs, scheduled nightly suites, and PR comment automation, pair it with [`eval-action`](https://github.com/multivon-ai/eval-action) — the GitHub Action that runs the full suite on push, posts a diff comment to the PR, and (optionally) blocks merge on safety regressions. The two share the same `multivon-eval` machinery; the skill is local-fast-targeted, the Action is CI-thorough-comprehensive.
+
+## What it doesn't do
+
+- Doesn't replace the full nightly suite. This is a targeted pre-ship check; comprehensive runs go through `eval-action`.
+- Doesn't auto-fix regressions. It surfaces them — fixes are still human judgment.
+- Doesn't add new eval cases. If a regression points at an unexercised surface, the skill suggests adding a case but doesn't write it inline (you pick the right framing).
+
+## See also
+
+- [eval-bootstrap](/skills/eval-bootstrap) — generates the suite this skill audits against.
+- [eval-explain](/skills/eval-explain) — when a particular evaluator flags a regression and you ask "wait, what does this even measure?"
+- [CI/CD integration guide](/guides/ci-cd) — wiring `multivon-eval` into GitHub Actions.

@@ -22,7 +22,13 @@ report = suite.run(my_model_fn, save_json="report.json")
 print(f"Pass rate {report.pass_rate:.0%}  ({report.evaluated} evaluated, {report.errors} errored)")
 ```
 
-That's everything — install, import, run. The default judge is `claude-haiku-4-5` (F1 0.80 on HaluEval QA, $0.00127 per case). Swap in any judge via `JudgeConfig`, or run fully offline with a local Ollama.
+That's everything — install, import, run. The default judge is `claude-haiku-4-5` (F1 0.804 [0.71–0.88] on HaluEval QA in-distribution; F1 0.830 [0.70–0.92] held-out on HaluEval-Sum; $0.00127 per case). Swap in any judge via `JudgeConfig`, or run fully offline with a local Ollama: `JudgeConfig(provider="ollama", model="qwen2.5:14b")`.
+
+Want a runnable eval suite from a one-paragraph product description? `multivon-eval bootstrap`. Want it wired into Claude Code as auto-invoking skills? `multivon-eval install-skills`.
+
+<Tip>
+  **Why trust the numbers?** Every shipped benchmark cites Wilson + bootstrap 95% CIs; thresholds are calibrated per (judge × evaluator) with provenance; the 0.9.4→0.9.7 sequence is a self-correction trail that shows what real eval discipline looks like. See [Why multivon-eval](/why-multivon-eval).
+</Tip>
 
 ## What it does
 

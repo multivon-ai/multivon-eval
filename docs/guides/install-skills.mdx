@@ -1,0 +1,133 @@
+---
+title: "Install Claude Code skills"
+description: "Wire the bundled eval-bootstrap, eval-audit, and eval-explain skills into ~/.claude/skills/ with one command."
+icon: "puzzle"
+---
+
+`multivon-eval install-skills` symlinks the three Claude Code skills that ship
+inside the wheel into `~/.claude/skills/`, where Claude Code auto-discovers
+them. Shipped in [0.9.8](https://github.com/multivon-ai/multivon-eval/blob/main/CHANGELOG.md#098--2026-06-03)
+so the package no longer just _contains_ the skills, it wires them up.
+
+## What it does
+
+The three skills live inside the installed package at
+`multivon_eval/_skills/{eval-bootstrap,eval-audit,eval-explain}/`. The CLI
+prefers a directory symlink for each one so a later `pip install -U
+multivon-eval` propagates SKILL.md edits without re-running the command. On
+filesystems that refuse directory symlinks (Windows without developer mode,
+some FUSE mounts), it falls back to `shutil.copytree` and prints a note that
+you'll need to re-run `install-skills` after upgrades.
+
+The implementation lives in
+[`cmd_install_skills`](https://github.com/multivon-ai/multivon-eval/blob/main/multivon_eval/cli.py)
+— about 70 lines, no magic.
+
+| Skill | What it does |
+|---|---|
+| `eval-bootstrap` | Generates a runnable eval suite from a product description + sample traces. Wraps the [`bootstrap` CLI](/guides/bootstrap). |
+| `eval-audit` | Pre-flight eval check on a PR diff. Runs only the cases that stress the changed surface. |
+| `eval-explain` | Three-sentence rationale for any evaluator the bootstrap picked. |
+
+## Run it
+
+<CodeGroup>
+```bash install
+pip install 'multivon-eval>=0.9.8'
+multivon-eval install-skills
+```
+
+```bash preview
+multivon-eval install-skills --dry-run
+```
+
+```bash overwrite
+multivon-eval install-skills --force
+```
+</CodeGroup>
+
+<ParamField path="--dry-run" type="flag">
+Print the symlink operations that would happen, touch nothing on disk.
+Useful in CI scripts that want to verify the source tree before installing.
+</ParamField>
+
+<ParamField path="--force" type="flag">
+Replace anything that already exists at `~/.claude/skills/eval-bootstrap`,
+`~/.claude/skills/eval-audit`, or `~/.claude/skills/eval-explain`. Without
+`--force`, existing entries are skipped with a clear log line.
+</ParamField>
+
+## Verify
+
+```bash
+ls ~/.claude/skills/
+# eval-audit  eval-bootstrap  eval-explain  (plus any others you have)
+```
+
+Open a new Claude Code session and type `/eval-bootstrap` — it should
+autocomplete. The skill descriptions also trigger on natural-language phrases
+("add evals to this project", "audit this prompt change"); see each skill's
+SKILL.md frontmatter for the exact trigger list.
+
+## Uninstall
+
+```bash
+rm -rf ~/.claude/skills/eval-bootstrap \
+       ~/.claude/skills/eval-audit \
+       ~/.claude/skills/eval-explain
+```
+
+Removing the symlinks doesn't affect the installed package. `pip uninstall
+multivon-eval` leaves the symlinks dangling — clean them up with the same
+`rm -rf` above if you uninstall the package.
+
+## Troubleshooting
+
+<AccordionGroup>
+<Accordion title="Claude Code doesn't see the skill">
+Restart Claude Code. The skill registry is scanned at session start; new
+entries in `~/.claude/skills/` aren't hot-reloaded. After restart, verify
+with `ls ~/.claude/skills/` that the three symlinks exist and point at a
+real path inside your `site-packages/multivon_eval/_skills/` directory.
+</Accordion>
+
+<Accordion title="Permission denied on ~/.claude/skills/">
+The target directory doesn't exist or isn't writable. Create it first:
+
+```bash
+mkdir -p ~/.claude/skills
+multivon-eval install-skills
+```
+
+`install-skills` calls `target_root.mkdir(parents=True, exist_ok=True)`
+itself, so this only fires on locked-down setups where the parent
+`~/.claude/` is owned by another user.
+</Accordion>
+
+<Accordion title="Symlink fell back to copy on Windows">
+Expected on Windows without developer mode enabled (directory symlinks
+require either admin or the Developer Mode setting). The CLI logs a
+`note: symlink failed for <skill> (...); copying tree instead` line and
+proceeds with `shutil.copytree`. The tradeoff: a subsequent `pip install -U
+multivon-eval` won't auto-pick-up SKILL.md edits — re-run
+`multivon-eval install-skills --force` after each upgrade.
+</Accordion>
+
+<Accordion title="'already exists' on every skill">
+Re-run with `--force` to replace the existing entries. The CLI skips
+existing paths by default to avoid clobbering a hand-edited copy.
+</Accordion>
+</AccordionGroup>
+
+<Note>
+Prefer to vendor the skills into a different directory? Skip the CLI and
+symlink manually — see [`_skills/README.md`](https://github.com/multivon-ai/multivon-eval/blob/main/multivon_eval/_skills/README.md)
+for the one-liner.
+</Note>
+
+## See also
+
+- [Bootstrap an eval suite](/guides/bootstrap) — what the `eval-bootstrap` skill runs under the hood
+- [Evaluators](/guides/evaluators) — what `eval-explain` explains
+- [The three skills, on GitHub](https://github.com/multivon-ai/multivon-eval/tree/main/multivon_eval/_skills) — read the SKILL.md before installing
+- [Anthropic skill spec](https://docs.claude.com/en/docs/agents-and-tools/agent-skills) — the format these files conform to

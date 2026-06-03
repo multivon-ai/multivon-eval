@@ -1,0 +1,240 @@
+---
+title: "Prompt attribution"
+description: "Structured prompt-diff for PR review — find every LLM-SDK call site in a Python repo, then diff two checkouts to surface every prompt change."
+icon: "git-compare"
+---
+
+`multivon-eval attribution` is the structured-diff substrate that the
+[`/eval-audit`](/skills/eval-audit) skill uses to figure out which prompts
+actually changed in a PR before deciding what to re-run. It walks a Python
+repo with an AST visitor, finds every `anthropic.messages.create` /
+`openai.chat.completions.create` / `litellm.completion` call site, extracts
+the string-literal prompts, fingerprints them, and emits a
+PR-comment-ready Markdown diff.
+
+Shipped in [0.9.4](https://github.com/multivon-ai/multivon-eval/blob/main/CHANGELOG.md#094--2026-05-30).
+Implementation lives in
+[`multivon_eval/attribution/`](https://github.com/multivon-ai/multivon-eval/tree/main/multivon_eval/attribution)
+— five small modules, no extra dependencies, pure stdlib.
+
+<Note>
+This is Phase 1 — **descriptive, not causal**. Output says "these N prompts
+changed between base and head"; it never says "this prompt change caused this
+regression." The hardened calibration spike of 2026-05-30 showed Haiku-based
+causal attribution failing catastrophically on mixed-cause regressions
+(14% HIGH-confidence-and-wrong rate). Causal attribution is gated on a
+future non-prompt-change sidecar signal — see the package docstring for
+the gate.
+</Note>
+
+## When to use it
+
+- **In CI**, on every PR: run `attribution diff base head` and post the
+  Markdown output as a PR comment. Reviewers see exactly which prompts
+  changed without scrolling the unified diff.
+- **From `/eval-audit`**: the skill calls `scan` to identify which call
+  sites the PR touched, then runs only the eval cases that stress those
+  surfaces.
+- **One-off audits**: `attribution scan .` lists every prompt literal in
+  your codebase. Useful when onboarding to a repo you didn't write.
+
+## What it captures
+
+The AST extractor in
+[`ast_extractor.py`](https://github.com/multivon-ai/multivon-eval/blob/main/multivon_eval/attribution/ast_extractor.py)
+matches three call shapes:
+
+```python
+# anthropic
+anthropic.messages.create(system="<literal>", messages=[{"role": "user", "content": "<literal>"}])
+client.messages.create(...)              # any *.messages.create
+
+# openai
+openai.chat.completions.create(messages=[...])
+client.chat.completions.create(...)      # any *.chat.completions.create
+
+# litellm
+litellm.completion(messages=[...])
+litellm.acompletion(messages=[...])
+```
+
+Matching is method-name-based, not type-inferred — any object whose method
+chain ends in one of these is captured. This trades some recall for
+simplicity; false matches without a `system` or `messages` kwarg are
+silently dropped.
+
+Literals captured as static:
+
+- Plain string literals: `system="..."`
+- f-strings with **zero** runtime interpolation (their content is fully
+  known at parse time)
+
+Everything else — `Name` references, `Attribute` lookups, runtime
+f-strings, `.join(...)` calls — is recorded as a `PromptRecord` with
+`is_dynamic=True` and a placeholder text. The count is preserved and the
+gap is visible in the diff, but the actual text isn't compared.
+
+<Warning>
+What the extractor does **not** see: prompts in Jinja templates, LangChain
+`ChatPromptTemplate` objects, prompts loaded from a database, runtime-
+assembled strings, or named constants used by reference elsewhere. If the
+prompt isn't a literal kwarg at a recognized SDK call site, it doesn't
+land in the diff. This is deliberate — the v1 adversarial-fix discipline
+dropped fuzzy name-regex capture entirely.
+</Warning>
+
+## `attribution scan`
+
+Walks a Python repo and lists every prompt call site it finds.
+
+<CodeGroup>
+```bash text
+multivon-eval attribution scan ./my-repo
+```
+
+```bash json
+multivon-eval attribution scan ./my-repo --format json > prompts.json
+```
+</CodeGroup>
+
+Text output (default):
+
+```
+Found 7 prompt(s) across 3 file(s):
+
+  src/agent/planner.py:42:anthropic.system
+      qualname=Planner.build_prompt  fp=a3f1b2c8d4e0…
+      first line: 'You are a careful planning agent.'
+  src/agent/planner.py:78:anthropic.user#0
+      qualname=Planner.build_prompt  fp=9c2e7a1f6d3b…
+      first line: 'Plan the following task step by step:'
+  src/extractors/invoice.py:91:anthropic.system  [dynamic]
+      qualname=extract_invoice  fp=000000000000…
+  ...
+```
+
+The `[dynamic]` marker flags call sites where the prompt is built at
+runtime; the extractor records the location but can't compare the text
+across refs.
+
+JSON output is a flat list of records — fingerprint, file/line, sdk,
+role, role position, qualname, and a 200-char text preview. Suitable for
+piping into `jq` or feeding into a CI step that wants to fail on
+unfingerprinted prompts.
+
+Walk skips `.venv/`, `node_modules/`, `__pycache__/`, and other build
+directories automatically.
+
+## `attribution diff`
+
+Compute the structured prompt diff between two repo checkouts.
+
+<CodeGroup>
+```bash markdown
+multivon-eval attribution diff ./repo-base ./repo-head
+```
+
+```bash text
+multivon-eval attribution diff ./repo-base ./repo-head --format text
+```
+
+```bash json
+multivon-eval attribution diff ./repo-base ./repo-head --format json
+```
+</CodeGroup>
+
+The default `--format markdown` emits a PR-comment-ready block. The
+[`render.py`](https://github.com/multivon-ai/multivon-eval/blob/main/multivon_eval/attribution/render.py)
+output truncates each prompt body to the first six lines or 400 chars
+(whichever hits first) with an explicit `… (truncated)` marker — so the
+PR comment stays readable on a long system prompt.
+
+Diffs are ordered: **modified first, then added, then removed, then
+dynamic**, sorted by `call_site_id` within each group. That order is
+stable across runs and surfaces the highest-signal changes (modified
+literals) first.
+
+### How identity works
+
+Two `PromptRecord`s are considered "the same call site across refs" iff
+`(file_path, line, sdk, role, role_position)` all match. This is the
+Tier-1 identity used by `diff_records`. A renamed file or a shifted line
+will register as **removed + added** rather than **modified** — Tier-2
+file-move / call-site-shift detection is a future addition (see
+[`schema.py`](https://github.com/multivon-ai/multivon-eval/blob/main/multivon_eval/attribution/schema.py)).
+
+### change_type values
+
+| Type | Meaning |
+|---|---|
+| `modified` | Both refs have a static record at the same call site; fingerprints differ. |
+| `added` | The call site exists only in head. |
+| `removed` | The call site exists only in base. |
+| `dynamic` | Either record has `is_dynamic=True` and the recorded text differs. The actual prompt cannot be reliably compared. |
+
+A purely-dynamic call site with identical placeholder text on both sides
+is **not** emitted — there's no meaningful change to surface.
+
+## Programmatic API
+
+Same surface as the CLI, importable from any Python:
+
+```python
+from multivon_eval.attribution import (
+    scan,
+    diff_records,
+    render_markdown,
+)
+
+base = scan("/path/to/repo-base")
+head = scan("/path/to/repo-head")
+diffs = diff_records(base, head)
+md = render_markdown(diffs)
+print(md)
+```
+
+`scan` returns `list[PromptRecord]`. `diff_records` returns
+`list[PromptDiff]`. `render_markdown` emits the same string the CLI
+prints with `--format markdown`. The dataclasses are frozen and exposed
+from the package root, so you can build your own renderer if the bundled
+one doesn't fit your PR-comment style.
+
+## Wiring it into CI
+
+The two-line GitHub Actions step (assuming the workflow already checks
+out base and head into separate directories):
+
+```yaml title=".github/workflows/eval-pr.yml"
+- name: Prompt diff
+  run: |
+    multivon-eval attribution diff ./base ./head --format markdown \
+      > prompt-diff.md
+- uses: marocchino/sticky-pull-request-comment@v2
+  with:
+    path: prompt-diff.md
+```
+
+For a more end-to-end PR-gate that also runs the changed-surface eval
+cases, install
+[multivon-ai/eval-action](https://github.com/multivon-ai/eval-action) —
+it composes `attribution scan|diff` with the suite runner and the
+calibrated threshold gate.
+
+## What's next
+
+- The Phase 2 sidecar that gates causal attribution on a non-prompt-change
+  signal is under design — see the package docstring in
+  [`attribution/__init__.py`](https://github.com/multivon-ai/multivon-eval/blob/main/multivon_eval/attribution/__init__.py).
+- Tier-2 identity (file-move / line-shift detection) is on the roadmap;
+  until it lands, a refactor that moves a prompt to a different line will
+  show up as removed + added.
+
+## See also
+
+- [`/eval-audit` skill](/skills/eval-audit) — the PR-gating workflow that
+  consumes `attribution scan` to scope which cases to re-run.
+- [eval-action on GitHub](https://github.com/multivon-ai/eval-action) —
+  the GitHub Action that wraps this CLI plus the suite runner.
+- [Bootstrap workflow](/guides/bootstrap) — generate the suite that
+  `/eval-audit` runs.
+- [Source on GitHub](https://github.com/multivon-ai/multivon-eval/tree/main/multivon_eval/attribution) — five small files, ~400 lines total.
