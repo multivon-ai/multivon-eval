@@ -56,8 +56,12 @@ that stress what the PR actually changed.
    reference that tool).
 3. **Targeted run** — execute only the marked cases. Don't run the
    full suite — that's the point. Aim for <60s wall-clock on a
-   typical PR. Use multi-run (--runs 3) on flaky-sensitive evaluators
-   to surface real signal vs noise.
+   typical PR. For flaky-sensitive evaluators, re-run multiple times
+   to surface real signal vs noise — the bootstrap-generated
+   `eval_suite.py` accepts `python eval_suite.py --runs 3` (it
+   threads `runs=` into `EvalSuite.run` under the hood). There is
+   no `multivon-eval --runs` CLI flag — `--runs` belongs to the
+   user's eval-suite entrypoint, not to `multivon-eval` itself.
 4. **Compare against baseline** — load `baseline_report.json` if
    present (committed by previous `/ship` runs), or re-run against
    `origin/main` if not. Compute per-evaluator delta + Wilson CI +
@@ -107,11 +111,24 @@ Print one of:
   unexercised surface, suggest adding a case but don't do it
   inline (the user picks the right framing).
 
+## Output path convention
+
+Write the audit JSON to one of these locations, in order of preference:
+
+- `benchmarks/results/eval-audit/<head_sha>.json` if the repo already
+  has a `benchmarks/results/` directory (the multivon-eval pattern).
+- `evals/results/eval-audit/<head_sha>.json` if the repo has an
+  `evals/` directory from `/eval-bootstrap`.
+- Otherwise, `.eval-audit/<head_sha>.json` at the repo root.
+
+The path appears in the `BLOCK` summary so the user can `cat | jq`
+straight to the failing cases.
+
 ## Verification
 
 After the audit completes:
 ```bash
-cat eval-audit-<sha>.json | jq '.summary'
+cat <path-from-summary>/eval-audit-<sha>.json | jq '.summary'
 ```
 
 Should show: `verdict`, `cases_run`, `evaluators_assessed`, `regressions`,

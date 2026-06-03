@@ -47,7 +47,32 @@ That's it. The `quickstart` template uses only deterministic evaluators (`NotEmp
 
 LLM-judge evaluators auto-activate when `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or a local server (Ollama on `:11434`, LM Studio on `:1234`, or `OPENAI_BASE_URL`) is detected — but every template runs without one in some form.
 
-## What's new in 0.8.x
+## What's new in 0.9.x
+
+- **`multivon-eval install-skills`** (new in 0.9.8) — one-command installer for the three bundled Claude Code skills (`eval-bootstrap`, `eval-audit`, `eval-explain`). The wheel ships them under `multivon_eval/_skills/`; this CLI symlinks them into `~/.claude/skills/` so `pip install -U multivon-eval` automatically propagates SKILL.md edits.
+
+  ```bash
+  multivon-eval install-skills              # symlinks the three skills
+  multivon-eval install-skills --dry-run    # preview without touching anything
+  multivon-eval install-skills --force      # replace existing entries
+
+  ls ~/.claude/skills/
+  # eval-audit  eval-bootstrap  eval-explain
+  ```
+
+  See [`multivon_eval/_skills/README.md`](multivon_eval/_skills/README.md) for the full skill catalog and what each one does. Pairs with `multivon-eval bootstrap` (which `eval-bootstrap` wraps as a Claude Code workflow) and the `eval-action` GitHub Action (which `eval-audit` complements on the pre-PR side).
+
+- **Bootstrap CLI expansions** —
+  - `--judge-provider ollama` + `--judge-provider litellm` for fully-local bootstrap (was cloud-only before 0.9.4).
+  - `--judge-base-url` (0.9.4) for vLLM / LM Studio / custom Ollama endpoints — injects a dummy API key when paired with `--judge-provider openai` so OpenAI-shim servers Just Work.
+  - `--validate` (0.9.0) runs the N-shot judge-noise filter (`auto.validate_adversarial_cases`) on the generated seed cases — drops anything outside the (0.5, 1.0) hardness band. Adds ~$0.03 but removes 20–40% of synthetic noise.
+  - `--validate-n-shots` controls the rerun count for `--validate` (default 3).
+
+- **`multivon-eval doctor`** (new in 0.9.0) — preflight your setup. Reports detected API keys, local-judge availability (Ollama / LM Studio / OpenAI-compat base URL), Python + package versions, `~/.multivon/` writeability. `--json` for CI consumers, exit codes `0 / 1 / 2` for hard/soft failures.
+
+- **Self-correction audit trail (0.9.4 → 0.9.7)** — the four-release cadence that produced the F1 0.830 [0.70–0.92] held-out number is documented release-by-release in [CHANGELOG.md](CHANGELOG.md). 0.9.5 corrected the "held-out" framing on a Faithfulness number that was actually in-distribution. 0.9.6 fixed three runtime blockers in the bootstrap-generated template. 0.9.7 caught a threshold-vs-default mismatch that inflated the held-out F1 from 0.830 (calibrated 0.55) to 0.852 (init-time default 0.7) — only the 0.830 figure is defensible as "held-out at the calibrated threshold." See [`benchmarks/README.md`](benchmarks/README.md) Benchmark 4 for the reproducibility note on resolving thresholds at runtime.
+
+### Carried forward from 0.8.x
 
 - **`multivon-eval bootstrap`** — cold-start eval generator. Describe your LLM product + hand over a JSONL of sample traces, get back a runnable `EvalSuite` + 30 adversarial seed cases + thresholds calibrated from your data + a forwardable `DISCOVERY_REPORT.md`. ~60 seconds, ~$0.12 per run. PII / secrets redacted locally before any LLM call. Best documented path is the [bootstrap guide](https://docs.multivon.ai/guides/bootstrap).
 
@@ -87,11 +112,14 @@ Five public + one early-access package, all built on a shared evaluation engine:
 
 | You want… | Use |
 |---|---|
-| To call evals from inside Claude Code / Cursor mid-edit | [multivon-mcp](https://github.com/multivon-ai/multivon-mcp) |
+| To call evals from inside Claude Code via SKILL files | bundled Claude Code skills — `multivon-eval install-skills` |
+| To call evals from Cursor / Cline / Claude Desktop mid-edit | [multivon-mcp](https://github.com/multivon-ai/multivon-mcp) |
 | To gate every PR on eval regressions automatically | [eval-action](https://github.com/multivon-ai/eval-action) |
 | Adversarial PDF benchmarking with code-based ground truth | [pdfhell](https://github.com/multivon-ai/pdfhell) |
 | To see how multivon-eval stacks up against DeepEval / RAGAS | [eval-framework-benchmark](https://github.com/multivon-ai/eval-framework-benchmark) |
 | Just to gate on a single LLM judge call without a suite | call `Faithfulness(...).evaluate(case, output)` directly — overkill to spin up an `EvalSuite` |
+
+> **Three agent-facing surfaces, one engine.** Claude Code skills run *inside Claude Code*; the MCP server runs alongside *any* MCP-compatible client (Cursor / Cline / Claude Desktop / OpenCode); the GitHub Action runs *on every PR*. All three call the same `multivon-eval` evaluators against the same calibration table — they differ only in *where* the agent lives.
 
 ---
 
@@ -166,7 +194,7 @@ Every team building AI products hits the same problem: **how do you know if your
 | Synthetic data generation | ✓ | ✓ | ✓ | — |
 | Open source (Apache 2.0) | ✓ | ✓ | ✓ | ✓ |
 
-> Comparison based on each project's public documentation as of June 2026. We host these benchmarks open: see [`benchmarks/`](benchmarks/) for code + datasets and [`benchmarks/results/`](benchmarks/results/) for the raw output JSON. Found something wrong? [Open an issue](https://github.com/multivon-ai/multivon-eval/issues) — we'll fix it.
+> Comparison based on each project's public documentation as of June 2026 (last reviewed 2026-06-03; revisit every minor release). We host these benchmarks open: see [`benchmarks/`](benchmarks/) for code + datasets and [`benchmarks/results/`](benchmarks/results/) for the raw output JSON. Found something wrong? [Open an issue](https://github.com/multivon-ai/multivon-eval/issues) — we'll fix it.
 
 ### Numbers, not adjectives
 
@@ -239,6 +267,22 @@ cp .env.example .env
 # Add ANTHROPIC_API_KEY and/or OPENAI_API_KEY
 ```
 
+### Claude Code skills (optional)
+
+If you use [Claude Code](https://claude.com/claude-code), wire up the three bundled skills with one command:
+
+```bash
+multivon-eval install-skills        # symlinks eval-bootstrap / eval-audit / eval-explain into ~/.claude/skills/
+```
+
+What each one does:
+
+- **`eval-bootstrap`** — auto-invoked when Claude Code detects an LLM-touching codebase without an eval directory. Wraps the bootstrap CLI in a Claude Code workflow that fills in the stub model from the project's existing call sites.
+- **`eval-audit`** — auto-invoked between `/review` and `/ship` on diffs touching prompts / model calls / tool defs. Runs only the eval cases that stress the changed surface, blocks safety-class regressions.
+- **`eval-explain`** — auto-invoked after `/eval-bootstrap` (and on phrases like "why did multivon pick X"). Answers in three sentences using the DISCOVERY_REPORT.md rationale.
+
+Full details in [`multivon_eval/_skills/README.md`](multivon_eval/_skills/README.md). Run `multivon-eval install-skills --help` for the `--dry-run` / `--force` flags.
+
 ---
 
 ## Core concepts
@@ -269,6 +313,8 @@ report.save_json("results.json")    # also save_csv, save_html, save_junit_xml
 ```
 
 Agent cases use `agent_trace=[AgentStep(...)]` + `expected_tool_calls=[...]`. Conversation cases use `conversation=[{"role": ..., "content": ...}]`. Load existing datasets with `load("cases.jsonl")` or `load("cases.csv")`.
+
+> **ToolCallAccuracy three-shape semantics** (0.9.0): `expected_tool_calls=None` skips the case (no expectation set), `expected_tool_calls=[]` asserts "no tools should have been called" (and a non-empty trace fails), and `expected_tool_calls=[...]` checks the trace contains the named calls in order. The skip variant is treated as `skipped-pass` in the report, not `0.0` — see the [`integrations/`](multivon_eval/integrations/) tracers (`LangGraphTracer`, `OpenAIAgentsTracer`, `ManualTracer`) for how each tracer populates `agent_trace`.
 
 ### Evaluators — 44 across 7 tiers
 
@@ -345,7 +391,7 @@ pairs = generate_hallucination_pairs(my_docs, n=20)
 
 CLI: `multivon-eval generate --from docs/faq.md --n 20 --task qa --output cases.jsonl`.
 
-For more sophisticated cold-start, the **`multivon-eval bootstrap`** CLI composes generation + heuristic anchoring + N-shot judge-noise filtering into one command — see [What's new in 0.8.x](#whats-new-in-08x) above and the [bootstrap guide](https://docs.multivon.ai/guides/bootstrap).
+For more sophisticated cold-start, the **`multivon-eval bootstrap`** CLI composes generation + heuristic anchoring + N-shot judge-noise filtering into one command — see [What's new in 0.9.x](#whats-new-in-09x) above for the full flag set (including 0.9.4's `--judge-base-url` and 0.9.0's `--validate`) and the [bootstrap guide](https://docs.multivon.ai/guides/bootstrap). Run `multivon-eval bootstrap --help` for the canonical flag reference.
 
 ---
 
@@ -371,9 +417,20 @@ CLI: `multivon-eval experiments list / history / compare`.
 ## CLI
 
 ```bash
-multivon-eval run eval.py
-multivon-eval report results.json
+multivon-eval init -t <template> -d <dir>     # scaffold a starter eval suite (templates: quickstart, agent, rag, regulated, conversation, agent-langgraph, agent-openai-sdk)
+multivon-eval run eval.py                     # execute an eval file
+multivon-eval report results.json             # print a saved JSON report
+multivon-eval view results.json [--open]      # render the JSON as an HTML dashboard
+multivon-eval compare a.json b.json           # diff two reports, McNemar + BH-corrected per-evaluator deltas
+multivon-eval generate --from docs/ --n 20    # synthetic case generation from a file/dir
+multivon-eval bootstrap --product PRODUCT.md --traces TRACES.jsonl   # cold-start a tuned suite
+multivon-eval doctor [--json]                 # preflight: API keys, local judges, versions, dirs
+multivon-eval install-skills [--dry-run] [--force]    # symlink the three Claude Code skills
+multivon-eval experiments list | history <name> | compare <run_a> <run_b>
+multivon-eval attribution scan <repo> | diff <base> <head>   # Phase 1 prompt-fingerprint diff
 ```
+
+`multivon-eval --help` enumerates every flag. Each subcommand has its own `--help` with examples.
 
 ---
 

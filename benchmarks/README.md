@@ -243,7 +243,16 @@ Comparing evaluators against each other tells you which one scores higher, not w
 
 **Dataset:** HaluEval QA (100 cases), HaluEval Summarization (60 cases), curated relevance golden set (40 cases). Labels: 50/50 faithful/hallucinated for each split.
 
-**Task:** Sweep thresholds 0.30–0.90 in 0.05 steps. Find the threshold that maximises F1 against human labels for each (evaluator, judge) pair. Results are baked into the library — `Hallucination()`, `Faithfulness()`, and `Relevance()` automatically apply the calibrated threshold for the configured judge.
+**Task:** Sweep thresholds 0.30–0.90 in 0.05 steps. Find the threshold that maximises F1 against human labels for each (evaluator, judge) pair. Results are baked into the library — but the calibrated threshold only applies automatically when an explicit `JudgeConfig` is passed to the evaluator. See the reproducibility note in **Benchmark 4** for the 0.9.7 fix: `Hallucination()` *without* a `JudgeConfig` argument uses its init-time default (0.7) rather than looking up the calibrated value for Haiku (0.55) in `_calibration_data/v2.json`. The same gotcha applies to `Faithfulness()` and `Relevance()`.
+
+```python
+# Calibrated threshold applies (recommended):
+from multivon_eval import Hallucination, JudgeConfig
+Hallucination(judge_config=JudgeConfig(provider="anthropic", model="claude-haiku-4-5-20251001"))
+
+# Falls back to init-time default 0.7 (often NOT what you want):
+Hallucination()
+```
 
 | Judge | Evaluator | Optimal threshold | F1 |
 |-------|-----------|:-----------------:|:---:|

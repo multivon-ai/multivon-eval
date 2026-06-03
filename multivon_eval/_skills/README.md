@@ -14,9 +14,32 @@ auto-discovers them.
 
 ## Install
 
-The skills ship in the `multivon-eval` PyPI package under
-`multivon_eval/_skills/`. To make them available to Claude Code,
-symlink them into your skills directory:
+The skills ship in the `multivon-eval` PyPI package (>= 0.9.8) under
+`multivon_eval/_skills/`. Each `SKILL.md` declares `multivon-eval >= 0.9.8`
+in its frontmatter — pin accordingly to ensure the `install-skills`
+subcommand is available.
+
+### Recommended: one command
+
+```bash
+pip install 'multivon-eval>=0.9.8'
+multivon-eval install-skills              # writes the symlinks
+multivon-eval install-skills --dry-run    # preview without touching anything
+multivon-eval install-skills --force      # replace existing entries at the target paths
+```
+
+The `install-skills` subcommand (shipped in 0.9.8) prefers symlinks
+into `~/.claude/skills/` so a later `pip install -U multivon-eval`
+propagates SKILL.md edits without re-running the command. On Windows
+or on filesystems that refuse directory symlinks, it falls back to a
+recursive copy and prints a note explaining you'll need to re-run
+`install-skills` after package upgrades to pick up new SKILL.md
+content.
+
+### Fallback: manual symlink
+
+If you can't run `multivon-eval install-skills` (older versions,
+or you want to vendor the skills into a different directory):
 
 ```bash
 # After: pip install multivon-eval
@@ -27,13 +50,7 @@ ln -sf "$PKG_PATH/_skills/eval-audit"     ~/.claude/skills/eval-audit
 ln -sf "$PKG_PATH/_skills/eval-explain"   ~/.claude/skills/eval-explain
 ```
 
-Or for the convenience-CLI path (recommended once shipped):
-
-```bash
-multivon-eval install-skills          # writes the symlinks for you
-```
-
-Verify Claude Code sees them:
+### Verify
 
 ```bash
 ls ~/.claude/skills/
