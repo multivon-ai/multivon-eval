@@ -68,20 +68,50 @@ Literals captured as static:
 - Plain string literals: `system="..."`
 - f-strings with **zero** runtime interpolation (their content is fully
   known at parse time)
+- Module-level string constants referenced by name at the call site
+  (scanner v2 — one hop, same file; see below)
 
-Everything else — `Name` references, `Attribute` lookups, runtime
-f-strings, `.join(...)` calls — is recorded as a `PromptRecord` with
-`is_dynamic=True` and a placeholder text. The count is preserved and the
-gap is visible in the diff, but the actual text isn't compared.
+Everything else — `Attribute` lookups, runtime f-strings, `.join(...)`
+calls, names that don't resolve under the v2 rules — is recorded as a
+`PromptRecord` with `is_dynamic=True` and a placeholder text. The count is
+preserved and the gap is visible in the diff, but the actual text isn't
+compared.
 
 <Warning>
 What the extractor does **not** see: prompts in Jinja templates, LangChain
 `ChatPromptTemplate` objects, prompts loaded from a database, runtime-
-assembled strings, or named constants used by reference elsewhere. If the
-prompt isn't a literal kwarg at a recognized SDK call site, it doesn't
-land in the diff. This is deliberate — the v1 adversarial-fix discipline
-dropped fuzzy name-regex capture entirely.
+assembled strings, or names that need cross-module or multi-hop resolution.
+If the prompt isn't statically resolvable at a recognized SDK call site, it
+doesn't land in the diff. This is deliberate — the v1 adversarial-fix
+discipline dropped fuzzy name-regex capture entirely.
 </Warning>
+
+## Scanner v2 (0.10.0)
+
+The scanner that ships with 0.10.0 is versioned `SCANNER_VERSION = 2` and
+adds two things:
+
+- **One-hop module-constant resolution.** `SYSTEM_PROMPT = "..."` at module
+  scope followed by `system=SYSTEM_PROMPT` at a call site now resolves to
+  the real text instead of a dynamic placeholder. The rules are deliberately
+  conservative — a false "dynamic" is honest, a false "static" poisons every
+  downstream verdict. A name assigned more than once, assigned under a
+  conditional/loop/try, augmented, tuple-unpacked, shadowed in the enclosing
+  scope, declared `global`, or defined in another module stays dynamic.
+  One hop only: `X = Y` chains do not resolve.
+- **`loose_fingerprint`** on every record — a hash of the
+  whitespace-collapsed prompt text, alongside the strict `fingerprint`. It
+  exists solely to *label* a change as formatting-only, never to suppress it.
+
+The scanner version is recorded in `prompt_baseline.json`; a baseline
+written by scanner v1 read by a v2 scan prints a "rescan recommended"
+warning instead of fake drift.
+
+Attribution is the scanner; the [staleness report](/guides/staleness)
+(also 0.10.0) is the drift detector built on it — a committed baseline of
+every call site plus per-case provenance, answering "which prompts changed
+since my cases were authored?" rather than "what changed between these two
+checkouts?".
 
 ## `attribution scan`
 
@@ -231,6 +261,8 @@ calibrated threshold gate.
 
 ## See also
 
+- [Prompt-drift staleness](/guides/staleness) — the standing drift report
+  built on this scanner: baseline snapshot, case provenance, CI gate.
 - [`/eval-audit` skill](/skills/eval-audit) — the PR-gating workflow that
   consumes `attribution scan` to scope which cases to re-run.
 - [eval-action on GitHub](https://github.com/multivon-ai/eval-action) —

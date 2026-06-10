@@ -1,0 +1,306 @@
+---
+title: "Prompt-drift staleness"
+description: "Detect which prompts changed since your eval cases were authored — a committed baseline, a read-only drift report, and opt-in case provenance that never overclaims."
+icon: "clock-rotate-left"
+---
+
+Prompts evolve, eval suites go stale, and nobody notices until a regression
+sails through. `multivon-eval staleness` is the detection layer: a committed
+baseline snapshot of every prompt call site in your repo, a read-only report
+that tells you exactly which prompts changed since your cases were authored,
+and an opt-in provenance layer binding cases to the prompts they exercise.
+
+Shipped in [0.10.0](https://github.com/multivon-ai/multivon-eval/blob/main/CHANGELOG.md#0100--2026-06-11).
+Built on the [attribution scanner](/guides/attribution) — attribution is the
+scanner; staleness is the drift report built on it.
+
+<Note>
+The design rule that survived every round of the pre-implementation
+adversarial review: **the tool never overclaims what static analysis can
+know.** Every report opens with a determinacy headline and closes with a
+standing blind-spots footer. Those aren't disclaimers bolted on — they're
+enforced in the output code.
+</Note>
+
+## The five drift modes (and which this covers)
+
+Eval suites rot in five distinct ways:
+
+1. **Prompt drift** — a prompt changed since the cases testing it were authored.
+2. **Coverage gaps** — new prompts shipped with no cases covering them.
+3. **Dead cases** — cases point at prompts that no longer exist.
+4. **Shape drift** — the suite's structure (cases, evaluators) changed out from under a pinned run.
+5. **Threshold staleness** — calibrated thresholds aging out as models or data shift.
+
+`staleness` covers **modes 1–3 only**. Shape drift and threshold staleness
+are `suite.lock` territory (`verify_suite_against_lock`), and the CLI never
+claims them. The two drift detectors stay orthogonal by construction:
+stamping provenance never perturbs `suite.lock`, because the lockfile's
+cases hash excludes metadata by design — pinned by a regression test.
+
+## The three commands
+
+### `multivon-eval staleness` — the report
+
+Read-only, zero-arg in a bootstrapped repo. Diffs a live attribution scan
+against the committed `prompt_baseline.json` and joins in per-case
+provenance:
+
+```bash
+multivon-eval staleness .
+```
+
+```text
+baseline: prompt_baseline.json (a1b2c3d, 9 days ago, scanner v2)
+determinacy: 11 of 14 call sites statically resolvable; verdicts below cover only those. 3 dynamic sites are unknown-by-construction.
+
+CHANGED (2) — prompt text differs from baseline
+  extractors/invoice.py:42  anthropic.system  in Extractor.extract
+    fp 3fa9c1d2… → 8be07a11…
+    bound cases: seed_cases.jsonl #4 seed_cases.jsonl #5 seed_cases.jsonl #9
+    what changed: git diff a1b2c3d..HEAD -- extractors/invoice.py
+  router/triage.py:17  anthropic.system  in Router.route   [formatting-only — loose fingerprint unchanged]
+    fp 77d20e4b… → c91a3f08…
+    bound cases: none   (29 cases carry repo-state provenance only)
+    what changed: git diff a1b2c3d..HEAD -- router/triage.py
+
+REMOVED (1) — call site not found by static scan
+  summarize/digest.py  openai.user in build_digest
+    note: feature removed, OR renamed+edited in one commit, OR prompt moved beyond static reach (kwarg-only anthropic/openai/litellm Python call sites).
+
+ADDED since baseline (1)
+  rag/answer.py:61  anthropic.system  in answer   → no cases reference this prompt
+
+UNKNOWN (3) — dynamic prompts; static scan cannot verify their text
+  pipeline/agent.py:88  anthropic.user  in step  <dynamic:Call>
+  ...
+
+cases: 32 total · 32 stamped (bootstrap, a1b2c3d) · 3 bound to sites · 0 unreadable
+coverage (lower bound, static sites only): 1/11 sites referenced by a bound case
+not statically coverable: 3 dynamic site(s)
+blind spots: static scan sees kwarg-only anthropic/openai/litellm Python call sites only; does not see the OpenAI Responses API or positional message args; does not see prompts in YAML/Jinja/templates/files or prompt hubs; does not see non-Python services.
+exit 0 (report-only — add --fail-on changed,removed in CI)
+next: review CHANGED, re-run bound cases, then `multivon-eval staleness baseline .`
+```
+
+Flags: `--baseline FILE`, `--cases F.jsonl` (repeatable), `--suite module:attr`
+(reads runtime metadata from Python-inline cases), `--format text|json|markdown`,
+`--fail-on changed,removed,added`, `--include-tests`, `--ignore DIR`
+(repeatable). By default the scan skips `tests/`, `examples/`, `vendor/`, and
+`third_party/` — fixture SDK calls would flood the report.
+
+### `multivon-eval staleness baseline` — bless a snapshot
+
+```bash
+multivon-eval staleness baseline .          # writes prompt_baseline.json
+multivon-eval staleness baseline . --dry-run  # prints the diff, writes nothing
+```
+
+Fresh scan → prints the diff vs any existing baseline → writes atomically
+(temp file + `os.replace`). It's named *baseline*, not `.lock`, deliberately:
+a blessed snapshot you consciously refresh, not a regenerated fingerprint that
+must verify. [Bootstrap](/guides/bootstrap) writes one automatically.
+
+### `multivon-eval staleness stamp` — bind cases to sites
+
+```bash
+multivon-eval staleness stamp \
+  --cases seed_cases.jsonl \
+  --site 'extractors/invoice.py::Extractor.extract.system' \
+  --index 4 --index 5 --index 9 \
+  --evidence report.json
+```
+
+Binds hand-written JSONL cases to the prompt call site they exercise. The
+`--site` spec (`FILE[::QUALNAME][.ROLE[#POS]]`) is resolved against a live
+scan — zero or multiple matches is an error listing candidates, never a
+guess, and a duplicated prompt fingerprint requires an explicit qualname
+anchor. Select cases with `--index N` (repeatable), `--tag T`, or `--all`;
+`--dry-run` and `--force` (overwrite a malformed/newer existing stamp) round
+it out.
+
+<Warning>
+The rewrite is **raw-line-preserving**: each line goes `json.loads` → inject
+`metadata._provenance` → `json.dumps` of the same dict. It never round-trips
+through `load_jsonl` (which would drop `expected_tool_calls`). Idempotent
+restamps are byte-identical — no git churn. Restamps without an `--evidence`
+pointer after a prompt change are flagged in the report: self-attestation is
+visible, not silent.
+</Warning>
+
+## The two artifacts
+
+**`prompt_baseline.json`** — the repo-level scan snapshot, committed at the
+repo root:
+
+```json
+{
+  "schema_version": 1,
+  "scanner_version": 2,
+  "created_at": "2026-06-11T19:04:00Z",
+  "git": {"sha": "a1b2c3d", "dirty": false},
+  "scan_root": ".",
+  "ignore_dirs": ["examples", "tests", "third_party", "vendor"],
+  "records": [
+    {"file_path": "extractors/invoice.py", "line": 42, "sdk": "anthropic",
+     "call_site": "messages.create", "role": "system", "role_position": -1,
+     "qualname": "Extractor.extract", "fingerprint": "<sha256>",
+     "loose_fingerprint": "<sha256 of whitespace-collapsed text>",
+     "is_dynamic": false}
+  ]
+}
+```
+
+Prompt text is deliberately not stored — `git show <sha>:<file>` recovers it;
+a stored copy would be a second prompt that itself drifts.
+
+**`metadata["_provenance"]`** — per-case, inline in the existing free-form
+metadata dict under a library-reserved underscore key (no new `EvalCase`
+field):
+
+```json
+{
+  "schema_version": 1,
+  "case_uid": "8f3a…",
+  "authored_at": "…", "stamped_at": "…",
+  "authored_by": "bootstrap",
+  "git": {"sha": "a1b2c3d", "dirty": false},
+  "evidence": null,
+  "targets": [
+    {"fingerprint": "<sha256>", "loose_fingerprint": "<sha256>",
+     "is_dynamic": false,
+     "anchor": {"file_path": "extractors/invoice.py",
+                "qualname": "Extractor.extract", "sdk": "anthropic",
+                "call_site": "messages.create", "role": "system",
+                "role_position": -1, "line": 42},
+     "bound": "manual", "source": "scan"}
+  ]
+}
+```
+
+`targets: []` means "authored against repo state SHA X" — honest and
+unbound. `bound` is always `"manual"` in v1: auto-binding is rejected,
+because confidently-wrong links poison every downstream verdict. A
+`schema_version` from a newer release makes the case *unreadable* — counted,
+never fatal, exit code unaffected: a newer teammate's stamp must not break
+an older teammate's CI.
+
+## How matching works, in plain words
+
+- **Content-first.** A prompt's identity is its fingerprint (a hash of its
+  text). Line numbers and git SHAs are display-only, never matching inputs —
+  a whitespace refactor of surrounding code or a rebase produces zero false
+  staleness, and a reverted prompt is automatically unchanged again.
+- **The dynamic gate fires first.** A prompt the scanner can't statically
+  read is UNKNOWN forever rather than fake-fresh — placeholder fingerprints
+  prove only call shape, not content, so comparing them would report a
+  totally rewritten constant as "fresh". A formerly-static site that became
+  dynamic is UNKNOWN ("prompt moved out of static reach"), never CHANGED,
+  never REMOVED.
+- **Structural rescue, then honesty.** If the fingerprint is gone, the
+  matcher tries the structural anchor (file, qualname, sdk, role) → CHANGED;
+  if only the loose (whitespace-collapsed) fingerprint still matches, it's
+  labeled *formatting-only* — flagged, never suppressed. If nothing matches,
+  it's REMOVED — **always** with the three-way caveat: feature removed, OR
+  renamed+edited in one commit, OR moved beyond static reach. REMOVED is a
+  prompt to investigate, never an auto-delete signal. There is no fuzzy
+  text-similarity matching: rename+edit in one commit is statically
+  unbridgeable, and the tool says so instead of guessing.
+
+## Getting cases stamped
+
+<Steps>
+  <Step title="Bootstrap cases — automatic">
+    `multivon-eval bootstrap --repo .` writes `prompt_baseline.json` and
+    stamps every generated case with `authored_by="bootstrap"`, the repo SHA,
+    and `targets=[]`. Bindings are never fabricated — bootstrap generates
+    cases from your product description and traces, and knows nothing about
+    call sites.
+  </Step>
+  <Step title="Hand-written JSONL — `staleness stamp`">
+    Explicit, opt-in binding via `--site`, as above. This is what turns the
+    coverage number from zero into something meaningful.
+  </Step>
+  <Step title="Python-inline cases — `provenance.stamp()`">
+    The CLI can't edit your source, so build the metadata at authoring time:
+
+    ```python
+    from multivon_eval.provenance import stamp
+
+    case = EvalCase(
+        input="...",
+        metadata=stamp(sites=["extractors/invoice.py::Extractor.extract.system"]),
+    )
+    ```
+
+    Then `multivon-eval staleness . --suite eval_suite:suite` reads the
+    runtime metadata for reporting.
+  </Step>
+</Steps>
+
+CSV-loaded cases are **permanently unstamped** — `load_csv` reads no metadata.
+Documented limitation, not a roadmap item. Unstamped cases of any origin are
+first-class: counted and reported with a stamp hint, never guessed at.
+
+## CI integration
+
+Default exit is 0 even with findings — CHANGED means "authored against an
+older prompt, re-run recommended", never "failing". Gate per-category when
+you're ready:
+
+```bash
+multivon-eval staleness . --fail-on changed,removed
+```
+
+Exit contract: `0` clean or report-only, `1` a `--fail-on` category fired,
+`2` warn-only (no baseline, unreadable baseline, scanner-version mismatch).
+Gating on `added` (uncovered new prompts) punishes adoption — possible, not
+recommended.
+
+The one-line warn-only recipe for GitHub Actions:
+
+```yaml
+- run: multivon-eval staleness . --format markdown >> "$GITHUB_STEP_SUMMARY"
+```
+
+`--format json` emits the full machine-readable report (per-site verdicts
+with a `confidence` field — `exact`, `structural`, `moved`, or `ambiguous` —
+so CI consumers can filter surfaced ambiguity).
+
+## Honest scope — the blind spots
+
+The static scan:
+
+- sees kwarg-only anthropic/openai/litellm Python call sites only
+- does not see the OpenAI Responses API or positional message args
+- does not see prompts in YAML/Jinja/templates/files or prompt hubs
+- does not see non-Python services
+
+This list prints at the bottom of **every** text and markdown report. Prompts
+the scanner cannot see can still be stamped with `source: "external"` — they
+report as UNVERIFIABLE, never orphaned.
+
+## What's deferred
+
+- **`sync`** — propose-and-review case refresh that consumes the staleness
+  JSON. Never auto-commit, by design. Tracked in
+  [multivon-eval#8](https://github.com/multivon-ai/multivon-eval/issues/8).
+- **Runtime recorder** — an opt-in pytest plugin capturing rendered prompts
+  at eval time; the honest v2 mechanism for case→site binding and for
+  verifying dynamic prompts. Part of the staleness epic,
+  [multivon-eval#4](https://github.com/multivon-ai/multivon-eval/issues/4).
+- **eval-action enforcement** — the staleness gate as an Action input with
+  per-category fail-on; today the `GITHUB_STEP_SUMMARY` line above is the
+  documented warn-only path. Tracked in
+  [eval-action#1](https://github.com/multivon-ai/eval-action/issues/1).
+
+## See also
+
+- [Prompt attribution](/guides/attribution) — the scanner this is built on,
+  including the scanner v2 changes (one-hop constant resolution,
+  `loose_fingerprint`).
+- [Bootstrap](/guides/bootstrap) — writes the baseline and stamps generated
+  cases automatically via `--repo`.
+- [`/eval-audit` skill](/skills/eval-audit) — the per-PR audit; staleness is
+  the standing drift report between PRs.
+- [CI/CD integration](/guides/ci-cd) — wiring multivon-eval into GitHub Actions.

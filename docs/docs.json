@@ -97,6 +97,7 @@
               "guides/agent-trace",
               "guides/integrations",
               "guides/attribution",
+              "guides/staleness",
               "guides/production-targets",
               "guides/custom-evaluators"
             ]

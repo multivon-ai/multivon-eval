@@ -15,7 +15,7 @@ multivon-eval bootstrap \
   --output ./eval-bootstrap/
 ```
 
-You get four artifacts:
+You get five artifacts:
 
 | File                      | What it is                                                          |
 |---------------------------|---------------------------------------------------------------------|
@@ -23,6 +23,7 @@ You get four artifacts:
 | `seed_cases.jsonl`        | 30 adversarial seed cases targeting the primary failure mode        |
 | `thresholds.yaml`         | Per-evaluator thresholds calibrated from your traces (p25 of scores) |
 | `DISCOVERY_REPORT.md`     | An eval design review you can forward to your team                  |
+| `prompt_baseline.json`    | Snapshot of every prompt call site in your repo (written at the `--repo` root, default `.`) — the input to [`multivon-eval staleness`](/guides/staleness) |
 
 Total cost: ~$0.12 per bootstrap on default settings (or **$0.00 with `--judge-provider ollama`**). Latency: under 60 seconds for default settings; ~5× wall-clock for the local-judge path.
 
@@ -105,6 +106,33 @@ If PII was detected and redacted, the report's `## Trace evidence` section surfa
 
 Codex's review of the design doc flagged this: *"The most valuable output may be `DISCOVERY_REPORT.md`, not the generated eval code."* The report is built to be forwarded inside your team as an "eval design review" — what shape your product is, which metrics matter, what was rejected, and why. Many users use it as the artifact that gets a launch greenlit even if they edit the generated `eval_suite.py` heavily afterward.
 
+## Drift detection comes free — `--repo` (0.10.0)
+
+As of [0.10.0](https://github.com/multivon-ai/multivon-eval/blob/main/CHANGELOG.md#0100--2026-06-11),
+bootstrap also sets up [prompt-drift staleness detection](/guides/staleness),
+at no extra cost or latency:
+
+- **`--repo PATH`** (default `.`) tells bootstrap which app repo to scan for
+  prompt call sites. It writes `prompt_baseline.json` at that root — the
+  committed snapshot that `multivon-eval staleness` later diffs against.
+- **Every generated case is stamped** with `metadata._provenance`:
+  `authored_by="bootstrap"`, the repo SHA, and `targets=[]`. The empty
+  targets list is deliberate honesty — it means "authored against this repo
+  state", and nothing more. Bootstrap generates cases from your product
+  description and traces; it knows nothing about call sites, so case→site
+  bindings are never fabricated. Bind cases explicitly later with
+  `multivon-eval staleness stamp`.
+- The completion checklist gains one line confirming both:
+
+```text
+  ✓ baseline + provenance stamped: 14 call site(s) @ a1b2c3d
+```
+
+Stamping flows through the existing case-serialization path and never
+perturbs `suite.lock` (the lockfile's cases hash excludes metadata by
+design). From that point on, a zero-arg `multivon-eval staleness .` in the
+repo reports which prompts changed since the suite was bootstrapped.
+
 ## What's NOT in the bootstrap (and why)
 
 - **No model-side wrapper.** The bootstrap emits a suite that calls **your** `model_fn`. You bring the wiring to your real model. No vendor lock-in.
@@ -142,6 +170,7 @@ multivon-eval bootstrap --help
 | `--pii-policy`       | `redact`                         | `redact` \| `strict` \| `allow`                          |
 | `--skip-seed-cases`  | off                              | Save ~$0.02 if you don't need adversarial cases          |
 | `--skip-calibration` | off                              | Use proposed thresholds without trace-side scoring       |
+| `--repo`             | `.`                              | App repo to scan for prompt call sites — writes `prompt_baseline.json` there and stamps generated cases with repo-state provenance (`targets=[]`) |
 
 ## Local judge — run bootstrap fully offline
 
@@ -186,5 +215,6 @@ print(f"artifacts: {result.artifacts}")
 
 - [Intelligent eval primitives](/guides/intelligent-eval) — full reference for the three primitives the bootstrap composes (`auto_evaluators`, `generate_adversarial_cases`, `validate_adversarial_cases`). Use these directly when you want fine-grained control or want to compose them into your own pipeline.
 - [Synthetic data generation](/guides/synthetic-data) — the higher-level `generate_from_file` / `generate_from_text` helpers, when you want generation without targeting a specific failure mode.
+- [Prompt-drift staleness](/guides/staleness) — the drift report that consumes the `prompt_baseline.json` and provenance stamps bootstrap writes.
 - [Quickstart](/quickstart) — the manual path: write `EvalCase` objects directly.
 - [/eval-bootstrap Claude Code skill](/skills/eval-bootstrap) — the auto-invoking wrapper around this CLI for Claude Code users. Install with `multivon-eval install-skills`.
