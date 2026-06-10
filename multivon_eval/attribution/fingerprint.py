@@ -31,3 +31,25 @@ def fingerprint_text(text: str) -> str:
     text always produce a string-identical fingerprint regardless of platform.
     """
     return hashlib.sha256(normalize_text(text).encode("utf-8")).hexdigest()
+
+
+def loose_normalize_text(text: str) -> str:
+    """Aggressive whitespace normalization for the *loose* fingerprint.
+
+    Collapses every run of whitespace (spaces, tabs, newlines) to a single
+    space and strips the ends. Two prompts that differ only in indentation /
+    line wrapping loose-normalize to the same string.
+    """
+    return " ".join(text.split())
+
+
+def loose_fingerprint_text(text: str) -> str:
+    """SHA-256 hex digest of loose_normalize_text(text).
+
+    Label-only fingerprint: it exists so a staleness report can TAG a change
+    as formatting-only (re-indented triple-quoted prompt, re-wrapped lines).
+    It must never be used to *suppress* a change — normalize_text preserves
+    leading indentation deliberately, so the strict fingerprint stays the
+    source of truth for "did the prompt change".
+    """
+    return hashlib.sha256(loose_normalize_text(text).encode("utf-8")).hexdigest()

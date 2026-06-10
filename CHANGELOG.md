@@ -2,6 +2,25 @@
 
 All notable changes to `multivon-eval`. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) as of 0.7.0.
 
+## [0.10.0] — 2026-06-11
+
+**Evals drift as code changes — this release ships the detection layer.** Prompts evolve, eval suites go stale, and nobody notices until a regression sails through. 0.10.0 adds prompt-drift staleness detection: a committed baseline snapshot of every prompt call site in your repo, a read-only report that tells you exactly which prompts changed since your cases were authored, and an opt-in provenance layer binding cases to the prompts they exercise. The design went through a 3-design × 2-adversarial-critic review before a line was written; the design rule that survived every round: **the tool never overclaims what static analysis can know.** Every report opens with a determinacy headline ("N of M call sites statically resolvable") and closes with a standing blind-spots footer.
+
+### Added
+
+- **`multivon-eval staleness [PATH]`** — read-only drift report. Diffs a live `attribution` scan against the committed `prompt_baseline.json`: **CHANGED** (prompt text differs — with before/after fingerprints, bound cases, and a `git diff` pointer), **REMOVED** (always with the three-way caveat: feature removed / renamed+edited / moved beyond static reach), **ADDED** (new prompts with no covering cases), **UNKNOWN** (dynamic prompts — never guessed at). `--format text|json|markdown`, `--fail-on changed,removed,added` for CI (exit 0 report-only by default; markdown format drops straight into `$GITHUB_STEP_SUMMARY`).
+- **`multivon-eval staleness baseline [PATH]`** — writes/refreshes the baseline snapshot, printing the diff before writing. Bootstrap writes one automatically.
+- **`multivon-eval staleness stamp`** — binds hand-written JSONL cases to the prompt call sites they exercise (`--site 'file.py::qualname.role'`). Raw-line-preserving rewrite (never round-trips through `load_jsonl`, which would drop `expected_tool_calls`); idempotent restamps are byte-identical; refuses ambiguous sites instead of guessing.
+- **`multivon_eval.provenance`** — `metadata["_provenance"]` schema (case_uid, authored_at/stamped_at, git context, prompt-fingerprint targets) + a `stamp()` helper for Python-inline cases. Stamping **never perturbs `suite.lock`** (cases_hash excludes metadata by design) — pinned by a regression test.
+- **Attribution scanner v2** — one-hop module-level constant resolution (`SYSTEM_PROMPT = "..."` then `system=SYSTEM_PROMPT` now resolves to real text instead of a dynamic placeholder; conditional/cross-module names honestly stay dynamic) + `loose_fingerprint` (whitespace-collapsed) so formatting-only prompt changes are labeled as such — flagged, never suppressed.
+- **Bootstrap integration** — `--repo` flag; generated cases are stamped `authored_by="bootstrap"` with the repo SHA (honest "authored against this state" provenance — bindings are never fabricated), and `prompt_baseline.json` is written alongside the suite.
+
+### Notes
+
+- Matching is content-first: line numbers and git SHAs are display-only, never matching inputs — a whitespace refactor or rebase produces zero false staleness.
+- Dynamic prompts gate FIRST: a prompt the scanner can't statically read is UNKNOWN forever rather than fake-fresh. The runtime recorder that closes this gap is tracked as future work.
+- 51 new tests (staleness 27, provenance 24) + 26 extended attribution tests. 178 green across the touched surface; zero new failures elsewhere.
+
 ## [0.9.8] — 2026-06-03
 
 Post-iter-3 documentation + DX polish pass. The headline ship is a one-command installer for the bundled Claude Code skills so the wheel doesn't just contain them, it wires them up. Plus a README rewrite that leads with the credibility story (κ=0.03, F1 0.830 held-out, the 0.9.4 → 0.9.7 self-correction sequence) instead of bootstrap CLI feature copy. The release sequence IS the audit trail — the README opening now says so explicitly.

@@ -436,6 +436,114 @@ def cmd_attribution(args) -> int:
     return 2
 
 
+def cmd_staleness(args) -> int:
+    """`multivon-eval staleness [report|baseline|stamp]` — prompt-drift staleness.
+
+    Covers drift modes 1-3: prompt drift, coverage gaps, dead cases. Shape
+    drift and threshold staleness are suite.lock territory
+    (verify_suite_against_lock) — this command never claims them.
+
+    Exit codes (doctor-style, see cmd_doctor): 0 = clean or report-only,
+    1 = a --fail-on category fired, 2 = warn-only conditions (no baseline,
+    unreadable baseline, scanner-version mismatch) or usage errors.
+    """
+    from pathlib import Path
+    from . import staleness as st
+
+    if args.staleness_cmd == "baseline":
+        out_path = args.out or str(Path(args.path) / st.DEFAULT_BASELINE_NAME)
+        baseline, diff_lines = st.write_baseline(
+            args.path, args.out, dry_run=args.dry_run,
+        )
+        if diff_lines:
+            print("changes vs existing baseline:")
+            for ln in diff_lines:
+                print(f"  {ln}")
+        sha = baseline.git.get("sha") or "no git"
+        action = "would write (dry-run)" if args.dry_run else "wrote"
+        print(f"{action} {out_path}: {len(baseline.records)} call site(s) "
+              f"@ {sha} (scanner v{baseline.scanner_version})")
+        return 0
+
+    if args.staleness_cmd == "stamp":
+        from datetime import datetime, timezone
+        from . import attribution as attr
+        from . import provenance as prov
+
+        if not (args.all or args.tag or args.index):
+            print("error: select cases with --index N (repeatable), --tag T, "
+                  "or --all", file=sys.stderr)
+            return 2
+        records = attr.scan(args.repo)
+        try:
+            rec = prov.resolve_site_spec(records, args.site)
+        except prov.AmbiguousSiteError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+        target = prov.target_from_record(rec)
+        evidence = None
+        if args.evidence:
+            evidence = {
+                "report": args.evidence,
+                "run_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            }
+        try:
+            result = prov.stamp_jsonl(
+                args.cases, [target],
+                indices=args.index or None, tag=args.tag, select_all=args.all,
+                repo=args.repo, force=args.force, dry_run=args.dry_run,
+                evidence=evidence,
+            )
+        except prov.ProvenanceError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+        if result.selected == 0:
+            print("warning: selection matched no cases — nothing stamped",
+                  file=sys.stderr)
+            return 2
+        suffix = " (dry-run, nothing written)" if args.dry_run else ""
+        print(f"stamped {result.updated} case(s) "
+              f"({result.unchanged} already identical) in {result.path} "
+              f"→ site {rec.call_site_id}{suffix}")
+        return 0
+
+    # report (default subcommand)
+    fail_on = tuple(
+        p.strip() for p in (args.fail_on or "").split(",") if p.strip()
+    )
+    bad = [c for c in fail_on if c not in ("changed", "removed", "added")]
+    if bad:
+        print(f"error: unknown --fail-on category {', '.join(bad)} "
+              f"(choose from: changed, removed, added)", file=sys.stderr)
+        return 2
+    report = st.build_staleness_report(
+        args.path,
+        baseline_path=args.baseline,
+        case_files=args.cases,
+        suite=args.suite,
+        ignore_dirs=args.ignore,
+        include_tests=args.include_tests,
+        fail_on=fail_on,
+    )
+    if args.format == "json":
+        print(st.render_json(report))
+    elif args.format == "markdown":
+        print(st.render_markdown(report), end="")
+    else:
+        print(st.render_text(report), end="")
+    return report.exit_code
+
+
+def _normalize_staleness_argv(argv: list[str]) -> list[str]:
+    """`multivon-eval staleness [PATH]` defaults to the report subcommand."""
+    if argv and argv[0] == "staleness":
+        if len(argv) == 1 or argv[1] not in (
+            "report", "baseline", "stamp", "-h", "--help",
+        ):
+            return [argv[0], "report", *argv[1:]]
+    return argv
+
+
 def main():
     from . import __version__
     parser = argparse.ArgumentParser(prog="multivon-eval", description="Multivon Eval CLI")
@@ -621,6 +729,11 @@ def main():
                              "but typically removes 20-40%% of synthetic noise.")
     boot_p.add_argument("--validate-n-shots", type=int, default=3,
                         help="N-shot count for --validate (default: 3)")
+    boot_p.add_argument("--repo", default=".",
+                        help="App repo to scan for prompt call sites (default: .). "
+                             "Bootstrap writes prompt_baseline.json there and "
+                             "stamps generated cases with repo-state provenance "
+                             "(targets=[] — bindings are never fabricated).")
 
     # install-skills — symlink bundled Claude Code skills into ~/.claude/skills/
     skills_p = sub.add_parser(
@@ -665,7 +778,103 @@ def main():
         help="markdown (PR-comment-ready, default), text (compact summary), or json",
     )
 
-    args = parser.parse_args()
+    # staleness — prompt-drift staleness report + baseline + case stamping.
+    # Covers drift modes 1-3 (prompt drift, coverage gaps, dead cases);
+    # shape drift and threshold staleness are suite.lock territory.
+    stale_p = sub.add_parser(
+        "staleness",
+        help="Prompt-drift staleness: which prompts changed since your cases "
+             "were authored (static scan vs prompt_baseline.json; "
+             "shape/threshold drift stays with suite.lock)",
+    )
+    stale_sub = stale_p.add_subparsers(dest="staleness_cmd")
+
+    stale_rep_p = stale_sub.add_parser(
+        "report",
+        help="Read-only staleness report (the default: `multivon-eval staleness .`)",
+    )
+    stale_rep_p.add_argument(
+        "path", nargs="?", default=".",
+        help="Repo root to scan (default: current directory)",
+    )
+    stale_rep_p.add_argument(
+        "--baseline", default=None,
+        help="Baseline file (default: PATH/prompt_baseline.json)",
+    )
+    stale_rep_p.add_argument(
+        "--cases", action="append", default=None, metavar="F.jsonl",
+        help="Case JSONL file(s) to join provenance from (repeatable; "
+             "default: any seed_cases.jsonl under PATH). CSV cases cannot "
+             "carry provenance — documented limitation.",
+    )
+    stale_rep_p.add_argument(
+        "--suite", default=None, metavar="module:attr",
+        help="Read runtime case metadata from a Python EvalSuite "
+             "(for cases constructed inline in eval_suite.py)",
+    )
+    stale_rep_p.add_argument(
+        "--format", choices=["text", "json", "markdown"], default="text",
+        help="text (human-readable, default), json (CI-consumable), or "
+             "markdown (GITHUB_STEP_SUMMARY-ready)",
+    )
+    stale_rep_p.add_argument(
+        "--fail-on", default=None, metavar="CATS",
+        help="Comma list of changed,removed,added — exit 1 if any fires. "
+             "Default: report-only, exit 0 even with findings ('changed' "
+             "means re-run recommended, not failing). Gating on 'added' "
+             "punishes adoption — not recommended.",
+    )
+    stale_rep_p.add_argument(
+        "--include-tests", action="store_true",
+        help="Also scan tests/ and examples/ (skipped by default — "
+             "fixture SDK calls flood the report)",
+    )
+    stale_rep_p.add_argument(
+        "--ignore", action="append", default=None, metavar="DIR",
+        help="Extra directory name(s) to skip (repeatable)",
+    )
+
+    stale_base_p = stale_sub.add_parser(
+        "baseline",
+        help="Scan and write prompt_baseline.json (a blessed snapshot you "
+             "consciously refresh — prints the diff before writing)",
+    )
+    stale_base_p.add_argument("path", nargs="?", default=".",
+                              help="Repo root to scan (default: .)")
+    stale_base_p.add_argument("--out", default=None,
+                              help="Output file (default: PATH/prompt_baseline.json)")
+    stale_base_p.add_argument("--dry-run", action="store_true",
+                              help="Print the diff, write nothing")
+
+    stale_stamp_p = stale_sub.add_parser(
+        "stamp",
+        help="Bind JSONL cases to a prompt call site (explicit, opt-in; "
+             "auto-binding is rejected by design)",
+    )
+    stale_stamp_p.add_argument("--cases", required=True, metavar="F.jsonl",
+                               help="Case JSONL file to stamp (raw-line-preserving rewrite)")
+    stale_stamp_p.add_argument(
+        "--site", required=True,
+        help="Call site as 'FILE[::QUALNAME][.ROLE[#POS]]' — resolved "
+             "against a live scan; ambiguity is an error, never a guess",
+    )
+    stale_stamp_p.add_argument("--index", type=int, action="append", default=None,
+                               metavar="N", help="Case index to stamp (0-based, repeatable)")
+    stale_stamp_p.add_argument("--tag", default=None,
+                               help="Stamp every case carrying this tag")
+    stale_stamp_p.add_argument("--all", action="store_true",
+                               help="Stamp every case in the file")
+    stale_stamp_p.add_argument("--evidence", default=None, metavar="REPORT.json",
+                               help="Eval report that justified this (re)stamp — "
+                                    "restamps without evidence are flagged in reports")
+    stale_stamp_p.add_argument("--repo", default=".",
+                               help="Repo root for the live scan (default: .)")
+    stale_stamp_p.add_argument("--dry-run", action="store_true",
+                               help="Resolve + report, write nothing")
+    stale_stamp_p.add_argument("--force", action="store_true",
+                               help="Overwrite a malformed/newer existing _provenance")
+
+    args = parser.parse_args(_normalize_staleness_argv(sys.argv[1:]))
 
     if args.command == "init":
         sys.exit(cmd_init(args) or 0)
@@ -705,6 +914,8 @@ def main():
         sys.exit(cmd_install_skills(args) or 0)
     elif args.command == "attribution":
         sys.exit(cmd_attribution(args) or 0)
+    elif args.command == "staleness":
+        sys.exit(cmd_staleness(args) or 0)
     else:
         parser.print_help()
 
@@ -749,6 +960,7 @@ def cmd_bootstrap(args) -> int:
         skip_seed_cases=args.skip_seed_cases,
         skip_calibration=args.skip_calibration,
         n_seed_cases=args.n_seed_cases,
+        repo=args.repo,
     )
 
     print(f"  ✓ inferred shape: {result.shape}")
@@ -758,6 +970,17 @@ def cmd_bootstrap(args) -> int:
         print(f"  ✓ pii redacted before LLM call: {pii_str}")
     print(f"  ✓ recommended {len(result.evaluators)} evaluators")
     print(f"  ✓ generated {len(result.seed_cases)} adversarial seed cases")
+
+    baseline_path = result.artifacts.get("prompt_baseline")
+    if baseline_path is not None and Path(baseline_path).exists():
+        import json as _json
+        try:
+            _payload = _json.loads(Path(baseline_path).read_text(encoding="utf-8"))
+            _n_sites = len(_payload.get("records") or [])
+            _sha = (_payload.get("git") or {}).get("sha") or "no git"
+            print(f"  ✓ baseline + provenance stamped: {_n_sites} call site(s) @ {_sha}")
+        except (OSError, ValueError):
+            print(f"  ✓ baseline written: {baseline_path}")
 
     # --validate: optionally N-shot filter the seed cases via the
     # validate_adversarial_cases primitive. The stub-refusal baseline

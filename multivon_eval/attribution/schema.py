@@ -24,6 +24,7 @@ class PromptRecord:
     text: str             # the actual prompt literal (after f-string concat for pure-literal f-strings)
     is_dynamic: bool      # True iff the literal contains runtime interpolation we couldn't resolve
     fingerprint: str      # SHA-256 hex digest of normalized(text)
+    loose_fingerprint: str = ""  # SHA-256 of whitespace-collapsed text; label-only ("formatting-only")
 
     @property
     def call_site_id(self) -> str:

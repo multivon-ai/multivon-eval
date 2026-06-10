@@ -27,22 +27,30 @@ What this package does NOT do (deliberate):
     - Causal attribution between a regression and a prompt change.
     - Detect prompts inside Jinja templates, LangChain ChatPromptTemplates,
       database-loaded prompts, or runtime-assembled strings.
-    - Capture named constants used by name elsewhere — only literal
-      kwarg values at recognized SDK call sites count.
+    - Multi-hop or cross-module constant resolution. Scanner v2 resolves
+      exactly one hop: a module-level ``X = "literal"`` in the SAME file
+      used as ``system=X``. Conditionally-reassigned names, function-scope
+      names, and imports stay dynamic.
 """
 from __future__ import annotations
 
 from .schema import PromptRecord, PromptDiff
-from .fingerprint import normalize_text, fingerprint_text
-from .ast_extractor import scan, scan_file
+from .fingerprint import (
+    normalize_text, fingerprint_text,
+    loose_normalize_text, loose_fingerprint_text,
+)
+from .ast_extractor import scan, scan_file, SCANNER_VERSION
 from .diff import diff_records
 from .render import render_markdown
 
 __all__ = [
     "PromptRecord",
     "PromptDiff",
+    "SCANNER_VERSION",
     "normalize_text",
     "fingerprint_text",
+    "loose_normalize_text",
+    "loose_fingerprint_text",
     "scan",
     "scan_file",
     "diff_records",

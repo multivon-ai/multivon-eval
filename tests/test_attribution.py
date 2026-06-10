@@ -7,10 +7,13 @@ from pathlib import Path
 import pytest
 
 from multivon_eval.attribution import (
+    SCANNER_VERSION,
     PromptDiff,
     PromptRecord,
     diff_records,
     fingerprint_text,
+    loose_fingerprint_text,
+    loose_normalize_text,
     normalize_text,
     render_markdown,
     scan,
@@ -196,7 +199,9 @@ class TestExtractDynamicVsLiteral:
         # placeholder shape
         assert recs[0].text.startswith("<dynamic:")
 
-    def test_name_reference_is_dynamic(self, tmp_path):
+    def test_module_constant_name_resolves_in_v2(self, tmp_path):
+        # Scanner v2: one-hop, same-file, module-level constant resolution.
+        # (v1 recorded this as dynamic; the staleness spec promotes it.)
         f = _write(tmp_path, "x.py", '''
             import anthropic
             SYSTEM_PROMPT = "I'm a constant"
@@ -207,11 +212,183 @@ class TestExtractDynamicVsLiteral:
             )
         ''')
         recs = scan_file(str(f), repo_root=str(tmp_path))
-        # Per the v1 adversarial-fix discipline: named constants are NOT
-        # captured by their name. Only kwarg literals count. So system=
-        # being a Name → dynamic placeholder.
         assert len(recs) == 1
+        assert recs[0].is_dynamic is False
+        assert recs[0].text == "I'm a constant"
+
+
+class TestScannerV2ConstantResolution:
+    """Test-plan item 4: one-hop, same-file, module-scope constant resolution."""
+
+    def test_module_constant_resolves_with_real_text(self, tmp_path):
+        f = _write(tmp_path, "x.py", '''
+            import anthropic
+            X = "the real prompt text"
+            def run():
+                anthropic.Anthropic().messages.create(
+                    model="m", system=X, messages=[],
+                )
+        ''')
+        recs = scan_file(str(f), repo_root=str(tmp_path))
+        assert len(recs) == 1
+        assert recs[0].is_dynamic is False
+        assert recs[0].text == "the real prompt text"
+        assert recs[0].fingerprint == fingerprint_text("the real prompt text")
+
+    def test_conditionally_reassigned_name_stays_dynamic(self, tmp_path):
+        f = _write(tmp_path, "x.py", '''
+            import os
+            import anthropic
+            X = "default"
+            if os.environ.get("Y"):
+                X = "override"
+            anthropic.Anthropic().messages.create(
+                model="m", system=X, messages=[],
+            )
+        ''')
+        recs = scan_file(str(f), repo_root=str(tmp_path))
         assert recs[0].is_dynamic is True
+
+    def test_reassigned_twice_at_module_scope_stays_dynamic(self, tmp_path):
+        f = _write(tmp_path, "x.py", '''
+            import anthropic
+            X = "first"
+            X = "second"
+            anthropic.Anthropic().messages.create(
+                model="m", system=X, messages=[],
+            )
+        ''')
+        recs = scan_file(str(f), repo_root=str(tmp_path))
+        assert recs[0].is_dynamic is True
+
+    def test_one_hop_only_name_to_name_chain_stays_dynamic(self, tmp_path):
+        f = _write(tmp_path, "x.py", '''
+            import anthropic
+            X = "literal"
+            Y = X
+            anthropic.Anthropic().messages.create(
+                model="m", system=Y, messages=[],
+            )
+        ''')
+        recs = scan_file(str(f), repo_root=str(tmp_path))
+        assert recs[0].is_dynamic is True
+
+    def test_chained_assignment_stays_dynamic(self, tmp_path):
+        f = _write(tmp_path, "x.py", '''
+            import anthropic
+            X = Y = "literal"
+            anthropic.Anthropic().messages.create(
+                model="m", system=X, messages=[],
+            )
+        ''')
+        recs = scan_file(str(f), repo_root=str(tmp_path))
+        assert recs[0].is_dynamic is True
+
+    def test_cross_module_import_stays_dynamic(self, tmp_path):
+        f = _write(tmp_path, "x.py", '''
+            import anthropic
+            from prompts import X
+            anthropic.Anthropic().messages.create(
+                model="m", system=X, messages=[],
+            )
+        ''')
+        recs = scan_file(str(f), repo_root=str(tmp_path))
+        assert recs[0].is_dynamic is True
+
+    def test_function_scope_name_stays_dynamic(self, tmp_path):
+        f = _write(tmp_path, "x.py", '''
+            import anthropic
+            def run():
+                X = "function local"
+                anthropic.Anthropic().messages.create(
+                    model="m", system=X, messages=[],
+                )
+        ''')
+        recs = scan_file(str(f), repo_root=str(tmp_path))
+        assert recs[0].is_dynamic is True
+
+    def test_local_shadowing_of_module_constant_stays_dynamic(self, tmp_path):
+        f = _write(tmp_path, "x.py", '''
+            import anthropic
+            X = "module text"
+            def run(flag):
+                if flag:
+                    X = "local text"
+                anthropic.Anthropic().messages.create(
+                    model="m", system=X, messages=[],
+                )
+        ''')
+        recs = scan_file(str(f), repo_root=str(tmp_path))
+        assert recs[0].is_dynamic is True
+
+    def test_global_declaration_disqualifies_the_constant(self, tmp_path):
+        f = _write(tmp_path, "x.py", '''
+            import anthropic
+            X = "module text"
+            def mutate():
+                global X
+                X = "rebound at runtime"
+            anthropic.Anthropic().messages.create(
+                model="m", system=X, messages=[],
+            )
+        ''')
+        recs = scan_file(str(f), repo_root=str(tmp_path))
+        assert recs[0].is_dynamic is True
+
+    def test_annotated_module_constant_resolves(self, tmp_path):
+        f = _write(tmp_path, "x.py", '''
+            import anthropic
+            X: str = "annotated literal"
+            anthropic.Anthropic().messages.create(
+                model="m", system=X, messages=[],
+            )
+        ''')
+        recs = scan_file(str(f), repo_root=str(tmp_path))
+        assert recs[0].is_dynamic is False
+        assert recs[0].text == "annotated literal"
+
+    def test_constant_resolves_in_messages_content_too(self, tmp_path):
+        f = _write(tmp_path, "x.py", '''
+            import litellm
+            GREETING = "hello there"
+            litellm.completion(
+                model="m", messages=[{"role": "user", "content": GREETING}],
+            )
+        ''')
+        recs = scan_file(str(f), repo_root=str(tmp_path))
+        assert recs[0].is_dynamic is False
+        assert recs[0].text == "hello there"
+
+
+class TestLooseFingerprint:
+    def test_loose_normalize_collapses_all_whitespace_runs(self):
+        assert loose_normalize_text("a\n   b\t\tc  ") == "a b c"
+
+    def test_records_carry_a_loose_fingerprint(self, tmp_path):
+        f = _write(tmp_path, "x.py", '''
+            import anthropic
+            anthropic.Anthropic().messages.create(
+                model="m", system="hello world", messages=[],
+            )
+        ''')
+        recs = scan_file(str(f), repo_root=str(tmp_path))
+        assert recs[0].loose_fingerprint == loose_fingerprint_text("hello world")
+
+    def test_reindentation_flips_strict_but_not_loose(self):
+        a = "line one\n    line two"
+        b = "line one\nline two"
+        # normalize_text preserves leading indentation → strict differs
+        assert fingerprint_text(a) != fingerprint_text(b)
+        # loose collapses whitespace → label-only "formatting-only" signal
+        assert loose_fingerprint_text(a) == loose_fingerprint_text(b)
+
+    def test_loose_never_equates_real_word_changes(self):
+        assert loose_fingerprint_text("do not refund") \
+            != loose_fingerprint_text("do refund")
+
+
+def test_scanner_version_is_2():
+    assert SCANNER_VERSION == 2
 
 
 class TestExtractSkipsNonSdkCalls:

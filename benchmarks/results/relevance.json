@@ -17,7 +17,7 @@
       "precision_ci_hi": 0.9747,
       "recall_ci_lo": 0.8389,
       "recall_ci_hi": 1.0,
-      "f1_ci_lo": 0.875,
+      "f1_ci_lo": 0.878,
       "f1_ci_hi": 1.0
     },
     "simple_judge (yes/no)": {
@@ -33,7 +33,7 @@
       "precision_ci_hi": 0.9915,
       "recall_ci_lo": 0.8389,
       "recall_ci_hi": 1.0,
-      "f1_ci_lo": 0.913,
+      "f1_ci_lo": 0.9091,
       "f1_ci_hi": 1.0
     },
     "deepeval (GPT-4o-mini)": {

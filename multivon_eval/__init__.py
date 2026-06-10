@@ -23,7 +23,7 @@ Experiment tracking (compare runs across versions):
     exp.compare(old_run_id, run_id)
 """
 
-__version__ = "0.9.8"
+__version__ = "0.10.0"
 
 from .suite import EvalSuite
 from .case import EvalCase, AgentStep, ToolCall
@@ -68,6 +68,16 @@ from .auto import (
     auto_evaluators, EvaluatorRecommendation, AmbiguousCaseShape,
     generate_adversarial_cases, generate_unicode_obfuscation_cases,
     validate_adversarial_cases, HardnessReport,
+)
+# Prompt-drift staleness + case provenance (0.9.x)
+from .staleness import (
+    StalenessReport, SiteVerdict, CaseVerdict, BaselineError,
+    build_staleness_report, write_baseline, load_baseline,
+)
+from .provenance import (
+    stamp_jsonl, stamp as stamp_provenance,
+    read_provenance, StampResult,
+    ProvenanceError, AmbiguousSiteError,
 )
 
 # Pytest plugin: pytest is an optional dependency. Guard the import so a
@@ -222,4 +232,9 @@ __all__ = [
     "auto_evaluators", "EvaluatorRecommendation", "AmbiguousCaseShape",
     "generate_adversarial_cases", "generate_unicode_obfuscation_cases",
     "validate_adversarial_cases", "HardnessReport",
+    # Prompt-drift staleness + case provenance (0.9.x)
+    "StalenessReport", "SiteVerdict", "CaseVerdict", "BaselineError",
+    "build_staleness_report", "write_baseline", "load_baseline",
+    "stamp_jsonl", "stamp_provenance", "read_provenance", "StampResult",
+    "ProvenanceError", "AmbiguousSiteError",
 ]

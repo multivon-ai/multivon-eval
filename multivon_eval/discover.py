@@ -767,6 +767,7 @@ def bootstrap(
     skip_calibration: bool = False,
     n_seed_cases: int = 30,
     seed: int = 1729,
+    repo: Path | str | None = None,
 ) -> BootstrapResult:
     """End-to-end bootstrap pipeline.
 
@@ -774,6 +775,14 @@ def bootstrap(
     ``eval_suite.py``, ``seed_cases.jsonl``, ``thresholds.yaml``,
     ``DISCOVERY_REPORT.md``. The function does not import or execute the
     emitted ``eval_suite.py``; that's the user's job.
+
+    When ``repo`` is given (the CLI passes --repo, default "."), bootstrap
+    additionally (a) writes ``prompt_baseline.json`` at the repo root via a
+    static prompt scan, and (b) stamps every generated case's
+    ``metadata._provenance`` with authored_by="bootstrap" and ``targets=[]``
+    — honestly "authored against this repo state", NEVER a fabricated
+    case→site binding (seed cases are generated from the product description
+    and know nothing about call sites).
     """
     description = Path(description_path).read_text(encoding="utf-8")
     raw_traces = load_traces(traces_path)
@@ -803,6 +812,16 @@ def bootstrap(
     out_dir = Path(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    if repo is not None:
+        # Stamp in-memory BEFORE emission so provenance flows through the
+        # existing _case_to_jsonl metadata serialization — no new write path.
+        from .provenance import git_info as _git_info, stamp_metadata_inplace
+        _git = _git_info(repo)
+        for case in seed_cases:
+            stamp_metadata_inplace(
+                case.metadata, authored_by="bootstrap", git=_git, targets=[],
+            )
+
     artifacts = _emit_artifacts(
         out_dir=out_dir,
         description=description,
@@ -812,6 +831,11 @@ def bootstrap(
         discussion=discussion,
         seed_cases=seed_cases,
     )
+
+    if repo is not None:
+        from .staleness import DEFAULT_BASELINE_NAME, write_baseline
+        write_baseline(repo)
+        artifacts["prompt_baseline"] = Path(repo) / DEFAULT_BASELINE_NAME
 
     return BootstrapResult(
         shape=shape,

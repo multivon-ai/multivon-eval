@@ -20,7 +20,12 @@ Literals captured:
     - Plain string literals: `system="..."`.
     - f-string literals that contain ZERO runtime interpolation: treated as
       literal (their string content is fully known at parse time).
-    - All other expressions (Name, Attribute, runtime f-strings, joined
+    - Scanner v2: a bare Name that resolves — one hop, same file, module
+      scope — to `X = "literal"` is treated as that literal (is_dynamic=False).
+      Conditionally-reassigned names, function-scope names, names declared
+      `global` anywhere, cross-module imports, and X = Y = "..." chains all
+      stay dynamic.
+    - All other expressions (Attribute, runtime f-strings, joined
       strings with variables, etc.) are recorded as PromptRecord with
       is_dynamic=True and a placeholder text so the count is right and the
       gap is visible in the eventual PR comment.
@@ -32,8 +37,15 @@ import os
 from pathlib import Path
 from typing import Iterator, Optional
 
-from .fingerprint import fingerprint_text
+from .fingerprint import fingerprint_text, loose_fingerprint_text
 from .schema import PromptRecord
+
+
+# Bumped whenever extraction semantics change in a way that shifts what is
+# statically resolvable (v2: one-hop module-level constant resolution +
+# loose_fingerprint). A prompt_baseline.json written by an older scanner
+# triggers a "rescan recommended" warning instead of fake drift.
+SCANNER_VERSION = 2
 
 
 # ── SDK call-site detection ────────────────────────────────────────────
@@ -109,12 +121,20 @@ def _try_pure_literal_fstring(node: ast.AST) -> Optional[str]:
     return "".join(parts)
 
 
-def _resolve_literal(node: ast.AST) -> tuple[Optional[str], bool]:
+def _resolve_literal(
+    node: ast.AST,
+    constants: Optional[dict[str, str]] = None,
+    shadowed: frozenset[str] = frozenset(),
+) -> tuple[Optional[str], bool]:
     """Return (text, is_dynamic).
 
     If the expression resolves to a known string at parse time, text is the
     string and is_dynamic is False. Otherwise text is None and is_dynamic is
     True; the caller can synthesize a placeholder for the PromptRecord.
+
+    Scanner v2: a bare ``Name`` resolves iff it appears in the one-hop,
+    module-scope ``constants`` map AND no enclosing function/class scope
+    binds the same name (shadowing → dynamic, conservatively).
     """
     s = _try_constant_str(node)
     if s is not None:
@@ -122,7 +142,137 @@ def _resolve_literal(node: ast.AST) -> tuple[Optional[str], bool]:
     s = _try_pure_literal_fstring(node)
     if s is not None:
         return (s, False)
+    if (
+        constants
+        and isinstance(node, ast.Name)
+        and isinstance(node.ctx, ast.Load)
+        and node.id not in shadowed
+        and node.id in constants
+    ):
+        return (constants[node.id], False)
     return (None, True)
+
+
+# ── Module-level constant resolution (scanner v2) ─────────────────────
+
+
+def _stored_names(stmt: ast.AST) -> set[str]:
+    """All names bound (Store context) under stmt, NOT descending into
+    nested function/class/lambda scopes — those bindings are local."""
+    out: set[str] = set()
+
+    def walk(node: ast.AST) -> None:
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef,
+                                  ast.ClassDef, ast.Lambda)):
+                if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef,
+                                      ast.ClassDef)):
+                    out.add(child.name)
+                continue
+            if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Store):
+                out.add(child.id)
+            elif isinstance(child, ast.alias):
+                out.add((child.asname or child.name).split(".")[0])
+            elif isinstance(child, ast.ExceptHandler) and child.name:
+                out.add(child.name)
+            walk(child)
+
+    walk(stmt)
+    return out
+
+
+def _module_constants(tree: ast.Module) -> dict[str, str]:
+    """One-hop, same-file, module-scope string constants: name → text.
+
+    Rules (deliberately conservative — false "dynamic" is honest, false
+    "static" poisons every downstream verdict):
+      - Only plain ``X = "literal"`` / ``X: str = "literal"`` at module
+        top level (pure-literal f-strings count as literals).
+      - A name assigned more than once at module level, assigned under any
+        conditional/loop/try at module level, augmented, tuple-unpacked,
+        or declared ``global`` anywhere in the file is disqualified.
+      - One hop only: ``X = Y`` (Name → Name) does not resolve, so chains
+        stay dynamic. Cross-module imports never enter the map.
+    """
+    constants: dict[str, str] = {}
+    disqualified: set[str] = set()
+
+    for stmt in tree.body:
+        if isinstance(stmt, ast.Assign):
+            if len(stmt.targets) != 1 or not isinstance(stmt.targets[0], ast.Name):
+                # tuple-unpacking / chained X = Y = "..." / attribute targets
+                for t in stmt.targets:
+                    names = {t.id} if isinstance(t, ast.Name) else _stored_names(t)
+                    disqualified |= names
+                    for n in names:
+                        constants.pop(n, None)
+                continue
+            name = stmt.targets[0].id
+            text, is_dynamic = _resolve_literal(stmt.value)
+            if name in constants or name in disqualified:
+                disqualified.add(name)
+                constants.pop(name, None)
+            elif not is_dynamic and text is not None:
+                constants[name] = text
+            else:
+                disqualified.add(name)
+        elif isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name):
+            name = stmt.target.id
+            text, is_dynamic = (
+                _resolve_literal(stmt.value) if stmt.value is not None else (None, True)
+            )
+            if name in constants or name in disqualified:
+                disqualified.add(name)
+                constants.pop(name, None)
+            elif not is_dynamic and text is not None:
+                constants[name] = text
+            else:
+                disqualified.add(name)
+        elif isinstance(stmt, ast.AugAssign):
+            if isinstance(stmt.target, ast.Name):
+                disqualified.add(stmt.target.id)
+                constants.pop(stmt.target.id, None)
+        elif isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            # Different scope — module names are only at risk via `global`,
+            # handled below.
+            continue
+        else:
+            # If / For / While / Try / With / Match at module level: any
+            # name bound inside is conditionally assigned → dynamic.
+            names = _stored_names(stmt)
+            disqualified |= names
+            for n in names:
+                constants.pop(n, None)
+
+    # `global X` anywhere means a function may rebind the module name at
+    # runtime — disqualify, conservatively.
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Global):
+            for n in node.names:
+                disqualified.add(n)
+                constants.pop(n, None)
+
+    return constants
+
+
+def _scope_bound_names(scope: ast.AST) -> set[str]:
+    """Names bound directly in a function/class scope (params, stores,
+    imports, def/class names) — used to detect shadowing of module constants."""
+    names: set[str] = set()
+    if isinstance(scope, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        a = scope.args
+        for arg in (*a.posonlyargs, *a.args, *a.kwonlyargs):
+            names.add(arg.arg)
+        if a.vararg:
+            names.add(a.vararg.arg)
+        if a.kwarg:
+            names.add(a.kwarg.arg)
+        for stmt in scope.body:
+            names |= _stored_names(stmt)
+    elif isinstance(scope, ast.ClassDef):
+        for stmt in scope.body:
+            names |= _stored_names(stmt)
+    return names
 
 
 def _placeholder_for_dynamic(node: ast.AST) -> str:
@@ -184,8 +334,10 @@ def _build_record(
     role_position: int,
     qualname: str,
     node: ast.AST,
+    constants: Optional[dict[str, str]] = None,
+    shadowed: frozenset[str] = frozenset(),
 ) -> PromptRecord:
-    text, is_dynamic = _resolve_literal(node)
+    text, is_dynamic = _resolve_literal(node, constants=constants, shadowed=shadowed)
     if text is None:
         text = _placeholder_for_dynamic(node)
     return PromptRecord(
@@ -199,6 +351,7 @@ def _build_record(
         text=text,
         is_dynamic=is_dynamic,
         fingerprint=fingerprint_text(text),
+        loose_fingerprint=loose_fingerprint_text(text),
     )
 
 
@@ -228,6 +381,18 @@ def scan_file(file_path: str, repo_root: Optional[str] = None) -> list[PromptRec
         return []
 
     records: list[PromptRecord] = []
+    constants = _module_constants(tree)
+    _bound_cache: dict[int, set[str]] = {}
+
+    def _shadowed(stack: list[ast.AST]) -> frozenset[str]:
+        out: set[str] = set()
+        for scope in stack:
+            cached = _bound_cache.get(id(scope))
+            if cached is None:
+                cached = _scope_bound_names(scope)
+                _bound_cache[id(scope)] = cached
+            out |= cached
+        return frozenset(out)
 
     # Walk with a stack to compute qualname.
     def visit(node: ast.AST, stack: list[ast.AST]) -> None:
@@ -239,6 +404,7 @@ def scan_file(file_path: str, repo_root: Optional[str] = None) -> list[PromptRec
             if ident is not None:
                 sdk, call_site = ident
                 qualname = _qualname_stack(stack)
+                shadowed = _shadowed(stack)
                 # system= kwarg
                 system_node = _find_kwarg(node, "system")
                 if system_node is not None:
@@ -248,6 +414,7 @@ def scan_file(file_path: str, repo_root: Optional[str] = None) -> list[PromptRec
                         sdk=sdk, call_site=call_site,
                         role="system", role_position=-1,
                         qualname=qualname, node=system_node,
+                        constants=constants, shadowed=shadowed,
                     ))
                 # messages= kwarg
                 messages_node = _find_kwarg(node, "messages")
@@ -259,6 +426,7 @@ def scan_file(file_path: str, repo_root: Optional[str] = None) -> list[PromptRec
                             sdk=sdk, call_site=call_site,
                             role=role, role_position=pos,
                             qualname=qualname, node=content_node,
+                            constants=constants, shadowed=shadowed,
                         ))
         for child in ast.iter_child_nodes(node):
             visit(child, stack)
