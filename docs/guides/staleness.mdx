@@ -278,27 +278,130 @@ The static scan:
 
 This list prints at the bottom of **every** text and markdown report. Prompts
 the scanner cannot see can still be stamped with `source: "external"` — they
-report as UNVERIFIABLE, never orphaned.
+report as UNVERIFIABLE, never orphaned. A file the scanner can *see* but not
+*parse* (syntax error, non-UTF8 encoding) reports as **UNSCANNABLE** since
+0.11.1 — "file exists but could not be parsed — verdict unknown, NOT
+removed" — with a warning naming each file, a `skipped_files` list in the
+JSON report, and no `--fail-on removed` trip. Skipped files are a
+report-time concept, never written into baselines.
+
+## Runtime recordings
+
+The determinacy gate (0.10.1) measured scanner v3 against five real repos:
+**20.9% of call sites are statically resolvable** — the rest build prompts
+dynamically and are statically unbridgeable *by construction*. The runtime
+prompt recorder (shipped in
+[0.11.0](https://github.com/multivon-ai/multivon-eval/blob/main/CHANGELOG.md#0110--2026-06-11),
+designed in [multivon-eval#9](https://github.com/multivon-ai/multivon-eval/issues/9))
+is the honest path past that ceiling: during an eval run, an opt-in
+interceptor records the **rendered** prompt text per call site,
+fingerprinted with the same `fingerprint_text` the static scanner uses. A
+`**kwargs` unpack the scanner can only report as UNKNOWN is, at call time,
+real kwargs with real text.
+
+### The three trust tiers
+
+The honesty discipline survives the new power — three labeled tiers, never
+collapsed into one another (the report footer states all three verbatim):
+
+1. **static** — the scan proves the prompt *text*.
+2. **runtime** — recordings prove only the renderings *observed*, not all
+   renderings. Variable renderings per site are a fingerprint **SET**, and
+   every verdict speaks in OBSERVED k/N language: "current recordings
+   matched **k of N** previously observed renderings." A site is never
+   called fresh because one rendering matched.
+3. **templates / external prompts** — deferred, unverifiable.
+
+### Recording a run
+
+```bash
+pytest --record-prompts                       # record during an eval run
+pytest --record-prompts --record-prompts-out recordings/run1.jsonl
+pytest --record-prompts --record-text         # also store rendered TEXT
+```
+
+Or outside pytest, the context manager:
+
+```python
+from multivon_eval.recorder import record_prompts
+
+with record_prompts(repo_root="."):
+    run_my_evals()
+# prompt_recordings.jsonl now holds fingerprints per call site
+```
+
+Mechanics, by design constraint:
+
+- **Opt-in only, zero overhead when off.** Importing multivon_eval performs
+  NO patching — pinned by a fresh-interpreter subprocess test. Recording
+  method-wraps exactly the three SDK surfaces the static scanner knows
+  (anthropic `Messages.create`, openai `chat.completions.create`,
+  `litellm.completion`/`acompletion`): save original, wrap, restore
+  byte-identical on exit. Missing SDKs are skipped silently.
+- **Recordings stay local** in `prompt_recordings.jsonl`; no telemetry.
+  **Fingerprints only by default** — rendered text is stored only behind an
+  explicit `--record-text`. Storage is append-safe: duplicate
+  (anchor, role, fingerprint) keys merge counts and case_uids on write.
+- **Case binding by observation.** A contextvar carries the active
+  `case_uid`: `EvalSuite` binds it per case from `_provenance.case_uid`,
+  and the pytest plugin binds the test nodeid per test. Recordings carry
+  the case_uids observed per (anchor, role, fingerprint) — the run *knows*
+  which sites fired for which case.
+- Capture scope v1 (honest): string `system=` kwargs and string `content`
+  entries in `messages=` lists. Content-block lists (vision, tool results)
+  and calls anchored outside the repo root are skipped, not guessed at.
+
+### Merging into the baseline
+
+```bash
+multivon-eval staleness baseline . --merge-recordings   # default: ./prompt_recordings.jsonl
+```
+
+Merges recordings into `prompt_baseline.json` as `source:"runtime"` records
+with fingerprint SETS, stored under a separate `runtime_records` key.
+Merge-only: it never rescans and NEVER touches static records; a static
+rescan never discards the runtime tier; re-merging the same recordings file
+is idempotent. Runtime-sourced sites then render as a distinct **OBSERVED**
+tier in all three report formats — compared recordings-vs-recordings
+(runtime-only sites *cannot* be compared against a static scan, and the
+report says so), always in the k/N language. The determinacy headline gains
+a third clause: "K sites observed at runtime."
+
+### Stamping from recordings
+
+```bash
+multivon-eval staleness stamp --from-recordings                      # propose only
+multivon-eval staleness stamp --from-recordings --apply --cases seed_cases.jsonl
+```
+
+`--from-recordings` prints observed case→site bindings as **proposals**
+(case_uid → anchor + fingerprint with observation counts); it writes only
+with explicit `--apply --cases F.jsonl`, landing targets as
+`source:"runtime"`, `bound:"observed"`. Observation removes the fabrication
+objection that blocked auto-binding in the 0.10.0 adversarial review — the
+human confirmation stays. Runtime-bound targets are verified against
+recordings, never against the static scan (where they report
+`unverifiable [runtime]`, by rule), and never enter the static coverage
+denominator.
 
 ## What's deferred
 
 - **`sync`** — propose-and-review case refresh that consumes the staleness
   JSON. Never auto-commit, by design. Tracked in
   [multivon-eval#8](https://github.com/multivon-ai/multivon-eval/issues/8).
-- **Runtime recorder** — an opt-in pytest plugin capturing rendered prompts
-  at eval time; the honest v2 mechanism for case→site binding and for
-  verifying dynamic prompts. Part of the staleness epic,
-  [multivon-eval#4](https://github.com/multivon-ai/multivon-eval/issues/4).
 - **eval-action enforcement** — the staleness gate as an Action input with
   per-category fail-on; today the `GITHUB_STEP_SUMMARY` line above is the
   documented warn-only path. Tracked in
   [eval-action#1](https://github.com/multivon-ai/eval-action/issues/1).
 
+(The runtime recorder, originally on this list, shipped in 0.11.0 — see
+[Runtime recordings](#runtime-recordings) above.)
+
 ## See also
 
 - [Prompt attribution](/guides/attribution) — the scanner this is built on,
-  including the scanner v2 changes (one-hop constant resolution,
-  `loose_fingerprint`).
+  including the v3 detection fixes (aliased/`**kwargs`/`messages=<var>`
+  shapes) and the v4 hardening (NFC-normalized fingerprints, UNSCANNABLE).
 - [Bootstrap](/guides/bootstrap) — writes the baseline and stamps generated
   cases automatically via `--repo`.
 - [`/eval-audit` skill](/skills/eval-audit) — the per-PR audit; staleness is

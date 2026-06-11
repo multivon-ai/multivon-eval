@@ -88,7 +88,7 @@ discipline dropped fuzzy name-regex capture entirely.
 
 ## Scanner v3 (0.10.1)
 
-The scanner that ships with 0.10.1+ is versioned `SCANNER_VERSION = 3`.
+0.10.1 shipped `SCANNER_VERSION = 3`.
 v2 (0.10.0) added the first two items; v3 closed three detection blind
 spots found by running the scanner against five real open-source repos
 (aider, gpt-researcher, open-interpreter, letta, pr-agent), where v2 saw
@@ -113,6 +113,34 @@ spots found by running the scanner against five real open-source repos
 - **`loose_fingerprint`** on every record — a hash of the
   whitespace-collapsed prompt text, alongside the strict `fingerprint`. It
   exists solely to *label* a change as formatting-only, never to suppress it.
+
+## Scanner v4 (0.11.1)
+
+The scanner that ships with 0.11.1+ is versioned `SCANNER_VERSION = 4`.
+v4 is robustness hardening from an adversarial audit — every fix replaces
+a crash or a *false* verdict with an honest one:
+
+- **Fingerprints are NFC-normalized** (the version bump). Composed vs
+  decomposed unicode ("é" as one codepoint vs `e` + combining accent) is
+  an editor/OS artifact, not a prompt change — it previously fingerprinted
+  as drift.
+- **`match`-statement capture patterns disqualify module constants.**
+  `case PROMPT:` rebinds the name through a path the constant resolver
+  didn't see, letting a rebound constant read as static — and a false
+  "static" poisons every downstream verdict. Such names now stay dynamic.
+- **Unscannable files surface as UNSCANNABLE, never REMOVED.** A file the
+  scanner can't parse (syntax error, non-UTF8 encoding) previously
+  returned zero records, so the [staleness report](/guides/staleness)
+  marked every baselined site in it REMOVED — and `--fail-on removed`
+  failed CI with a misleading verdict. They now report as a distinct
+  UNSCANNABLE tier ("file exists but could not be parsed — verdict
+  unknown, NOT removed"): a warning names each file with its reason in
+  all three renderers, the JSON report gains `skipped_files`, and
+  `--fail-on removed` no longer trips. Skipped files are a report-time
+  concept — never written into baselines.
+- **Symlinks resolving outside the repo root are skipped, not recorded** —
+  they previously wrote machine-specific absolute paths into the baseline,
+  producing false REMOVED+ADDED churn on every other checkout.
 
 The scanner version is recorded in `prompt_baseline.json`; a baseline
 written by an older scanner version read by a newer scan prints a "rescan

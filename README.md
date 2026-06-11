@@ -47,7 +47,22 @@ That's it. The `quickstart` template uses only deterministic evaluators (`NotEmp
 
 LLM-judge evaluators auto-activate when `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or a local server (Ollama on `:11434`, LM Studio on `:1234`, or `OPENAI_BASE_URL`) is detected — but every template runs without one in some form.
 
-## What's new in 0.9.x
+## What's new in 0.10–0.12
+
+- **Prompt-drift staleness + case provenance (0.10.0)** — `multivon-eval staleness` diffs a committed `prompt_baseline.json` against a live scan of every prompt call site in your repo and reports exactly which prompts changed since your cases were authored: **CHANGED** (with before/after fingerprints and bound cases), **REMOVED** (always with the three-way caveat), **ADDED** (new prompts with no covering cases), **UNKNOWN** (dynamic prompts — never guessed at). `staleness stamp` binds cases to the call sites they exercise; `--fail-on changed,removed` gates CI. Every report opens with a determinacy headline ("N of M call sites statically resolvable") and closes with a standing blind-spots footer — the tool never overclaims what static analysis can know.
+
+- **Scanner v3 + the determinacy-gate result (0.10.1)** — we ran the scanner against five real repos (aider, gpt-researcher, open-interpreter, letta, pr-agent) as a gate on the staleness epic ([#4](https://github.com/multivon-ai/multivon-eval/issues/4)). Honest detection grew the denominator from 73 to 278 call sites, and static resolvability came out at **20.9% — below the 50% bar we set ourselves**. Conclusion published as-is: real-world prompt traffic is mostly dynamic construction; static analysis tracks call-site add/remove for all of it but verifies text drift only for prompts-as-constants codebases. That failure set the 0.11.0 roadmap.
+
+- **Runtime prompt recorder (0.11.0, [#9](https://github.com/multivon-ai/multivon-eval/issues/9))** — the answer to the 20.9% ceiling. `pytest --record-prompts` (or the `record_prompts()` context manager) intercepts anthropic/openai/litellm calls during an eval run and records the **rendered** prompt per call site — a `**kwargs` unpack the scanner can only call UNKNOWN is, at call time, real kwargs with real text. Three labeled trust tiers, never collapsed: **static** (the scan proves the prompt text), **runtime** (recordings prove only the renderings *observed* — verdicts say "matched k of N previously observed renderings", never "fresh"), **templates/external** (deferred, unverifiable). Fingerprints only by default, recordings stay local. `staleness baseline --merge-recordings` and `staleness stamp --from-recordings --apply` consume them.
+
+- **Robustness hardening (0.11.1)** — an adversarial audit ran the staleness/scanner/bootstrap surface against malformed inputs, symlink tricks, and unicode edge cases; every failure found was a crash or a *false* report. Theme of the fixes: honest UNKNOWN over confident wrong. A syntax-broken file now reports as a distinct **UNSCANNABLE** tier instead of falsely REMOVED; fingerprints are NFC-normalized (`SCANNER_VERSION` 3 → 4); `match`-statement rebinding disqualifies module constants; CLI errors exit 2 with actionable messages instead of tracebacks.
+
+- **Persona simulator + scaled gated generation (0.12.0, [#10](https://github.com/multivon-ai/multivon-eval/issues/10)/[#11](https://github.com/multivon-ai/multivon-eval/issues/11))** — `multivon-eval simulate` drives adaptive multi-turn conversations: a persona LLM (profile, goal, success criteria, traits) converses with your `model_fn`, adapting each turn; transcripts are scored by the conversation evaluators plus a goal-completion judge. Every output carries "simulated personas — measures behavior under synthetic users, not real traffic" (test-pinned), with a hard `--budget` ceiling and no determinism claims. And `bootstrap --n-seed-cases` now scales to 500 generated cases behind explicit gates (structural, duplicate, optional `--validate-cases` hardness band) with no silent caps — the report prints "generated N, accepted M — dropped k duplicates, j malformed". `--budget-usd` checks the spend estimate before any LLM call.
+
+<details>
+<summary><strong>What's new in 0.9.x (older)</strong></summary>
+
+### What's new in 0.9.x
 
 - **`multivon-eval install-skills`** (new in 0.9.8) — one-command installer for the three bundled Claude Code skills (`eval-bootstrap`, `eval-audit`, `eval-explain`). The wheel ships them under `multivon_eval/_skills/`; this CLI symlinks them into `~/.claude/skills/` so `pip install -U multivon-eval` automatically propagates SKILL.md edits.
 
@@ -92,6 +107,8 @@ LLM-judge evaluators auto-activate when `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, o
 - **`CaseResult.status` enum** distinguishes `judge_error` / `model_error` / `evaluator_error` from quality failures. `pass_rate` excludes errors from the denominator.
 - **Per-evaluator error isolation** — one judge outage no longer crashes the case.
 - **JUnit XML output** + `multivon-eval view <report.json>` HTML dashboard + `multivon-eval init` starter templates + `EvalReport.assert_budget(...)` cost/latency gates.
+
+</details>
 
 See [CHANGELOG.md](CHANGELOG.md) for the complete release history.
 
@@ -428,6 +445,8 @@ multivon-eval doctor [--json]                 # preflight: API keys, local judge
 multivon-eval install-skills [--dry-run] [--force]    # symlink the three Claude Code skills
 multivon-eval experiments list | history <name> | compare <run_a> <run_b>
 multivon-eval attribution scan <repo> | diff <base> <head>   # Phase 1 prompt-fingerprint diff
+multivon-eval staleness . [baseline|stamp]    # which prompts changed since your cases were authored — drift report / bless a baseline / bind cases to call sites
+multivon-eval simulate --model-cmd model.py --personas p.jsonl   # persona-driven adaptive multi-turn eval, scored by the conversation evaluators
 ```
 
 `multivon-eval --help` enumerates every flag. Each subcommand has its own `--help` with examples.
@@ -488,7 +507,7 @@ pytest tests/ -v
 
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md) for the full shipped + in-flight list. The headline open items: LlamaIndex / CrewAI tracers, pytest plugin, LiteLLM adapter, tiered cost optimizer, agent simulation. File an issue if you want one prioritized.
+See [ROADMAP.md](ROADMAP.md) for the full shipped + in-flight list. The headline open items: LlamaIndex / CrewAI tracers, LiteLLM adapter, tiered cost optimizer. File an issue if you want one prioritized.
 
 ---
 

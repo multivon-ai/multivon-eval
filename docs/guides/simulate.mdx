@@ -63,7 +63,7 @@ Simulation output is synthetic, and the tool never lets you forget it:
 ## Simulation with provenance
 
 Each conversation binds its `case_uid` through the same contextvar the
-[runtime recorder](/guides/staleness) uses. Run your simulation under
+[runtime recorder](/guides/staleness#runtime-recordings) uses. Run your simulation under
 `pytest --record-prompts` (or wrap it in `record_prompts()`) and the prompts
 your system rendered during each simulated conversation are captured and
 bound to that conversation's case — observed case→site bindings, the same

@@ -65,6 +65,10 @@ Want a runnable eval suite from a one-paragraph product description? `multivon-e
 
 **CI/CD first** — One line exits with code 1 if your pass rate drops below a threshold. Evals that don't run in CI catch nothing.
 
+**Prompt-drift staleness & provenance** — `multivon-eval staleness` diffs a committed baseline of every prompt call site in your repo against a live scan and tells you exactly which prompts changed since your cases were authored — CHANGED, REMOVED, ADDED, UNKNOWN, never overclaiming what static analysis can know. An opt-in runtime recorder (`pytest --record-prompts`) captures the prompts your code actually rendered, with verdicts in honest "matched k of N observed renderings" language. See [Prompt-drift staleness](/guides/staleness).
+
+**Persona simulation** — `multivon-eval simulate` drives adaptive multi-turn conversations against your live system: a persona LLM with a profile, goal, and behavior traits generates each user turn in response to what your model actually said. Transcripts are scored by the conversation evaluators plus a goal-completion judge, with a hard budget ceiling and every output labeled as synthetic. See [Simulate](/guides/simulate).
+
 ## Install
 
 ```bash

@@ -2,6 +2,10 @@
 
 All notable changes to `multivon-eval`. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) as of 0.7.0.
 
+## [Unreleased]
+
+(reserved for in-flight work — empty)
+
 ## [0.12.0] — 2026-06-12
 
 Two features adapted from the synthetic-eval-data space (issues #10/#11) — with the
@@ -243,24 +247,13 @@ Launch-prep release driven by the 7-persona launch simulation (HN top-commenter,
 - **Bootstrap-generated `eval_suite.py` is now runnable end-to-end.** Previously emitted a literal `TODO: add your cases here` comment and stopped. Now scaffolds an `argparse` CLI, a `load_cases()` helper that reads `seed_cases.jsonl` by default (or `--cases path/to/real.jsonl`), and a `stub_model()` placeholder with an obvious replace-me prompt. `python eval_suite.py --runs 1` runs cleanly after bootstrap — only thing the user has to swap is the stub model function.
 - **`multivon-eval bootstrap --judge-provider` accepts `ollama` and `litellm`.** The SDK judge layer always supported local providers (judge.py respects `OLLAMA_HOST`, injects dummy keys for OpenAI-shim servers), but the bootstrap CLI argparse hard-restricted to cloud. Now `--judge-provider ollama --judge-model qwen2.5:14b` works end-to-end. Added `--judge-base-url` for vLLM / LM Studio / custom Ollama endpoints. `auto.py::_call_judge_raw` (the adversarial seed generator) routes local providers through `make_judge_call` instead of its bespoke switch, so it stops hard-failing on non-cloud providers.
 - **`skills/` directory** — three Claude Code skills (`eval-bootstrap`, `eval-audit`, `eval-explain`) shipping with the framework. SKILL.md files following the Anthropic skill model. Install via symlink into `~/.claude/skills/`. See `skills/README.md`.
+- **`multivon_eval.attribution` — Phase 1 prompt attribution.** Public API: `scan(repo_root)`, `diff_records(base, head)`, `render_markdown(diffs)`. CLI: `multivon-eval attribution scan <repo>` (text or JSON output) and `multivon-eval attribution diff <base> <head>` (markdown / text / JSON output). Descriptive only; causal attribution intentionally not shipped (see the Phase 2 sidecar design doc).
 
 ### Changed
 
 - **`benchmarks/README.md`** — headline Hallucination F1 (0.804) now labeled in-distribution with a footnote citing the calibration dataset hash. Benchmark 3 (Faithfulness) updated with the held-out HaluEval-Sum result and a "what this discharges vs doesn't" explanation. All F1 numbers in the summary table now carry their 95% bootstrap CI. Limitations section opens with the in-distribution caveat and the post-hoc threshold-sweep caveat — the framework's own page now applies the standard the framework preaches.
 
 ---
-
-## [Unreleased]
-
-(reserved for in-flight work — empty)
-
----
-
-### Phase 1 attribution (carried forward from 0.9.4)
-
-- `multivon_eval.attribution` — public API: `scan(repo_root)`, `diff_records(base, head)`, `render_markdown(diffs)`. Descriptive only; causal attribution intentionally not shipped (see the Phase 2 sidecar design doc).
-- `multivon-eval attribution scan <repo>` — text or JSON output.
-- `multivon-eval attribution diff <base> <head>` — markdown / text / JSON output.
 
 ## [0.9.3] — 2026-05-28
 
@@ -401,6 +394,40 @@ The intelligent-eval release. Two new public surfaces solve the "I don't know wh
 - 19 tests in `tests/test_auto_evaluators.py` cover the heuristic surface (RAG / QA / agent / conversation / multimodal / structured-output paths, ambiguity scoring, strict_mode).
 - 7 tests in `tests/test_auto_unicode_obfuscation.py` cover the deterministic Unicode transforms.
 - Full suite: 818 passed, 13 skipped (was 745/12 at 0.7.3).
+
+## [0.7.8] — 2026-05-17
+
+### Fixed
+
+- **Orphan `sys.exit(1)` at the end of `cli.py` removed — 0.7.7's CLI was entirely broken.** The stray line left behind when the `discover` subcommand landed made the CLI module fail to import (`IndentationError`), so *every* CLI command (`init`, `run`, `report`, `view`, `generate`, `audit-package`, `compare`, `discover`) crashed on 0.7.7. Caught immediately post-publish by re-running pytest (16 failures, all downstream of the import failure). 0.7.7 is a known-broken release; this ships the clean fix. Lesson recorded: run the full pytest suite *before* `python -m build`, not after.
+
+## [0.7.7] — 2026-05-17
+
+### Added
+
+- **`multivon-eval discover`** — emits the full SDK capability catalog as JSON to stdout: package version, every evaluator class with name/import-path/docstring/evaluator-id, PII jurisdictions (incl. DPDP India), compliance frameworks, judge providers, init templates. Same shape an agent sees via multivon-mcp's `eval_discover` tool, provided as a CLI for agents that don't speak MCP (Claude Code via Bash, shell scripts, CI gates). `--compact` for single-line JSON piping.
+
+### Known issues
+
+- The release shipped with a broken CLI (see 0.7.8) — every command crashed on import. Fixed same day.
+
+## [0.7.6] — 2026-05-17
+
+### Fixed
+
+- **`rag` starter template passes the happy path with judge-noise tolerance.** The stub `rag_model` now handles the "deadline" query branch (case #3 previously fell through to "I don't have information", putting the run at ~67% against Haiku and failing the gate), and the starter's `fail_threshold` drops 0.7 → 0.6 with a comment explaining it's forgiving-for-n=3 and production gates should tighten to 0.85+. A fresh `multivon-eval init -t rag && python eval.py` now exits 0 with any of the three frontier judges.
+
+## [0.7.5] — 2026-05-17
+
+### Fixed
+
+- **`EvalReport.save_json(path)` auto-creates the parent directory.** `multivon-eval init -t rag` emits an eval.py saving to `eval-reports/rag.json`; on a fresh checkout the directory didn't exist and the user got a `FileNotFoundError` right after their first successful run. Also dropped duplicate `os.makedirs() + report.save_json()` blocks from the rag, regulated, and conversation templates that shadowed the in-suite-run save.
+
+## [0.7.4] — 2026-05-17
+
+### Added
+
+- **DPDP (India) compliance support in `PIIEvaluator`** — the Digital Personal Data Protection Act, 2023 as a supported jurisdiction (`jurisdiction="dpdp"`). Six India-specific local-first regex patterns, zero egress: `aadhaar`, `pan`, `gstin`, `ifsc`, `voter_id`, `phone_in`. Matters under DPDP §16 (cross-border transfer restrictions) where the safer architecture is to never send personal data to a third-party eval API. Docs page `docs/compliance/dpdp.mdx` added. 7 new tests; full suite 752 passed, 12 skipped.
 
 ## [0.7.3] — 2026-05-17
 

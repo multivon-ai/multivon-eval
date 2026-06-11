@@ -185,7 +185,7 @@ dependencies.
 All eight live in
 [`multivon_eval/evaluators/agent.py`](https://github.com/multivon-ai/multivon-eval/blob/main/multivon_eval/evaluators/agent.py).
 Two are deterministic; six use an LLM judge (the QAG eval pattern documented in
-[Evaluators](/guides/evaluators)). Every evaluator returns a skipped pass — not a
+[LLM-judge evaluators](/evaluators/llm-judge)). Every evaluator returns a skipped pass — not a
 0.0 — when the case shape doesn't fit it (e.g. no `agent_trace`, no
 `expected_tool_calls`). This was hardened in
 [0.9.0](https://github.com/multivon-ai/multivon-eval/blob/main/CHANGELOG.md#090--2026-05-23).
@@ -237,7 +237,7 @@ three different behaviors, formalized in
 ### The judge-driven six
 
 The remaining seven are sketched here; for the judge resolution logic, see
-[Calibration](/guides/calibration) and
+[Judge calibration](/guides/statistical-rigor#judge-calibration) and the rest of
 [Statistical rigor](/guides/statistical-rigor).
 
 - **`ToolArgumentAccuracy`** — per-call yes/no judge prompt: *"Are these arguments
@@ -398,7 +398,7 @@ loop.
 
 ## Related
 
-- [Evaluators](/guides/evaluators) — full evaluator catalog and the QAG eval pattern
+- [LLM-judge evaluators](/evaluators/llm-judge) — the QAG eval pattern behind the judge-driven metrics
 - [Bootstrap workflow](/guides/bootstrap) — generate a tuned agent suite from product + traces
 - [Statistical rigor](/guides/statistical-rigor) — Wilson + bootstrap CIs on agent pass rates
 - [Compliance](/guides/compliance) — hash-chained audit logs over agent runs
