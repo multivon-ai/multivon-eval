@@ -12,6 +12,8 @@ from .result import (
 )
 from .evaluators.base import Evaluator
 from .evaluators.deterministic import Latency, MaxLatency
+from .recorder import bind_case as _recorder_bind_case
+from .recorder import unbind_case as _recorder_unbind_case
 from .reporters.terminal import print_report
 
 if TYPE_CHECKING:
@@ -267,17 +269,26 @@ class EvalSuite:
         tracer: "AgentTracer | None" = None,
         early_stop: bool = False,
     ) -> CaseResult:
-        if runs == 1:
-            return self._run_case_once(case, model_fn, tracer=tracer)
+        # Runtime-recorder case binding (recorder.py): while this case
+        # executes, SDK recordings carry its _provenance case_uid —
+        # binding by observation. One None-check when recording is off.
+        _rec_token = _recorder_bind_case(getattr(case, "metadata", None))
+        try:
+            if runs == 1:
+                return self._run_case_once(case, model_fn, tracer=tracer)
 
-        single_runs: list[CaseResult] = []
-        for i in range(runs):
-            single_runs.append(self._run_case_once(case, model_fn, tracer=tracer))
-            if early_stop and i >= 1:
-                if _sprt_stop(single_runs):
-                    break
+            single_runs: list[CaseResult] = []
+            for i in range(runs):
+                single_runs.append(
+                    self._run_case_once(case, model_fn, tracer=tracer)
+                )
+                if early_stop and i >= 1:
+                    if _sprt_stop(single_runs):
+                        break
 
-        return _aggregate_runs(case, single_runs)
+            return _aggregate_runs(case, single_runs)
+        finally:
+            _recorder_unbind_case(_rec_token)
 
     def _run_case_with_retry(
         self,

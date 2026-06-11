@@ -69,10 +69,10 @@ Literals captured as static:
 - f-strings with **zero** runtime interpolation (their content is fully
   known at parse time)
 - Module-level string constants referenced by name at the call site
-  (scanner v2 — one hop, same file; see below)
+  (one hop, same file; see below)
 
 Everything else — `Attribute` lookups, runtime f-strings, `.join(...)`
-calls, names that don't resolve under the v2 rules — is recorded as a
+calls, names that don't resolve under the rules below — is recorded as a
 `PromptRecord` with `is_dynamic=True` and a placeholder text. The count is
 preserved and the gap is visible in the diff, but the actual text isn't
 compared.
@@ -86,10 +86,21 @@ doesn't land in the diff. This is deliberate — the v1 adversarial-fix
 discipline dropped fuzzy name-regex capture entirely.
 </Warning>
 
-## Scanner v2 (0.10.0)
+## Scanner v3 (0.10.1)
 
-The scanner that ships with 0.10.0 is versioned `SCANNER_VERSION = 2` and
-adds two things:
+The scanner that ships with 0.10.1+ is versioned `SCANNER_VERSION = 3`.
+v2 (0.10.0) added the first two items; v3 closed three detection blind
+spots found by running the scanner against five real open-source repos
+(aider, gpt-researcher, open-interpreter, letta, pr-agent), where v2 saw
+**zero** call sites in four of the five:
+
+- **Aliased litellm imports** (`import litellm as llm`, `from litellm
+  import completion as c`) now resolve to litellm call sites.
+- **`**kwargs`-unpacked calls** are recorded as honest dynamic records
+  with placeholder `<dynamic:KwargsUnpack>` instead of being invisible.
+- **`messages=<variable>`** (the dominant real-world pattern) produces an
+  honest dynamic record instead of nothing. A statically-known empty
+  `messages=[]` still produces nothing — there is no prompt there.
 
 - **One-hop module-constant resolution.** `SYSTEM_PROMPT = "..."` at module
   scope followed by `system=SYSTEM_PROMPT` at a call site now resolves to
@@ -104,8 +115,8 @@ adds two things:
   exists solely to *label* a change as formatting-only, never to suppress it.
 
 The scanner version is recorded in `prompt_baseline.json`; a baseline
-written by scanner v1 read by a v2 scan prints a "rescan recommended"
-warning instead of fake drift.
+written by an older scanner version read by a newer scan prints a "rescan
+recommended" warning instead of fake drift.
 
 Attribution is the scanner; the [staleness report](/guides/staleness)
 (also 0.10.0) is the drift detector built on it — a committed baseline of

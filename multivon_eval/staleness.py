@@ -37,6 +37,15 @@ from .provenance import (
     git_info,
     read_provenance,
 )
+from .recorder import (
+    DEFAULT_RECORDINGS_NAME,
+    ObservedVerdict,
+    RecorderError,
+    TRUST_TIERS,
+    compare_observed,
+    load_recordings,
+    unmerged_runtime_sites,
+)
 
 SCHEMA_VERSION = 1
 DEFAULT_BASELINE_NAME = "prompt_baseline.json"
@@ -85,6 +94,10 @@ class Baseline:
     scan_root: str
     ignore_dirs: list[str]
     records: list[PromptRecord]
+    # Runtime-recorded sites (source:"runtime", fingerprint SETS) — a
+    # separate trust tier from static records, stored under a separate
+    # key and merged only via `staleness baseline --merge-recordings`.
+    runtime_records: list[dict[str, Any]] = field(default_factory=list)
 
 
 def _record_to_dict(r: PromptRecord) -> dict[str, Any]:
@@ -149,6 +162,9 @@ def load_baseline(path: str | Path) -> Baseline:
     raw_records = payload.get("records")
     if not isinstance(raw_records, list):
         raise BaselineError(f"baseline {path} has no records list")
+    raw_runtime = payload.get("runtime_records")
+    if not isinstance(raw_runtime, list):
+        raw_runtime = []
     return Baseline(
         schema_version=sv,
         scanner_version=int(payload.get("scanner_version", 1)),
@@ -157,6 +173,7 @@ def load_baseline(path: str | Path) -> Baseline:
         scan_root=str(payload.get("scan_root", ".")),
         ignore_dirs=list(payload.get("ignore_dirs") or []),
         records=[_record_from_dict(d) for d in raw_records if isinstance(d, dict)],
+        runtime_records=[d for d in raw_runtime if isinstance(d, dict)],
     )
 
 
@@ -190,6 +207,9 @@ def write_baseline(
         except BaselineError as exc:
             diff_lines.append(f"existing baseline not comparable: {exc}")
         else:
+            # A static rescan never discards runtime observations — the
+            # two trust tiers live in separate keys and refresh separately.
+            baseline.runtime_records = list(old.runtime_records)
             verdicts, added = match_records(old.records, records)
             for v in verdicts:
                 if v.status == "unchanged" and not v.labels:
@@ -214,6 +234,8 @@ def write_baseline(
             "ignore_dirs": baseline.ignore_dirs,
             "records": [_record_to_dict(r) for r in records],
         }
+        if baseline.runtime_records:
+            payload["runtime_records"] = baseline.runtime_records
         atomic_write_text(out_path, json.dumps(payload, indent=2) + "\n")
     return baseline, diff_lines
 
@@ -422,6 +444,10 @@ def match_target(
     if target.get("source") == "external":
         # prompt the scanner cannot see — UNVERIFIABLE, never orphaned.
         return ("unverifiable", [])
+    if target.get("source") == "runtime":
+        # observed rendering — comparable against recordings, NEVER against
+        # the static scan (a rendered fingerprint can't match a placeholder).
+        return ("unverifiable", ["runtime"])
     if target.get("is_dynamic"):
         # a dynamic target is reported unknown forever, by rule.
         return ("unknown", ["dynamic"])
@@ -548,13 +574,24 @@ class StalenessReport:
     added: list[PromptRecord]
     case_verdicts: list[CaseVerdict]
     fail_on: tuple[str, ...] = ()
+    # — runtime recorder tier (source:"runtime"; recordings-vs-recordings) —
+    observed: list[ObservedVerdict] = field(default_factory=list)
+    recordings_path: Optional[str] = None
+    has_current_recordings: bool = False
+    recordings_warning: Optional[str] = None
+    unmerged_runtime: int = 0
 
     # — determinacy: live-scan counts —
     @property
     def determinacy(self) -> dict[str, int]:
         total = len(self.live_records)
         dynamic = sum(1 for r in self.live_records if r.is_dynamic)
-        return {"call_sites": total, "static": total - dynamic, "dynamic": dynamic}
+        return {
+            "call_sites": total,
+            "static": total - dynamic,
+            "dynamic": dynamic,
+            "observed_runtime": len(self.observed),
+        }
 
     def counts(self) -> dict[str, int]:
         c = {"unchanged": 0, "moved": 0, "changed": 0, "formatting_only": 0,
@@ -598,7 +635,9 @@ class StalenessReport:
         anchors: set[tuple] = set()
         for cv in self.case_verdicts:
             for t in cv.targets:
-                if t.get("source") == "external" or t.get("is_dynamic"):
+                if t.get("source") in ("external", "runtime") or t.get("is_dynamic"):
+                    # runtime targets never enter the STATIC coverage join —
+                    # the denominator is static sites only, by label.
                     continue
                 if t.get("fingerprint"):
                     fps.add(t["fingerprint"])
@@ -669,10 +708,19 @@ def build_staleness_report(
     ignore_dirs: Any = None,
     include_tests: bool = False,
     fail_on: tuple[str, ...] = (),
+    recordings_path: str | Path | None = None,
 ) -> StalenessReport:
-    """Read-only staleness report: live scan vs baseline vs case provenance."""
+    """Read-only staleness report: live scan vs baseline vs case provenance.
+
+    ``recordings_path`` points at the current prompt_recordings.jsonl
+    (default: REPO/prompt_recordings.jsonl when present). Runtime-sourced
+    baseline sites are compared recordings-vs-recordings into the OBSERVED
+    tier — never against the static scan, never collapsed into it.
+    """
     root = Path(repo_root)
     bpath = Path(baseline_path) if baseline_path else root / DEFAULT_BASELINE_NAME
+    rpath = Path(recordings_path) if recordings_path \
+        else root / DEFAULT_RECORDINGS_NAME
 
     live, ignores = scan_repo(root, ignore_dirs, include_tests)
 
@@ -712,6 +760,18 @@ def build_staleness_report(
         sources.append((f"<suite {suite}>", _cases_from_suite(suite)))
     case_verdicts = evaluate_cases(sources, live)
 
+    # — runtime tier: recordings vs recordings, never vs the static scan —
+    runtime_records = baseline.runtime_records if baseline else []
+    current_recordings: Optional[list[dict[str, Any]]] = None
+    recordings_warning: Optional[str] = None
+    if rpath.exists():
+        try:
+            current_recordings = load_recordings(rpath)
+        except RecorderError as exc:
+            recordings_warning = str(exc)
+    observed = compare_observed(runtime_records, current_recordings)
+    unmerged = unmerged_runtime_sites(runtime_records, current_recordings)
+
     report = StalenessReport(
         repo_root=str(root),
         git=git_info(root),
@@ -726,6 +786,11 @@ def build_staleness_report(
         added=added,
         case_verdicts=case_verdicts,
         fail_on=tuple(fail_on),
+        observed=observed,
+        recordings_path=str(rpath),
+        has_current_recordings=current_recordings is not None,
+        recordings_warning=recordings_warning,
+        unmerged_runtime=unmerged,
     )
     _attach_bound_cases(report)
     return report
@@ -769,6 +834,12 @@ def _determinacy_line(report: StalenessReport) -> str:
     if d["dynamic"]:
         line += f" {d['dynamic']} dynamic site{'s' if d['dynamic'] != 1 else ''} " \
                 f"{'are' if d['dynamic'] != 1 else 'is'} unknown-by-construction."
+    if d["observed_runtime"]:
+        line += (
+            f" {d['observed_runtime']} site"
+            f"{'s' if d['observed_runtime'] != 1 else ''} observed at runtime "
+            f"(recorder — see OBSERVED tier)."
+        )
     return line
 
 
@@ -819,8 +890,59 @@ def _footer_lines(report: StalenessReport) -> list[str]:
     d = report.determinacy
     if d["dynamic"]:
         out.append(f"not statically coverable: {d['dynamic']} dynamic site(s)")
+    out.append("trust tiers (never collapsed): " + "; ".join(TRUST_TIERS) + ".")
     out.append("blind spots: " + "; ".join(BLIND_SPOTS) + ".")
     return out
+
+
+def _observed_lines(report: StalenessReport) -> list[str]:
+    """The OBSERVED tier — runtime-sourced sites, recordings vs recordings.
+
+    Honesty rules enforced here: always k-of-N (a site is NEVER called
+    fresh because one rendering matched), and the tier states explicitly
+    that runtime-only sites cannot be compared against a static scan.
+    """
+    if not report.observed:
+        return []
+    lines = [
+        f"OBSERVED at runtime ({len(report.observed)}) — recorder-sourced sites; "
+        f"compared recordings-vs-recordings (these sites cannot be compared "
+        f"against a static scan). A recording proves the renderings observed, "
+        f"not all renderings.",
+    ]
+    for ov in report.observed:
+        a = ov.anchor
+        lines.append(
+            f"  {a.get('file_path', '?')}  {a.get('sdk', '?')}.{a.get('role', '?')} "
+            f"in {a.get('qualname', '?')}"
+        )
+        if not ov.has_current:
+            lines.append(
+                f"    {ov.baseline_renderings} previously observed rendering(s); "
+                f"no current recordings to compare — re-run with "
+                f"--record-prompts (or record_prompts()) to refresh"
+            )
+        else:
+            extra = (
+                f"; {ov.new_renderings} new rendering(s) not in the baseline"
+                if ov.new_renderings else ""
+            )
+            lines.append(
+                f"    current recordings matched {ov.matched} of "
+                f"{ov.baseline_renderings} previously observed renderings{extra}"
+            )
+        if ov.case_uids:
+            lines.append(
+                f"    cases observed at this site: {len(ov.case_uids)} "
+                f"({ov.observations} observation(s))"
+            )
+    if report.unmerged_runtime:
+        lines.append(
+            f"  +{report.unmerged_runtime} runtime site(s) recorded but not yet "
+            f"in the baseline — `multivon-eval staleness baseline "
+            f"--merge-recordings`"
+        )
+    return lines
 
 
 def render_text(report: StalenessReport) -> str:
@@ -834,7 +956,8 @@ def render_text(report: StalenessReport) -> str:
         )
     lines.append(_determinacy_line(report))
 
-    for warn in (report.baseline_warning, report.ignore_warning):
+    for warn in (report.baseline_warning, report.ignore_warning,
+                 report.recordings_warning):
         if warn:
             lines.append(f"warning: {warn}")
     if report.scanner_mismatch and report.baseline is not None:
@@ -884,8 +1007,11 @@ def render_text(report: StalenessReport) -> str:
             if bc:
                 lines.append(f"    {bc}")
             if base_sha:
+                # `git diff <sha> -- file` (no ..HEAD) also shows uncommitted
+                # edits — the common case when running staleness pre-commit,
+                # where <sha>..HEAD would print nothing.
                 lines.append(
-                    f"    what changed: git diff {base_sha}..HEAD -- "
+                    f"    what changed: git diff {base_sha} -- "
                     f"{(v.live or v.baseline).file_path}"
                 )
         lines.append("")
@@ -927,6 +1053,11 @@ def render_text(report: StalenessReport) -> str:
             extra = "  [became-dynamic — prompt moved out of static reach]" \
                 if "became-dynamic" in v.labels else ""
             lines.append(f"  {_site_line(rec)}  {rec.text or '<dynamic>'}{extra}".rstrip())
+        lines.append("")
+
+    observed_lines = _observed_lines(report)
+    if observed_lines:
+        lines.extend(observed_lines)
         lines.append("")
 
     if not (changed or removed or report.added or unknown or moved):
@@ -993,6 +1124,28 @@ def render_json(report: StalenessReport) -> str:
         },
         "sites": [_verdict_dict(v) for v in report.verdicts],
         "added": [_record_to_dict(r) for r in report.added],
+        # OBSERVED tier — runtime-sourced, recordings-vs-recordings only.
+        # Always k-of-N: a site is never "fresh" because one rendering matched.
+        "observed": [
+            {
+                "source": "runtime",
+                "anchor": ov.anchor,
+                "baseline_renderings": ov.baseline_renderings,
+                "matched": ov.matched,
+                "current_renderings": ov.current_renderings,
+                "new_renderings": ov.new_renderings,
+                "case_uids": ov.case_uids,
+                "observations": ov.observations,
+                "has_current_recordings": ov.has_current,
+                "caveat": (
+                    "runtime recordings prove only the renderings observed, "
+                    "not all renderings; not comparable to the static scan"
+                ),
+            }
+            for ov in report.observed
+        ],
+        "unmerged_runtime_sites": report.unmerged_runtime,
+        "trust_tiers": list(TRUST_TIERS),
         "cases": [
             {
                 "file": cv.file, "index": cv.index, "case_uid": cv.case_uid,
@@ -1002,6 +1155,7 @@ def render_json(report: StalenessReport) -> str:
         ],
         "warnings": [w for w in (
             report.baseline_warning, report.ignore_warning,
+            report.recordings_warning,
             "no baseline found" if report.no_baseline else None,
             "scanner version mismatch — rescan recommended"
             if report.scanner_mismatch else None,
@@ -1052,19 +1206,37 @@ def render_markdown(report: StalenessReport) -> str:
             lines.append(
                 f"- **added** `{_site_line(rec)}` — no cases reference this prompt"
             )
+        for ov in report.observed:
+            a = ov.anchor
+            site = (f"{a.get('file_path', '?')} {a.get('sdk', '?')}."
+                    f"{a.get('role', '?')} in {a.get('qualname', '?')}")
+            if ov.has_current:
+                detail = (f"current recordings matched {ov.matched} of "
+                          f"{ov.baseline_renderings} previously observed renderings")
+            else:
+                detail = (f"{ov.baseline_renderings} previously observed "
+                          f"rendering(s); no current recordings to compare")
+            lines.append(
+                f"- **observed (runtime)** `{site}` — {detail} "
+                f"_(recordings-vs-recordings; proves observed renderings only)_"
+            )
         lines.append("")
     for line in _footer_lines(report):
         lines.append(f"_{line}_" if line else line)
-    lines.append("")
-    lines.append(f"_exit {report.exit_code}_")
+    # No "_exit N_" footer here: markdown's home is CI step summaries,
+    # where a raw exit code reads as leaked debug output. The exit code
+    # stays in the text renderer and the JSON payload.
     return "\n".join(lines) + "\n"
 
 
 __all__ = [
     "SCHEMA_VERSION",
     "DEFAULT_BASELINE_NAME",
+    "DEFAULT_RECORDINGS_NAME",
     "DEFAULT_STALENESS_IGNORES",
     "BLIND_SPOTS",
+    "TRUST_TIERS",
+    "ObservedVerdict",
     "Baseline",
     "BaselineError",
     "SiteVerdict",

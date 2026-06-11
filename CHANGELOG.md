@@ -2,6 +2,37 @@
 
 All notable changes to `multivon-eval`. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) as of 0.7.0.
 
+## [0.11.0] — 2026-06-11
+
+**The answer to the 20.9% ceiling.** The determinacy gate (0.10.1) measured scanner v3 against five real repos: 20.9% of call sites are statically resolvable — the rest build prompts dynamically and are statically unbridgeable *by construction*. The runtime prompt recorder (designed in [#9](https://github.com/multivon-ai/multivon-eval/issues/9), promoted from the 0.10.0 deferred list by the gate result) is the honest path past it: during an eval run, an opt-in interceptor records the **rendered** prompt text per call site, fingerprinted with the same `fingerprint_text` the static scanner uses. A `**kwargs` unpack the scanner can only report as UNKNOWN is, at call time, real kwargs with real text.
+
+The honesty discipline survives the new power — **three labeled trust tiers, never collapsed**:
+
+1. **static** — the scan proves the prompt *text*;
+2. **runtime** — recordings prove only the renderings *observed*, not all renderings (variable renderings per site are a fingerprint SET, and every verdict speaks in "current recordings matched **k of N** previously observed renderings" — a site is never called fresh because one rendering matched);
+3. **templates / external prompts** — deferred, unverifiable.
+
+### Added
+
+- **`multivon_eval.recorder`** — opt-in runtime prompt recorder. `record_prompts()` context manager (non-pytest) or `pytest --record-prompts` (plus `--record-prompts-out`, `--record-text`). Method-level wrapping of exactly the three SDK surfaces the static scanner knows — anthropic `Messages.create`, openai `chat.completions.create`, `litellm.completion`/`acompletion` — save original, wrap, restore byte-identical on exit (inherited attributes restored by `delattr`, so `__dict__`s end exactly as found). Zero overhead when off: importing multivon_eval performs NO patching, pinned by a fresh-interpreter subprocess test. Recordings stay local in `prompt_recordings.jsonl`; **fingerprints only by default**, rendered text only behind explicit `--record-text`. Append-safe storage: duplicate (anchor, role, fingerprint) keys merge counts/case_uids on write, atomic rewrite.
+- **Case binding by observation** — a contextvar carries the active `case_uid`; `EvalSuite` binds it per case from `_provenance.case_uid` (one None-check when recording is off) and the pytest plugin binds the test nodeid per test. Recordings carry the case_uids observed per (anchor, role, fingerprint) — the run *knows* which sites fired for which case.
+- **`multivon-eval staleness baseline --merge-recordings [FILE]`** — merges recordings into `prompt_baseline.json` as `source:"runtime"` records with **fingerprint SETS**, stored under a separate `runtime_records` key. Merge-only: never rescans, NEVER touches static records; a static rescan never discards the runtime tier; re-merging the same recordings file is idempotent.
+- **OBSERVED report tier** — runtime-sourced sites render distinctly in text/json/markdown: compared recordings-vs-recordings (runtime-only sites *cannot* be compared against a static scan, and the report says so), always in the k/N language. The determinacy headline gains a third clause: "K sites observed at runtime." The standing footer now states all three trust tiers verbatim, next to the blind-spots list.
+- **`multivon-eval staleness stamp --from-recordings [FILE]`** — prints observed case→site bindings as **proposals** (case_uid → anchor + fingerprint with observation counts); writes only with explicit `--apply --cases F.jsonl` (targets land as `source:"runtime"`, `bound:"observed"`). Observation removes the fabrication objection that blocked auto-binding in the 0.10.0 adversarial review — the human confirmation stays. Runtime-bound targets are verified against recordings, never against the static scan (reported `unverifiable [runtime]` there, by rule), and never enter the static coverage denominator.
+
+### Fixed
+
+- **`add_check` QAG question generation no longer invents stricter sub-requirements.** "Response should mention the return policy" generated questions about return *procedures* and *eligibility* the criterion never asked for, scoring a plainly-correct answer 0.33 FAIL (reproduced 3/3 trials). The generation prompt now requires every question be answerable "Yes" by any response satisfying the criterion as stated; the same answer now scores 1.0 (and the evasive control still fails). Found by a fresh-user E2E audit on the quickstart's own example.
+- **Keyless demo picks an Ollama model you actually have** — `python -m multivon_eval` used hardcoded `llama3` and reported "detected but unreachable" when the *server* was fine and the *model* wasn't pulled. It now asks `/api/tags` for an installed model (text models preferred), honors `DEMO_MODEL`, and the failure message distinguishes "model not available" from "server unreachable".
+- **Bootstrap creates the output dir before any paid LLM call** — a typo'd or read-only `--output` previously failed *after* ~$0.12 of judge spend. Progress lines now print to stderr as each LLM stage starts (the ~4-minute wait was previously silent; docs no longer claim "under 60 seconds").
+- **Staleness `what changed:` hint works on a dirty tree** — `git diff <sha>..HEAD -- file` printed nothing for uncommitted edits (the most common moment to run staleness); the hint now uses `git diff <sha> -- file`.
+- Markdown staleness reports no longer end with a `_exit N_` debug line (the exit code stays in the text renderer and JSON payload); `install-skills --dry-run` says "would install … (dry-run — nothing was written)" instead of "installed".
+
+### Notes
+
+- Capture scope v1 (honest): string `system=` kwargs and string `content` entries in `messages=` lists. Content-block lists (vision, tool results) and calls anchored outside the repo root are skipped, not guessed at. The caller anchor comes from a stack walk to the first repo-relative frame; `line` is an advisory hint, never a matching input.
+- 30 new tests (`tests/test_recorder.py`): patch-and-restore byte-identity, zero-overhead-off, fingerprint parity across all three SDKs (stubbed, no network), `**kwargs` rendered-text capture, contextvar case binding (including through `EvalSuite.run`), idempotent JSONL merge, static-records-untouched baseline merge, k/N OBSERVED rendering, and propose-only stamping. 168 green across the touched surface; zero new failures elsewhere.
+
 ## [0.10.1] — 2026-06-11
 
 Scanner v3 — the determinacy gate (spec test-plan #14) run against five real repos (aider, gpt-researcher, open-interpreter, letta, pr-agent) found that **4 of 5 reported zero call sites**: not because they have no prompts, but because the scanner was silently blind to how real code calls LLMs. v3 fixes detection and honestly reports what it still cannot read.

@@ -52,6 +52,11 @@ _PROCESS_TRACKER: CostTracker | None = None
 _PROCESS_TOKEN = None
 _FAILURE_DETAIL: list[str] = []
 
+# Runtime prompt recorder (opt-in via --record-prompts; see recorder.py).
+# None when off — the per-test hooks below early-out on one None check,
+# preserving the zero-overhead-when-off constraint.
+_PROCESS_RECORDER = None
+
 
 # ── public helpers ──────────────────────────────────────────────────────────
 
@@ -165,19 +170,57 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         default=False,
         help="Disable multivon-eval cost-tracking and the terminal summary line.",
     )
+    group.addoption(
+        "--record-prompts",
+        action="store_true",
+        default=False,
+        help=(
+            "Record rendered prompts at runtime: intercept anthropic/openai/"
+            "litellm SDK calls during this run and write prompt fingerprints "
+            "per call site to prompt_recordings.jsonl (local only, opt-in, "
+            "zero overhead when off)."
+        ),
+    )
+    group.addoption(
+        "--record-prompts-out",
+        default=None,
+        metavar="PATH",
+        help="Recordings output file (default: <rootdir>/prompt_recordings.jsonl).",
+    )
+    group.addoption(
+        "--record-text",
+        action="store_true",
+        default=False,
+        help=(
+            "Also store the rendered prompt TEXT in recordings (default: "
+            "fingerprints only — text stays out of the artifact unless asked)."
+        ),
+    )
 
 
 def pytest_configure(config: pytest.Config) -> None:
-    global _PROCESS_TRACKER, _PROCESS_TOKEN, _RUNS_OVERRIDE
+    global _PROCESS_TRACKER, _PROCESS_TOKEN, _RUNS_OVERRIDE, _PROCESS_RECORDER
     _RUNS_OVERRIDE = config.getoption("--multivon-runs")
 
     if not config.getoption("--multivon-no-costs"):
         _PROCESS_TRACKER = CostTracker()
         _PROCESS_TOKEN = set_active_tracker(_PROCESS_TRACKER)
 
+    if config.getoption("--record-prompts"):
+        # Imported only when the flag is set — importing multivon_eval (or
+        # running pytest without the flag) performs NO patching.
+        from .recorder import PromptRecorder
+
+        _PROCESS_RECORDER = PromptRecorder(
+            repo_root=config.rootpath,
+            out=config.getoption("--record-prompts-out"),
+            record_text=config.getoption("--record-text"),
+        )
+        _PROCESS_RECORDER.start()
+
 
 def pytest_unconfigure(config: pytest.Config) -> None:
-    global _PROCESS_TRACKER, _PROCESS_TOKEN
+    global _PROCESS_TRACKER, _PROCESS_TOKEN, _PROCESS_RECORDER
     if _PROCESS_TOKEN is not None:
         try:
             reset_token(_PROCESS_TOKEN)
@@ -185,6 +228,33 @@ def pytest_unconfigure(config: pytest.Config) -> None:
             pass
     _PROCESS_TRACKER = None
     _PROCESS_TOKEN = None
+    if _PROCESS_RECORDER is not None:
+        try:
+            _PROCESS_RECORDER.stop()  # restores SDKs byte-identical + flushes
+        finally:
+            _PROCESS_RECORDER = None
+
+
+def pytest_runtest_setup(item: pytest.Item) -> None:
+    # Case binding by observation: while this test runs, recordings carry
+    # its nodeid as the case identity. An EvalSuite.run() inside the test
+    # overrides it per-case with the real _provenance case_uid.
+    if _PROCESS_RECORDER is not None:
+        from .recorder import set_active_case
+
+        item._multivon_case_token = set_active_case(item.nodeid)  # type: ignore[attr-defined]
+
+
+def pytest_runtest_teardown(item: pytest.Item) -> None:
+    token = getattr(item, "_multivon_case_token", None)
+    if token is not None:
+        from .recorder import reset_active_case
+
+        try:
+            reset_active_case(token)
+        except Exception:
+            pass
+        item._multivon_case_token = None  # type: ignore[attr-defined]
 
 
 def pytest_terminal_summary(
@@ -192,6 +262,13 @@ def pytest_terminal_summary(
     exitstatus: int,
     config: pytest.Config,
 ) -> None:
+    if _PROCESS_RECORDER is not None:
+        n = len(_PROCESS_RECORDER.snapshot())
+        terminalreporter.write_sep("=", "multivon-eval recorder")
+        terminalreporter.write_line(
+            f"recorded {n} prompt rendering(s) → {_PROCESS_RECORDER.out_path} "
+            f"(fingerprints{' + text' if _PROCESS_RECORDER.record_text else ' only'})"
+        )
     if _PROCESS_TRACKER is None:
         return
     snap = _PROCESS_TRACKER.snapshot()

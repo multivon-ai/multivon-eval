@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import json
 import random
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
@@ -785,17 +786,28 @@ def bootstrap(
     and know nothing about call sites).
     """
     description = Path(description_path).read_text(encoding="utf-8")
+
+    # Create the output dir BEFORE any paid LLM call so a typo'd or
+    # read-only --output fails in milliseconds, not after ~$0.12 of spend.
+    out_dir = Path(output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    def _progress(msg: str) -> None:
+        print(f"[bootstrap] {msg}", file=sys.stderr, flush=True)
+
     raw_traces = load_traces(traces_path)
     summary, sanitized_traces = summarize_traces(raw_traces, pii_policy=pii_policy)
     shape = infer_product_shape(summary)
 
     heuristic = heuristic_recommendations(shape, summary)
+    _progress("proposing evaluators (LLM call — typically 30s-2min)…")
     llm_recs, discussion, llm_cost = propose_evaluators_via_llm(
         description, shape, summary, sanitized_traces, judge=judge,
     )
     merged = merge_recommendations(heuristic, llm_recs)
 
     if not skip_calibration:
+        _progress("calibrating thresholds from traces…")
         calibrated = calibrate_thresholds(
             merged, sanitized_traces, judge=judge, seed=seed,
         )
@@ -805,12 +817,10 @@ def bootstrap(
     if skip_seed_cases:
         seed_cases, seed_cost = [], 0.0
     else:
+        _progress(f"generating {n_seed_cases} seed cases (LLM call — typically 1-3min)…")
         seed_cases, seed_cost = generate_seed_cases(
             description, shape, n=n_seed_cases, judge=judge,
         )
-
-    out_dir = Path(output_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
 
     if repo is not None:
         # Stamp in-memory BEFORE emission so provenance flows through the

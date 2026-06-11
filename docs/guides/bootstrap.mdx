@@ -1,11 +1,11 @@
 ---
 title: Bootstrap an eval suite from your product
-description: Cold-start your evals — `multivon-eval bootstrap` proposes a tuned suite from a product description + sample traces in under 60 seconds.
+description: Cold-start your evals — `multivon-eval bootstrap` proposes a tuned suite from a product description + sample traces in a few minutes.
 ---
 
 The hardest part of LLM evaluation isn't writing the assertions — it's knowing **what to measure** for your specific product. `multivon-eval bootstrap` answers that question. Hand it a one-paragraph product description and a few real traces, and it emits a runnable `EvalSuite` with metrics tuned to your shape, thresholds calibrated from your data, and adversarial seed cases targeting the most likely failure mode.
 
-## In 60 seconds
+## The whole flow
 
 ```bash
 pip install multivon-eval
@@ -25,9 +25,9 @@ You get five artifacts:
 | `DISCOVERY_REPORT.md`     | An eval design review you can forward to your team                  |
 | `prompt_baseline.json`    | Snapshot of every prompt call site in your repo (written at the `--repo` root, default `.`) — the input to [`multivon-eval staleness`](/guides/staleness) |
 
-Total cost: ~$0.12 per bootstrap on default settings (or **$0.00 with `--judge-provider ollama`**). Latency: under 60 seconds for default settings; ~5× wall-clock for the local-judge path.
+Total cost: ~$0.12 per bootstrap on default settings (or **$0.00 with `--judge-provider ollama`**). Latency: a few minutes on default settings (measured ~4 min — almost entirely judge-API wait; progress lines print to stderr as each stage starts); ~5× wall-clock for the local-judge path.
 
-As of 0.9.4 the emitted `eval_suite.py` is genuinely runnable end-to-end — `python eval_suite.py --runs 1` executes the full suite without further edits. (0.9.4 also fixed a stale `suite.run(cases=...)` kwarg and `report.print_summary()` call that previously broke the generated file; if you hit those on a 0.9.3-and-earlier install, upgrade.)
+As of 0.9.4 the emitted `eval_suite.py` is genuinely runnable end-to-end — `python eval_suite.py --runs 1` executes the full suite without further edits. Two things to know before that first run: it makes real judge calls (30 cases × your LLM evaluators ≈ 120 calls, a few cents on Haiku), and its `main()` exits 1 when the pass rate is under 50% — which is **expected** against the placeholder `stub_model` (the all-fail run is the signal to wire in your real model). (0.9.4 also fixed a stale `suite.run(cases=...)` kwarg and `report.print_summary()` call that previously broke the generated file; if you hit those on a 0.9.3-and-earlier install, upgrade.)
 
 ## What the inputs look like
 

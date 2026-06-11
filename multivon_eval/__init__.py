@@ -23,7 +23,7 @@ Experiment tracking (compare runs across versions):
     exp.compare(old_run_id, run_id)
 """
 
-__version__ = "0.10.1"
+__version__ = "0.11.0"
 
 from .suite import EvalSuite
 from .case import EvalCase, AgentStep, ToolCall
@@ -78,6 +78,13 @@ from .provenance import (
     stamp_jsonl, stamp as stamp_provenance,
     read_provenance, StampResult,
     ProvenanceError, AmbiguousSiteError,
+)
+# Runtime prompt recorder (0.11.0) — opt-in capture of rendered prompts;
+# importing it performs NO patching (zero overhead when off).
+from .recorder import (
+    PromptRecorder, record_prompts, recording_active,
+    set_active_case, reset_active_case,
+    load_recordings, merge_recordings_into_baseline,
 )
 
 # Pytest plugin: pytest is an optional dependency. Guard the import so a
@@ -236,5 +243,9 @@ __all__ = [
     "StalenessReport", "SiteVerdict", "CaseVerdict", "BaselineError",
     "build_staleness_report", "write_baseline", "load_baseline",
     "stamp_jsonl", "stamp_provenance", "read_provenance", "StampResult",
+    # Runtime prompt recorder (0.11.0)
+    "PromptRecorder", "record_prompts", "recording_active",
+    "set_active_case", "reset_active_case",
+    "load_recordings", "merge_recordings_into_baseline",
     "ProvenanceError", "AmbiguousSiteError",
 ]

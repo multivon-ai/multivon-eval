@@ -49,7 +49,7 @@ def _detect_judge() -> tuple[str, str, str]:
 
     # Ollama running locally on :11434
     if _port_open(11434):
-        model = os.getenv("DEMO_MODEL", "llama3")
+        model = os.getenv("DEMO_MODEL") or _first_ollama_model() or "llama3"
         return "openai", model, "http://localhost:11434/v1"
 
     # LM Studio on :1234
@@ -58,6 +58,28 @@ def _detect_judge() -> tuple[str, str, str]:
         return "openai", model, "http://localhost:1234/v1"
 
     return "", "", ""
+
+
+def _first_ollama_model() -> str:
+    """Name of an installed Ollama model (instruction-tuned text models
+    preferred over vision/embedding ones), or "" if listing fails.
+
+    Hardcoding a default like "llama3" makes the keyless demo fail for
+    anyone who pulled different models — ask the server what it has.
+    """
+    import json
+    import urllib.request
+    try:
+        with urllib.request.urlopen(
+            "http://localhost:11434/api/tags", timeout=2
+        ) as resp:
+            names = [m.get("name", "") for m in json.load(resp).get("models", [])]
+    except Exception:
+        return ""
+    names = [n for n in names if n]
+    deprioritized = ("embed", "vision", "vl", "moondream", "llava")
+    text_first = sorted(names, key=lambda n: any(d in n.lower() for d in deprioritized))
+    return text_first[0] if text_first else ""
 
 
 def _judge_reachable(cfg) -> tuple[bool, str]:
@@ -154,11 +176,21 @@ def _run_demo() -> None:
         print(f"  Tier 2    : Relevance, add_check  (LLM-as-judge)")
     elif judge_down_reason:
         src = base_url if base_url else provider
-        print(f"  LLM judge : detected at [{src}] but unreachable — {judge_down_reason}")
-        print("  Tier 1    : NotEmpty, WordCount  (deterministic only)")
-        print()
-        print("  Running the deterministic tier only. Fix the judge above")
-        print("  (e.g. `ollama pull qwen2.5:14b`) to enable LLM evaluators.")
+        lowered = judge_down_reason.lower()
+        if "not found" in lowered or "404" in lowered:
+            print(f"  LLM judge : server at [{src}] is up, but model "
+                  f"'{model_name}' isn't available there")
+            print("  Tier 1    : NotEmpty, WordCount  (deterministic only)")
+            print()
+            print(f"  Pull it (`ollama pull {model_name}`) or point the demo at")
+            print("  a model you have: `DEMO_MODEL=<name> python -m multivon_eval`")
+        else:
+            print(f"  LLM judge : detected at [{src}] but the probe call "
+                  f"failed — {judge_down_reason}")
+            print("  Tier 1    : NotEmpty, WordCount  (deterministic only)")
+            print()
+            print("  Running the deterministic tier only. Fix the judge above")
+            print("  (or set DEMO_MODEL=<name>) to enable LLM evaluators.")
     else:
         print("  LLM judge : not detected")
         print("  Tier 1    : NotEmpty, WordCount  (deterministic only)")

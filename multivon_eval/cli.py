@@ -352,8 +352,11 @@ def cmd_install_skills(args) -> int:
         print(f"  ok   {name}  ->  {dst}")
         installed += 1
 
-    suffix = "(dry-run)" if args.dry_run else ""
-    print(f"\n[OK] installed {installed} skill(s) to {target_root} {suffix}".rstrip())
+    if args.dry_run:
+        print(f"\n[OK] would install {installed} skill(s) to {target_root} "
+              "(dry-run — nothing was written)")
+    else:
+        print(f"\n[OK] installed {installed} skill(s) to {target_root}")
     return 0
 
 
@@ -452,6 +455,37 @@ def cmd_staleness(args) -> int:
 
     if args.staleness_cmd == "baseline":
         out_path = args.out or str(Path(args.path) / st.DEFAULT_BASELINE_NAME)
+        merge_rec = getattr(args, "merge_recordings", None)
+        if merge_rec is not None:
+            # Merge-only mode: add runtime records (source:"runtime",
+            # fingerprint SETS) to the EXISTING baseline. Never rescans,
+            # never touches static records — different trust tiers refresh
+            # separately.
+            from . import recorder as rec
+
+            bpath = Path(out_path)
+            rpath = Path(merge_rec) if merge_rec else \
+                Path(args.path) / rec.DEFAULT_RECORDINGS_NAME
+            if not bpath.exists():
+                print(f"error: no baseline at {bpath} — run "
+                      f"`multivon-eval staleness baseline {args.path}` first",
+                      file=sys.stderr)
+                return 2
+            if not rpath.exists():
+                print(f"error: no recordings at {rpath} — record a run with "
+                      f"`pytest --record-prompts` or "
+                      f"`multivon_eval.recorder.record_prompts()`",
+                      file=sys.stderr)
+                return 2
+            try:
+                n_sites, n_fps = rec.merge_recordings_into_baseline(bpath, rpath)
+            except rec.RecorderError as exc:
+                print(f"error: {exc}", file=sys.stderr)
+                return 2
+            print(f"merged {n_sites} runtime site(s) ({n_fps} observed "
+                  f"rendering(s)) into {bpath} as source:\"runtime\" — "
+                  f"static records untouched")
+            return 0
         baseline, diff_lines = st.write_baseline(
             args.path, args.out, dry_run=args.dry_run,
         )
@@ -470,6 +504,60 @@ def cmd_staleness(args) -> int:
         from . import attribution as attr
         from . import provenance as prov
 
+        from_rec = getattr(args, "from_recordings", None)
+        if from_rec is not None:
+            # Observed case→site bindings. PROPOSE-only by default — the
+            # recorder removes the fabrication objection (the run KNOWS
+            # which sites fired per case), the human confirmation stays.
+            from . import recorder as rec
+
+            rpath = Path(from_rec) if from_rec else \
+                Path(args.repo) / rec.DEFAULT_RECORDINGS_NAME
+            if not rpath.exists():
+                print(f"error: no recordings at {rpath}", file=sys.stderr)
+                return 2
+            try:
+                proposals = rec.propose_bindings(rec.load_recordings(rpath))
+            except rec.RecorderError as exc:
+                print(f"error: {exc}", file=sys.stderr)
+                return 2
+            if not proposals:
+                print("no observed case→site bindings in the recordings "
+                      "(no recordings carried an active case_uid)")
+                return 0
+            print(f"observed case→site bindings ({len(proposals)}) — "
+                  f"proposals, written only with --apply:")
+            for p in proposals:
+                a = p.anchor
+                print(f"  case {p.case_uid} → {a.get('file_path', '?')}::"
+                      f"{a.get('qualname', '?')}  {a.get('sdk', '?')}."
+                      f"{a.get('role', '?')}  fp {p.fingerprint[:8]}…  "
+                      f"observed {p.count}×")
+            if not getattr(args, "apply", False):
+                print("propose-only: re-run with --apply --cases F.jsonl to "
+                      "write these bindings (source:\"runtime\", "
+                      "bound:\"observed\")")
+                return 0
+            if not args.cases:
+                print("error: --apply needs --cases F.jsonl (the file whose "
+                      "_provenance.case_uid values match)", file=sys.stderr)
+                return 2
+            try:
+                updated = rec.apply_bindings(
+                    args.cases, proposals, repo=args.repo, dry_run=args.dry_run,
+                )
+            except (prov.ProvenanceError, OSError) as exc:
+                print(f"error: {exc}", file=sys.stderr)
+                return 2
+            suffix = " (dry-run, nothing written)" if args.dry_run else ""
+            print(f"applied observed bindings to {updated} case(s) in "
+                  f"{args.cases}{suffix}")
+            return 0
+
+        if not args.site or not args.cases:
+            print("error: stamp needs --site and --cases (or use "
+                  "--from-recordings for observed bindings)", file=sys.stderr)
+            return 2
         if not (args.all or args.tag or args.index):
             print("error: select cases with --index N (repeatable), --tag T, "
                   "or --all", file=sys.stderr)
@@ -524,6 +612,7 @@ def cmd_staleness(args) -> int:
         ignore_dirs=args.ignore,
         include_tests=args.include_tests,
         fail_on=fail_on,
+        recordings_path=getattr(args, "recordings", None),
     )
     if args.format == "json":
         print(st.render_json(report))
@@ -833,6 +922,13 @@ def main():
         "--ignore", action="append", default=None, metavar="DIR",
         help="Extra directory name(s) to skip (repeatable)",
     )
+    stale_rep_p.add_argument(
+        "--recordings", default=None, metavar="F.jsonl",
+        help="Current prompt recordings to compare against runtime-sourced "
+             "baseline sites (default: PATH/prompt_recordings.jsonl when "
+             "present). Recordings-vs-recordings only — runtime sites are "
+             "never compared to the static scan.",
+    )
 
     stale_base_p = stale_sub.add_parser(
         "baseline",
@@ -845,18 +941,38 @@ def main():
                               help="Output file (default: PATH/prompt_baseline.json)")
     stale_base_p.add_argument("--dry-run", action="store_true",
                               help="Print the diff, write nothing")
+    stale_base_p.add_argument(
+        "--merge-recordings", nargs="?", const="", default=None,
+        metavar="F.jsonl",
+        help="Merge runtime recordings (default: PATH/prompt_recordings.jsonl) "
+             "into the existing baseline as source:\"runtime\" records with "
+             "fingerprint SETS. Merge-only: never rescans, never touches "
+             "static records.",
+    )
 
     stale_stamp_p = stale_sub.add_parser(
         "stamp",
         help="Bind JSONL cases to a prompt call site (explicit, opt-in; "
              "auto-binding is rejected by design)",
     )
-    stale_stamp_p.add_argument("--cases", required=True, metavar="F.jsonl",
+    stale_stamp_p.add_argument("--cases", default=None, metavar="F.jsonl",
                                help="Case JSONL file to stamp (raw-line-preserving rewrite)")
     stale_stamp_p.add_argument(
-        "--site", required=True,
+        "--site", default=None,
         help="Call site as 'FILE[::QUALNAME][.ROLE[#POS]]' — resolved "
              "against a live scan; ambiguity is an error, never a guess",
+    )
+    stale_stamp_p.add_argument(
+        "--from-recordings", nargs="?", const="", default=None,
+        metavar="F.jsonl",
+        help="Print OBSERVED case→site bindings from runtime recordings "
+             "(default: REPO/prompt_recordings.jsonl) as proposals. "
+             "Propose-only — writes nothing without --apply.",
+    )
+    stale_stamp_p.add_argument(
+        "--apply", action="store_true",
+        help="With --from-recordings: actually write the observed bindings "
+             "to --cases (source:\"runtime\", bound:\"observed\").",
     )
     stale_stamp_p.add_argument("--index", type=int, action="append", default=None,
                                metavar="N", help="Case index to stamp (0-based, repeatable)")
