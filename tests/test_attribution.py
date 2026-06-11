@@ -387,8 +387,85 @@ class TestLooseFingerprint:
             != loose_fingerprint_text("do refund")
 
 
-def test_scanner_version_is_2():
-    assert SCANNER_VERSION == 2
+def test_scanner_version_is_3():
+    # v3: aliased-litellm-import detection + honest dynamic records for
+    # **kwargs-unpack calls and messages=<variable> (2026-06-11 determinacy
+    # gate — 4 of 5 real repos previously reported zero call sites).
+    assert SCANNER_VERSION == 3
+
+
+class TestScannerV3RealWorldShapes:
+    """The three shapes that made aider / pr-agent / friends invisible."""
+
+    def _scan_src(self, tmp_path, src):
+        p = tmp_path / "app.py"
+        p.write_text(textwrap.dedent(src))
+        return scan_file(str(p), repo_root=str(tmp_path))
+
+    def test_aliased_litellm_import_is_detected(self, tmp_path):
+        # pr-agent shape: from litellm import acompletion; await acompletion(...)
+        records = self._scan_src(tmp_path, '''
+            from litellm import acompletion
+            async def call(msgs):
+                return await acompletion(model="m", messages=msgs)
+        ''')
+        assert len(records) == 1
+        assert records[0].sdk == "litellm"
+        assert records[0].call_site == "acompletion"
+        assert records[0].is_dynamic  # msgs is a variable — honestly unknown
+
+    def test_aliased_litellm_import_with_asname(self, tmp_path):
+        records = self._scan_src(tmp_path, '''
+            from litellm import completion as llm_call
+            def go():
+                return llm_call(model="m", messages=[{"role": "user", "content": "hi"}])
+        ''')
+        assert len(records) == 1
+        assert records[0].sdk == "litellm"
+        assert not records[0].is_dynamic
+        assert records[0].text == "hi"
+
+    def test_kwargs_unpack_emits_honest_dynamic(self, tmp_path):
+        # aider shape: litellm.completion(**kwargs) — prompts invisible.
+        records = self._scan_src(tmp_path, '''
+            import litellm
+            def go(kwargs):
+                return litellm.completion(**kwargs)
+        ''')
+        assert len(records) == 1
+        assert records[0].is_dynamic
+        assert records[0].text == "<dynamic:KwargsUnpack>"
+
+    def test_messages_variable_emits_honest_dynamic(self, tmp_path):
+        # messages built elsewhere — the most common real-world shape.
+        records = self._scan_src(tmp_path, '''
+            import anthropic
+            def go(client, msgs):
+                return client.messages.create(model="m", messages=msgs)
+        ''')
+        assert len(records) == 1
+        assert records[0].is_dynamic
+        assert records[0].role == "messages"
+
+    def test_empty_literal_messages_list_emits_nothing(self, tmp_path):
+        # messages=[] is statically KNOWN empty — a dynamic record here
+        # would be dishonest in the other direction.
+        records = self._scan_src(tmp_path, '''
+            import anthropic
+            def go(client):
+                return client.messages.create(model="m", system="s", messages=[])
+        ''')
+        assert len(records) == 1  # just the system= record
+        assert records[0].role == "system"
+
+    def test_unrelated_bare_call_not_detected(self, tmp_path):
+        # A bare name NOT imported from litellm must not match.
+        records = self._scan_src(tmp_path, '''
+            def completion(**kwargs):
+                return None
+            completion(messages=[{"role": "user", "content": "hi"}])
+        ''')
+        assert records == []
 
 
 class TestExtractSkipsNonSdkCalls:

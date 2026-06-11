@@ -45,7 +45,7 @@ from .schema import PromptRecord
 # statically resolvable (v2: one-hop module-level constant resolution +
 # loose_fingerprint). A prompt_baseline.json written by an older scanner
 # triggers a "rescan recommended" warning instead of fake drift.
-SCANNER_VERSION = 2
+SCANNER_VERSION = 3
 
 
 # ── SDK call-site detection ────────────────────────────────────────────
@@ -72,13 +72,26 @@ def _attr_chain(node: ast.AST) -> list[str]:
     return list(reversed(parts))
 
 
-def _identify_sdk(call: ast.Call) -> Optional[tuple[str, str]]:
+def _identify_sdk(
+    call: ast.Call,
+    litellm_aliases: Optional[dict[str, str]] = None,
+) -> Optional[tuple[str, str]]:
     """Return (sdk_name, call_site_label) for a recognized SDK call, else None.
 
     Matching is suffix-based on the trailing method/attribute names, so it
     accepts both ``client.messages.create`` and ``anthropic.Anthropic().messages.create``.
+
+    ``litellm_aliases`` maps module-level imported names to their litellm
+    originals (``from litellm import acompletion as ac`` → {"ac": "acompletion"})
+    so bare aliased calls — the dominant shape in real repos like pr-agent —
+    are detected. Determinacy-gate finding 2026-06-11.
     """
     chain = _attr_chain(call.func)
+    if not chain:
+        return None
+    # Bare aliased litellm call: `completion(...)` after `from litellm import completion`.
+    if len(chain) == 1 and litellm_aliases and chain[0] in litellm_aliases:
+        return ("litellm", litellm_aliases[chain[0]])
     if len(chain) < 2:
         return None
     # Anthropic: any expression ending in .messages.create(...)
@@ -91,6 +104,28 @@ def _identify_sdk(call: ast.Call) -> Optional[tuple[str, str]]:
     if chain[-2] == "litellm" and chain[-1] in ("completion", "acompletion"):
         return ("litellm", chain[-1])
     return None
+
+
+def _litellm_import_aliases(tree: ast.Module) -> dict[str, str]:
+    """Module-level ``from litellm import completion [as X]`` aliases.
+
+    Only top-level imports count — a function-local import is rare enough
+    that missing it is acceptable, and tracking it would need scope analysis
+    for marginal gain. Star imports are ignored (cannot know what they bind).
+    """
+    aliases: dict[str, str] = {}
+    for stmt in tree.body:
+        if isinstance(stmt, ast.ImportFrom) and stmt.module == "litellm" and stmt.level == 0:
+            for name in stmt.names:
+                if name.name in ("completion", "acompletion"):
+                    aliases[name.asname or name.name] = name.name
+    return aliases
+
+
+def _has_kwargs_unpack(call: ast.Call) -> bool:
+    """True when the call passes ``**something`` — prompts exist but are
+    invisible to static analysis (aider's ``litellm.completion(**kwargs)``)."""
+    return any(kw.arg is None for kw in call.keywords)
 
 
 # ── Literal extraction ────────────────────────────────────────────────
@@ -382,6 +417,7 @@ def scan_file(file_path: str, repo_root: Optional[str] = None) -> list[PromptRec
 
     records: list[PromptRecord] = []
     constants = _module_constants(tree)
+    litellm_aliases = _litellm_import_aliases(tree)
     _bound_cache: dict[int, set[str]] = {}
 
     def _shadowed(stack: list[ast.AST]) -> frozenset[str]:
@@ -400,11 +436,12 @@ def scan_file(file_path: str, repo_root: Optional[str] = None) -> list[PromptRec
         if push:
             stack.append(node)
         if isinstance(node, ast.Call):
-            ident = _identify_sdk(node)
+            ident = _identify_sdk(node, litellm_aliases)
             if ident is not None:
                 sdk, call_site = ident
                 qualname = _qualname_stack(stack)
                 shadowed = _shadowed(stack)
+                emitted = 0
                 # system= kwarg
                 system_node = _find_kwarg(node, "system")
                 if system_node is not None:
@@ -416,9 +453,11 @@ def scan_file(file_path: str, repo_root: Optional[str] = None) -> list[PromptRec
                         qualname=qualname, node=system_node,
                         constants=constants, shadowed=shadowed,
                     ))
+                    emitted += 1
                 # messages= kwarg
                 messages_node = _find_kwarg(node, "messages")
                 if messages_node is not None:
+                    before = len(records)
                     for pos, role, content_node in _extract_messages_list(messages_node):
                         records.append(_build_record(
                             file_path=rel_path,
@@ -428,6 +467,48 @@ def scan_file(file_path: str, repo_root: Optional[str] = None) -> list[PromptRec
                             qualname=qualname, node=content_node,
                             constants=constants, shadowed=shadowed,
                         ))
+                    extracted = len(records) - before
+                    emitted += extracted
+                    statically_empty = (
+                        isinstance(messages_node, ast.List)
+                        and len(messages_node.elts) == 0
+                    )
+                    if extracted == 0 and not statically_empty:
+                        # messages= exists but isn't a parseable literal list
+                        # (a variable, a helper call, a comprehension) — or is
+                        # a literal list whose entries can't be resolved. The
+                        # call site is real; the prompts aren't statically
+                        # visible. Emit one honest dynamic record instead of
+                        # vanishing — invisible call sites made 4/5 real repos
+                        # report zero sites in the 2026-06-11 determinacy gate.
+                        # A literal EMPTY list is statically known to carry no
+                        # prompts: no record (that would be dishonest the
+                        # other way).
+                        records.append(_build_record(
+                            file_path=rel_path,
+                            line=getattr(messages_node, "lineno", getattr(node, "lineno", 0)),
+                            sdk=sdk, call_site=call_site,
+                            role="messages", role_position=-1,
+                            qualname=qualname, node=messages_node,
+                            constants=None, shadowed=frozenset(),
+                        ))
+                        emitted += 1
+                if emitted == 0 and _has_kwargs_unpack(node):
+                    # `litellm.completion(**kwargs)` — prompts exist, statically
+                    # invisible. Surface the call site as UNKNOWN rather than
+                    # omitting it; placeholder is shape-stable.
+                    text = "<dynamic:KwargsUnpack>"
+                    records.append(PromptRecord(
+                        file_path=rel_path,
+                        line=getattr(node, "lineno", 0),
+                        sdk=sdk, call_site=call_site,
+                        role="messages", role_position=-1,
+                        qualname=qualname,
+                        text=text,
+                        is_dynamic=True,
+                        fingerprint=fingerprint_text(text),
+                        loose_fingerprint=loose_fingerprint_text(text),
+                    ))
         for child in ast.iter_child_nodes(node):
             visit(child, stack)
         if push:

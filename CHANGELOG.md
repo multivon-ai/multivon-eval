@@ -2,6 +2,21 @@
 
 All notable changes to `multivon-eval`. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) as of 0.7.0.
 
+## [0.10.1] — 2026-06-11
+
+Scanner v3 — the determinacy gate (spec test-plan #14) run against five real repos (aider, gpt-researcher, open-interpreter, letta, pr-agent) found that **4 of 5 reported zero call sites**: not because they have no prompts, but because the scanner was silently blind to how real code calls LLMs. v3 fixes detection and honestly reports what it still cannot read.
+
+### Fixed
+
+- **Aliased litellm imports detected** — `from litellm import acompletion` then bare `acompletion(...)` (pr-agent's shape) now matches. Star imports and function-local imports stay out of scope.
+- **`**kwargs`-unpacked calls surface as UNKNOWN** — `litellm.completion(**kwargs)` (aider's shape) now emits an honest `<dynamic:KwargsUnpack>` record instead of vanishing.
+- **`messages=<variable>` surfaces as UNKNOWN** — the most common real-world shape (messages list built elsewhere) now emits one dynamic record per call site instead of nothing. A literal empty `messages=[]` correctly emits nothing (statically known empty).
+- `SCANNER_VERSION` bumped to 3; baselines written by v2 print a "rescan recommended" warning instead of fake drift.
+
+### Measured (the determinacy gate, public on the epic)
+
+Honest detection changed the denominator: 73 → 278 sites across the five repos, and static resolvability is **20.9%** — below the 50% gate. Conclusion recorded publicly: real-world prompt traffic is mostly dynamic construction; static analysis tracks call-site add/remove for all of it but can verify text drift only for prompts-as-constants codebases (letta-style: 58 static sites). The runtime recorder (epic) is now the priority path for the rest. The staleness report's determinacy headline makes this exact ratio visible per-repo — by design.
+
 ## [0.10.0] — 2026-06-11
 
 **Evals drift as code changes — this release ships the detection layer.** Prompts evolve, eval suites go stale, and nobody notices until a regression sails through. 0.10.0 adds prompt-drift staleness detection: a committed baseline snapshot of every prompt call site in your repo, a read-only report that tells you exactly which prompts changed since your cases were authored, and an opt-in provenance layer binding cases to the prompts they exercise. The design went through a 3-design × 2-adversarial-critic review before a line was written; the design rule that survived every round: **the tool never overclaims what static analysis can know.** Every report opens with a determinacy headline ("N of M call sites statically resolvable") and closes with a standing blind-spots footer.
