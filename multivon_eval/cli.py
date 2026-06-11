@@ -822,6 +822,16 @@ def main():
                              "shim). When set with --judge-provider openai, "
                              "a dummy API key is injected if OPENAI_API_KEY is "
                              "absent so local-shim servers Just Work.")
+    boot_p.add_argument("--validate-cases", action="store_true",
+                        help="run generated cases through the hardness gate "
+                             "(N-shot failure-rate band via auto.validate_adversarial_cases). "
+                             "Costs judge calls; requires --baseline-model-file.")
+    boot_p.add_argument("--baseline-model-file", default=None,
+                        help="Python file exposing model_fn(prompt)->str — the baseline "
+                             "model the hardness gate measures cases against.")
+    boot_p.add_argument("--budget-usd", type=float, default=2.0,
+                        help="hard pre-spend ceiling for scaled seed generation "
+                             "(estimate checked before any LLM call; default 2.00).")
     boot_p.add_argument("--n-seed-cases", type=int, default=30,
                         help="Number of adversarial seed cases to generate (default: 30)")
     boot_p.add_argument("--pii-policy", default="redact",
@@ -846,6 +856,42 @@ def main():
                              "Bootstrap writes prompt_baseline.json there and "
                              "stamps generated cases with repo-state provenance "
                              "(targets=[] — bindings are never fabricated).")
+
+    # simulate — persona-driven adaptive multi-turn simulation (issue #10)
+    sim_p = sub.add_parser(
+        "simulate",
+        help="Persona-driven multi-turn simulation against your model "
+             "(simulated personas — synthetic users, not real traffic)",
+    )
+    sim_p.add_argument("--model-cmd", required=True,
+                       help="Python file exposing model_fn(prompt: str) -> str "
+                            "(the system under test)")
+    sim_p.add_argument("--personas", default=None,
+                       help="Personas JSONL (name/profile/goal/success_criteria"
+                            "/traits per line)")
+    sim_p.add_argument("--propose-from", default=None,
+                       help="Product description file — propose personas via "
+                            "one LLM call instead of --personas")
+    sim_p.add_argument("--n-personas", type=int, default=5,
+                       help="How many personas to propose with --propose-from "
+                            "(default: 5)")
+    sim_p.add_argument("--max-turns", type=int, default=8,
+                       help="Max assistant turns per persona (default: 8)")
+    sim_p.add_argument("--budget", type=float, default=1.00,
+                       help="HARD judge-spend ceiling in USD across all "
+                            "personas (default: 1.00)")
+    sim_p.add_argument("--out", default="simulation_results.jsonl",
+                       help="Output JSONL for transcripts + scores "
+                            "(default: simulation_results.jsonl)")
+    sim_p.add_argument("--seed", type=int, default=0,
+                       help="Variation seed (proposal is seeded; LLM turns "
+                            "remain stochastic)")
+    sim_p.add_argument("--judge-model", default="claude-haiku-4-5-20251001",
+                       help="Judge model that drives personas + verdicts "
+                            "(default: claude-haiku-4-5-20251001)")
+    sim_p.add_argument("--judge-provider", default="anthropic",
+                       choices=["anthropic", "openai", "google", "ollama", "litellm"],
+                       help="Judge provider (default: anthropic)")
 
     # install-skills — symlink bundled Claude Code skills into ~/.claude/skills/
     skills_p = sub.add_parser(
@@ -1064,6 +1110,8 @@ def _dispatch(args, parser) -> None:
         sys.exit(cmd_doctor(args) or 0)
     elif args.command == "bootstrap":
         sys.exit(cmd_bootstrap(args) or 0)
+    elif args.command == "simulate":
+        sys.exit(cmd_simulate(args) or 0)
     elif args.command == "install-skills":
         sys.exit(cmd_install_skills(args) or 0)
     elif args.command == "attribution":
@@ -1105,6 +1153,16 @@ def cmd_bootstrap(args) -> int:
     print(f"  pii policy: {args.pii_policy}")
     print()
 
+    # getattr defaults: boundary tests (and embedders) build minimal
+    # Namespaces without the scaled-generation flags.
+    validate_cases = getattr(args, "validate_cases", False)
+    baseline_model_file = getattr(args, "baseline_model_file", None)
+    budget_usd = getattr(args, "budget_usd", 2.0)
+    if validate_cases and not baseline_model_file:
+        print("error: --validate-cases needs --baseline-model-file "
+              "(a Python file exposing model_fn) — the hardness gate "
+              "measures cases against a baseline model.", file=sys.stderr)
+        return 2
     try:
         result = bootstrap(
             description_path=product,
@@ -1116,6 +1174,12 @@ def cmd_bootstrap(args) -> int:
             skip_calibration=args.skip_calibration,
             n_seed_cases=args.n_seed_cases,
             repo=args.repo,
+            validate_cases=validate_cases,
+            baseline_model_fn=(
+                _load_model_fn(baseline_model_file)
+                if baseline_model_file else None
+            ),
+            budget_usd=budget_usd,
         )
     except (ValueError, OSError) as exc:
         # Malformed traces JSONL (load_traces reports file:line), unreadable
@@ -1129,7 +1193,10 @@ def cmd_bootstrap(args) -> int:
         pii_str = ", ".join(f"{k}={v}" for k, v in result.summary.pii_label_counts.items())
         print(f"  ✓ pii redacted before LLM call: {pii_str}")
     print(f"  ✓ recommended {len(result.evaluators)} evaluators")
-    print(f"  ✓ generated {len(result.seed_cases)} adversarial seed cases")
+    if result.generation_report is not None:
+        print(f"  ✓ seed cases: {result.generation_report.summary_line()}")
+    else:
+        print(f"  ✓ generated {len(result.seed_cases)} adversarial seed cases")
 
     baseline_path = result.artifacts.get("prompt_baseline")
     if baseline_path is not None and Path(baseline_path).exists():
@@ -1197,6 +1264,131 @@ def cmd_bootstrap(args) -> int:
     print()
     print("  next: review DISCOVERY_REPORT.md, then `python eval_suite.py` "
           "to verify the suite loads")
+    return 0
+
+
+def _load_model_fn(path: str):
+    """Load ``model_fn`` from a Python file via an importlib spec.
+
+    Same file-loading shape eval-action uses for suites: spec from file
+    location, exec the module, pull the documented attribute. Raises
+    ``ValueError`` with a clean message on every failure mode (the CLI
+    maps it to exit 2 — never a bare traceback).
+    """
+    import importlib.util
+    from pathlib import Path as _Path
+
+    p = _Path(path)
+    if not p.exists():
+        raise ValueError(f"--model-cmd file not found: {p}")
+    spec = importlib.util.spec_from_file_location(f"_multivon_model_{p.stem}", p)
+    if spec is None or spec.loader is None:
+        raise ValueError(f"--model-cmd is not an importable Python file: {p}")
+    module = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(module)
+    except Exception as exc:
+        raise ValueError(f"--model-cmd file failed to import: {exc}") from exc
+    fn = getattr(module, "model_fn", None)
+    if not callable(fn):
+        raise ValueError(
+            f"--model-cmd file must expose a callable "
+            f"model_fn(prompt: str) -> str: {p}"
+        )
+    return fn
+
+
+def cmd_simulate(args) -> int:
+    """Persona-driven adaptive multi-turn simulation (report-only in v1).
+
+    Exit codes: 0 after any completed run (no gating yet); 2 on usage /
+    input errors (missing model_fn, bad personas file, proposal failure).
+    """
+    import json as _json
+    from pathlib import Path as _Path
+    from .judge import JudgeConfig
+    from .simulate import (
+        SIMULATED_DISCLAIMER, personas_from_jsonl, propose_personas,
+        score_simulations, simulate,
+    )
+
+    if not args.personas and not args.propose_from:
+        print("error: provide --personas FILE.jsonl or --propose-from PRODUCT.md",
+              file=sys.stderr)
+        return 2
+
+    try:
+        model_fn = _load_model_fn(args.model_cmd)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    judge = JudgeConfig(provider=args.judge_provider, model=args.judge_model)
+
+    try:
+        if args.personas:
+            personas = personas_from_jsonl(args.personas)
+        else:
+            desc_path = _Path(args.propose_from)
+            if not desc_path.exists():
+                print(f"error: --propose-from file not found: {desc_path}",
+                      file=sys.stderr)
+                return 2
+            personas = propose_personas(
+                desc_path.read_text(encoding="utf-8"),
+                n=args.n_personas, judge=judge, seed=args.seed,
+            )
+    except (ValueError, OSError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    if not personas:
+        print("error: no personas to simulate (proposal returned nothing "
+              "or the file was empty)", file=sys.stderr)
+        return 2
+
+    results = simulate(
+        model_fn, personas,
+        max_turns=args.max_turns, judge=judge,
+        seed=args.seed, budget_usd=args.budget, verbose=True,
+    )
+    summary = score_simulations(results, judge=judge)
+
+    out_path = _Path(args.out)
+    with out_path.open("w", encoding="utf-8") as f:
+        for r in results:
+            per = summary["per_persona"].get(r.persona.name, {})
+            f.write(_json.dumps({
+                "persona": {
+                    "name": r.persona.name,
+                    "profile": r.persona.profile,
+                    "goal": r.persona.goal,
+                    "success_criteria": r.persona.success_criteria,
+                    "traits": r.persona.traits,
+                },
+                "transcript": r.transcript,
+                "turns": r.turns,
+                "stop_reason": r.stop_reason,
+                "goal_achieved": r.goal_achieved,
+                "cost_usd": r.cost_usd,
+                "scores": per.get("scores", {}),
+                "metadata": dict(r.case.metadata),
+            }, ensure_ascii=False, default=str) + "\n")
+
+    print(f"\n  simulation summary — {SIMULATED_DISCLAIMER}\n")
+    for r in results:
+        per = summary["per_persona"].get(r.persona.name, {})
+        score_str = ", ".join(
+            f"{name}={s:.2f}" if s is not None else f"{name}=err"
+            for name, s in per.get("scores", {}).items()
+        ) or "(no scores)"
+        print(f"    {r.persona.name:<24} turns={r.turns} "
+              f"stop={r.stop_reason:<18} goal={r.goal_achieved}  {score_str}")
+    gc = summary["goal_completion"]
+    rate = f"{gc['rate']:.0%}" if gc["rate"] is not None else "n/a (none judged)"
+    print(f"\n  goal completion: {gc['achieved']}/{gc['judged']} judged ({rate})")
+    print(f"  estimated judge cost: ${summary['total_cost_usd']:.4f}")
+    print(f"  results: {out_path}")
+    print(f"\n  note: {SIMULATED_DISCLAIMER}")
     return 0
 
 

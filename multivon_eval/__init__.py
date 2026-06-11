@@ -23,7 +23,7 @@ Experiment tracking (compare runs across versions):
     exp.compare(old_run_id, run_id)
 """
 
-__version__ = "0.11.1"
+__version__ = "0.12.0"
 
 from .suite import EvalSuite
 from .case import EvalCase, AgentStep, ToolCall
@@ -68,6 +68,12 @@ from .auto import (
     auto_evaluators, EvaluatorRecommendation, AmbiguousCaseShape,
     generate_adversarial_cases, generate_unicode_obfuscation_cases,
     validate_adversarial_cases, HardnessReport,
+)
+# Persona simulator — adaptive multi-turn eval against the live system.
+# Outputs are SIMULATED: synthetic users, not real traffic.
+from .simulate import (
+    Persona, SimulationResult, simulate,
+    personas_from_jsonl, propose_personas, score_simulations,
 )
 # Prompt-drift staleness + case provenance (0.9.x)
 from .staleness import (
@@ -235,6 +241,9 @@ __all__ = [
     # Bootstrap pipeline (0.8.0)
     "bootstrap", "BootstrapResult", "RecommendedEvaluator", "TraceSummary",
     "infer_product_shape", "summarize_traces", "load_traces",
+    # Persona simulator (simulated personas — synthetic users, not real traffic)
+    "Persona", "SimulationResult", "simulate",
+    "personas_from_jsonl", "propose_personas", "score_simulations",
     # Intelligent-eval (auto) prototype (0.8.0)
     "auto_evaluators", "EvaluatorRecommendation", "AmbiguousCaseShape",
     "generate_adversarial_cases", "generate_unicode_obfuscation_cases",

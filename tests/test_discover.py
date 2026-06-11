@@ -495,3 +495,307 @@ def test_emit_artifacts_is_atomic_no_partials_on_interrupt(tmp_path):
     ]
     for p in paths.values():
         assert p.exists()
+
+
+# ─── Scaled + gated seed-case generation ─────────────────────────────────
+
+
+from multivon_eval import EvalCase  # noqa: E402
+from multivon_eval.case_gates import GenerationReport  # noqa: E402
+from multivon_eval.judge import JudgeConfig  # noqa: E402
+
+# Cost-estimation tests pin the judge explicitly: estimates are model-based
+# (Haiku-only today) and other tests may leave a different global judge
+# configured.
+_HAIKU = JudgeConfig(provider="anthropic", model="claude-haiku-4-5-20251001")
+
+
+def _distinct_case(i: int) -> EvalCase:
+    """A generated-looking case whose token set is disjoint from every other
+    index — never tripping the Jaccard dedupe gate by accident."""
+    return EvalCase(
+        input=f"q{i} alpha{i} beta{i} gamma{i} delta{i} epsilon{i} zeta{i} eta{i} theta{i}",
+        expected_output=f"answer {i}",
+        metadata={"stress_tests": ["NotEmpty"]},
+    )
+
+
+def _fake_batch_generator(batches: list[list[EvalCase]], calls: list[dict]):
+    """Stand-in for auto.generate_adversarial_cases — records every call's
+    prompt + n and serves pre-baked batches. Mirrors the existing
+    patch.object mocking pattern (no network)."""
+    def fake(seed_text, mode, n=5, *, judge=None):
+        calls.append({"seed_text": seed_text, "mode": mode, "n": n})
+        return batches[len(calls) - 1]
+    return fake
+
+
+def test_generate_seed_cases_batches_75_into_3_calls_with_digests():
+    counter = iter(range(1000))
+    batches = [
+        [_distinct_case(next(counter)) for _ in range(30)],
+        [_distinct_case(next(counter)) for _ in range(30)],
+        [_distinct_case(next(counter)) for _ in range(15)],
+    ]
+    calls: list[dict] = []
+    with patch("multivon_eval.auto.generate_adversarial_cases",
+               side_effect=_fake_batch_generator(batches, calls)):
+        cases, cost, report = discover.generate_seed_cases(
+            "A refund-policy QA bot.", "qa", n=75, judge=_HAIKU,
+        )
+
+    # 3 LLM calls: 30 + 30 + 15
+    assert [c["n"] for c in calls] == [30, 30, 15]
+    # Batch 1 sees only the description — no digest.
+    assert "ALREADY-ACCEPTED" not in calls[0]["seed_text"]
+    # Batches 2+ carry the digest of already-accepted inputs.
+    for later in calls[1:]:
+        assert "ALREADY-ACCEPTED" in later["seed_text"]
+        assert "do NOT duplicate" in later["seed_text"]
+    # First 8 words of a batch-1 input appear in the batch-2 prompt.
+    first_words = " ".join(batches[0][0].input.split()[:8])
+    assert first_words in calls[1]["seed_text"]
+
+    assert len(cases) == 75
+    assert report.requested == 75
+    assert report.generated == 75
+    assert report.accepted == 75
+    assert report.n_batches == 3
+    # Per-case generation metadata records the batch index.
+    assert cases[0].metadata["generation"]["batch"] == 1
+    assert cases[-1].metadata["generation"]["batch"] == 3
+    assert cases[0].metadata["generation"]["gates_passed"] == [
+        "well_formed", "duplicate",
+    ]
+    assert cases[0].metadata["generation"]["hardness"] is None
+    assert cost > 0
+
+
+def test_generate_seed_cases_dedupes_across_batches():
+    original = EvalCase(
+        input="what is the standard refund window policy",
+        expected_output="30 days",
+        metadata={"stress_tests": ["NotEmpty"]},
+    )
+    exact_dup = EvalCase(
+        input="what  is the standard\nrefund window policy",  # loose-identical
+        expected_output="different answer",
+        metadata={"stress_tests": ["NotEmpty"]},
+    )
+    near_dup = EvalCase(  # 6/7 token Jaccard = 0.857 ≥ 0.85
+        input="what is the refund window policy",
+        expected_output="30 days",
+        metadata={"stress_tests": ["NotEmpty"]},
+    )
+    batches = [
+        [original, _distinct_case(1)],
+        [exact_dup, near_dup],
+    ]
+    calls: list[dict] = []
+    with patch("multivon_eval.auto.generate_adversarial_cases",
+               side_effect=_fake_batch_generator(batches, calls)):
+        cases, _cost, report = discover.generate_seed_cases(
+            "desc", "qa", n=4, batch_size=2,
+        )
+
+    assert len(calls) == 2
+    assert [c.input for c in cases] == [original.input, _distinct_case(1).input]
+    assert report.generated == 4
+    assert report.accepted == 2
+    assert report.dropped_duplicate == 2
+    assert report.dropped_malformed == 0
+    # Accounting invariant: every generated case lands in exactly one bucket.
+    assert report.generated == (
+        report.accepted + report.dropped_malformed
+        + report.dropped_duplicate + report.dropped_hardness
+    )
+
+
+def test_generate_seed_cases_drops_malformed():
+    batches = [[
+        _distinct_case(1),
+        EvalCase(input="", expected_output="orphan answer"),       # empty input
+        EvalCase(input="no expected behavior here at all"),        # no answer key
+    ]]
+    calls: list[dict] = []
+    with patch("multivon_eval.auto.generate_adversarial_cases",
+               side_effect=_fake_batch_generator(batches, calls)):
+        cases, _cost, report = discover.generate_seed_cases("desc", "qa", n=3)
+
+    assert len(cases) == 1
+    assert report.generated == 3
+    assert report.dropped_malformed == 2
+    assert report.accepted == 1
+    assert report.generated == (
+        report.accepted + report.dropped_malformed
+        + report.dropped_duplicate + report.dropped_hardness
+    )
+
+
+def test_generate_seed_cases_hardness_gate_filters_and_stamps_scores():
+    # NotEmpty is deterministic — no judge calls. Baseline answers the
+    # "easy" case and goes silent on the "hard" ones.
+    hard1 = EvalCase(input="hard question alpha beta",
+                     expected_output="a", metadata={"stress_tests": ["NotEmpty"]})
+    hard2 = EvalCase(input="hard question gamma delta tricky",
+                     expected_output="a", metadata={"stress_tests": ["NotEmpty"]})
+    easy = EvalCase(input="easy question zeta eta",
+                    expected_output="a", metadata={"stress_tests": ["NotEmpty"]})
+
+    def baseline(text: str) -> str:
+        return "" if "hard" in text else "confident answer"
+
+    calls: list[dict] = []
+    with patch("multivon_eval.auto.generate_adversarial_cases",
+               side_effect=_fake_batch_generator([[hard1, hard2, easy]], calls)):
+        cases, _cost, report = discover.generate_seed_cases(
+            "desc", "qa", n=3,
+            validate_cases=True, baseline_model_fn=baseline, n_shots=3,
+        )
+
+    # Band default (0.5, 1.0): hard cases (failure_rate 1.0) kept,
+    # easy case (0.0) dropped.
+    assert cases == [hard1, hard2]
+    assert report.dropped_hardness == 1
+    assert report.accepted == 2
+    assert not report.hardness_skipped
+    assert report.generated == (
+        report.accepted + report.dropped_malformed
+        + report.dropped_duplicate + report.dropped_hardness
+    )
+    # Hardness scores land in metadata; the gate is recorded as passed.
+    for c in cases:
+        gen = c.metadata["generation"]
+        assert gen["hardness"] == 1.0
+        assert gen["gates_passed"] == ["well_formed", "duplicate", "hardness"]
+
+
+def test_generate_seed_cases_hardness_skipped_paths_are_honest():
+    batches = [[_distinct_case(1)]]
+    # Default: no validate, no baseline.
+    with patch("multivon_eval.auto.generate_adversarial_cases",
+               side_effect=_fake_batch_generator(batches, [])):
+        _cases, _cost, report = discover.generate_seed_cases("desc", "qa", n=1)
+    assert report.hardness_skipped
+    assert report.hardness_skip_reason == "no --validate-cases / baseline model"
+
+    # validate_cases=True but no baseline model → still skipped, says why.
+    with patch("multivon_eval.auto.generate_adversarial_cases",
+               side_effect=_fake_batch_generator(batches, [])):
+        _cases, _cost, report = discover.generate_seed_cases(
+            "desc", "qa", n=1, validate_cases=True,
+        )
+    assert report.hardness_skipped
+    assert "no baseline model" in report.hardness_skip_reason
+
+
+def test_generate_seed_cases_budget_exceeded_fails_fast_pre_spend():
+    calls: list[dict] = []
+    with patch("multivon_eval.auto.generate_adversarial_cases",
+               side_effect=_fake_batch_generator([], calls)):
+        with pytest.raises(ValueError, match=r"budget.*--budget-usd"):
+            # Haiku judge → 17 batches estimate ≈ $0.42 > $0.10.
+            discover.generate_seed_cases(
+                "desc", "qa", n=500, budget_usd=0.10, judge=_HAIKU,
+            )
+    # Fail-fast means ZERO LLM calls were made.
+    assert calls == []
+
+
+def test_generate_seed_cases_rejects_n_above_hard_cap():
+    with pytest.raises(ValueError, match="hard cap"):
+        discover.generate_seed_cases("desc", "qa", n=501)
+
+
+def test_generate_seed_cases_emits_batch_progress_lines(capsys):
+    batches = [
+        [_distinct_case(1), _distinct_case(2)],
+        [_distinct_case(3)],
+    ]
+    with patch("multivon_eval.auto.generate_adversarial_cases",
+               side_effect=_fake_batch_generator(batches, [])):
+        discover.generate_seed_cases("desc", "qa", n=3, batch_size=2)
+    err = capsys.readouterr().err
+    assert "[bootstrap] seed-case batch 1/2: 2 generated" in err
+    assert "[bootstrap] seed-case batch 2/2: 1 generated" in err
+
+
+def test_bootstrap_budget_check_runs_before_any_paid_call(tmp_path):
+    product = tmp_path / "product.md"
+    product.write_text("# Product\nA bot.\n")
+    traces = tmp_path / "traces.jsonl"
+    traces.write_text(json.dumps({"input": "q", "output": "a"}) + "\n")
+
+    with patch.object(discover, "_call_judge") as judge_mock:
+        with pytest.raises(ValueError, match="budget"):
+            discover.bootstrap(
+                description_path=product, traces_path=traces,
+                output_dir=tmp_path / "out",
+                skip_calibration=True, judge=_HAIKU,
+                n_seed_cases=500, budget_usd=0.05,
+            )
+    # The proposal LLM call never happened — pre-spend fail-fast.
+    judge_mock.assert_not_called()
+
+
+def test_bootstrap_report_renders_case_generation_section(tmp_path):
+    product = tmp_path / "product.md"
+    product.write_text("# Product\nA refund QA bot.\n")
+    traces = tmp_path / "traces.jsonl"
+    traces.write_text(json.dumps(
+        {"input": "refund?", "context": "Refunds in 30 days.", "output": "30 days"}
+    ) + "\n")
+
+    batches = [[
+        _distinct_case(1),
+        _distinct_case(2),
+        EvalCase(input="", expected_output="x"),  # malformed
+    ]]
+    with patch.object(discover, "_call_judge", side_effect=_fake_judge_response), \
+            patch("multivon_eval.auto.generate_adversarial_cases",
+                  side_effect=_fake_batch_generator(batches, [])):
+        result = discover.bootstrap(
+            description_path=product, traces_path=traces,
+            output_dir=tmp_path / "out",
+            skip_calibration=True, n_seed_cases=3,
+        )
+
+    assert isinstance(result.generation_report, GenerationReport)
+    assert result.generation_report.generated == 3
+    assert result.generation_report.accepted == 2
+    assert result.generation_report.dropped_malformed == 1
+
+    report_md = result.artifacts["report"].read_text()
+    assert "## Case generation" in report_md
+    assert "generated 3, accepted 2 — dropped 0 duplicates, 1 malformed" in report_md
+    # Hardness honesty: skipped is stated, never silent.
+    assert "hardness gate skipped (no --validate-cases / baseline model)" in report_md
+
+    # Per-case generation metadata flows into seed_cases.jsonl.
+    rows = [json.loads(line) for line in
+            result.artifacts["seed_cases"].read_text().splitlines()]
+    assert len(rows) == 2
+    for row in rows:
+        gen = row["metadata"]["generation"]
+        assert gen["batch"] == 1
+        assert gen["hardness"] is None
+        assert "well_formed" in gen["gates_passed"]
+
+
+def test_bootstrap_skip_seed_cases_report_says_skipped(tmp_path):
+    product = tmp_path / "product.md"
+    product.write_text("# Product\nA bot.\n")
+    traces = tmp_path / "traces.jsonl"
+    traces.write_text(json.dumps({"input": "q", "output": "a"}) + "\n")
+
+    with patch.object(discover, "_call_judge", side_effect=_fake_judge_response):
+        result = discover.bootstrap(
+            description_path=product, traces_path=traces,
+            output_dir=tmp_path / "out",
+            skip_seed_cases=True, skip_calibration=True,
+        )
+
+    assert result.generation_report is None
+    report_md = result.artifacts["report"].read_text()
+    assert "## Case generation" in report_md
+    assert "skipped" in report_md

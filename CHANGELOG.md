@@ -2,6 +2,44 @@
 
 All notable changes to `multivon-eval`. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) as of 0.7.0.
 
+## [0.12.0] — 2026-06-12
+
+Two features adapted from the synthetic-eval-data space (issues #10/#11) — with the
+part vendors leave out: validation, provenance, and labeled uncertainty.
+
+### Added
+
+- **`multivon-eval simulate` — persona-driven adaptive multi-turn evaluation** (#10).
+  Static scripts assume a fixed conversation path; the simulator drives one live: a
+  persona LLM (profile, goal, success criteria, behavior traits) converses with your
+  `model_fn`, adapting each turn, stopping on goal-reached / refusal / `max_turns` /
+  budget. Transcripts become conversation-shaped `EvalCase`s scored by the existing
+  conversation evaluators plus a goal-completion judge. Personas come from a JSONL or
+  `propose_personas()` (one LLM call, always includes an adversarial persona).
+  Honesty contract, test-pinned: every output carries "simulated personas — measures
+  behavior under synthetic users, not real traffic"; hard `budget_usd` ceiling with
+  pre-spend estimate (personas cut off carry `stop_reason="budget_exceeded"`, partials
+  never lost); judge model/temperature recorded, NO determinism claim. Recorder
+  synergy: each conversation binds its `case_uid`, so `--record-prompts` during
+  simulation yields observed case→site bindings — simulation with provenance.
+- **Scaled + gated case generation** (#11). `bootstrap --n-seed-cases` now works to
+  500 (batched ≤30/call, later batches steered away from already-accepted inputs),
+  and every generated case passes gates: well-formed (structural), duplicate
+  (NFC-loose-normalize identity OR token-Jaccard ≥ 0.85, cross-batch), and — behind
+  `--validate-cases --baseline-model-file` — the 0.8.0 hardness band via
+  `auto.validate_adversarial_cases`. **No silent caps**: `BootstrapResult.generation_report`
+  and a DISCOVERY_REPORT "Case generation" section print "generated N, accepted M —
+  dropped k duplicates, j malformed[, i outside hardness band]"; a skipped hardness
+  gate says so. Per-case `metadata["generation"]` carries batch, gates passed, and
+  hardness. New `--budget-usd` pre-spend ceiling (estimate checked before any LLM call).
+
+### Notes
+
+- 54 new tests (25 simulator, 29 generation/gates); 1092 green on the tracked suite.
+- Both features verified live before release: a haiku-driven persona reached its goal
+  and scored 1.00/0.67/1.00 on the conversation evaluators; a 60-case bootstrap
+  produced the batch-accounting report end-to-end.
+
 ## [0.11.1] — 2026-06-11
 
 Robustness hardening from an adversarial audit that ran the staleness /

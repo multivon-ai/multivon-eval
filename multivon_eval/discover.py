@@ -30,7 +30,10 @@ import shutil
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
+
+if TYPE_CHECKING:
+    from .case_gates import GenerationReport
 
 from . import _pii_scan
 from .case import EvalCase
@@ -83,6 +86,10 @@ class BootstrapResult:
     cost_usd: float
     output_dir: Path
     artifacts: dict[str, Path]
+    # Full accounting of scaled case generation (no silent caps). None when
+    # seed-case generation was skipped (--skip-seed-cases) or ran through a
+    # legacy code path that doesn't produce a report.
+    generation_report: GenerationReport | None = None
 
 
 # ─── Evaluator catalogue ──────────────────────────────────────────────────
@@ -769,28 +776,209 @@ _FAILURE_MODE_FOR_SHAPE: dict[ProductShape, str] = {
 }
 
 
+# Scaled generation knobs. One LLM call per batch; the hard cap keeps a
+# typo'd --n-seed-cases from turning into hundreds of paid calls.
+_SEED_BATCH_SIZE = 30
+_MAX_SEED_CASES = 500
+
+# Seed-generation budget ceiling (USD). The default keeps today's n=30
+# behavior unchanged (one Haiku batch estimates at well under a cent) while
+# still allowing the full N=500 range (~$0.42 estimated on Haiku). Lower it
+# to fail fast on accidental large runs; raise via --budget-usd /
+# ``bootstrap(budget_usd=...)``.
+_DEFAULT_SEED_BUDGET_USD = 2.0
+
+
+def _estimate_seed_generation_cost(
+    judge_cfg: JudgeConfig, n: int, batch_size: int,
+) -> tuple[float, float, int]:
+    """Pre-spend estimate for scaled seed generation.
+
+    Returns ``(total_usd, per_batch_usd, n_batches)``. Uses the same
+    per-call machinery as the post-hoc accounting (~2000 input tokens +
+    ~150 output tokens per case). Unknown (non-Haiku) models estimate at
+    $0.00 — same honesty rule as ``_estimate_cost_from_tokens``.
+    """
+    n_batches = -(-n // batch_size)  # ceil division
+    per_batch = _estimate_cost_from_tokens(
+        judge_cfg, input_tokens=2000, output_tokens=150 * batch_size,
+    )
+    return round(per_batch * n_batches, 4), per_batch, n_batches
+
+
+def _check_seed_generation_budget(
+    judge_cfg: JudgeConfig, n: int, batch_size: int, budget_usd: float,
+) -> None:
+    """Fail fast — BEFORE any paid LLM call — if the run can't fit.
+
+    Raises ``ValueError`` (the CLI maps that to a clean exit 2) when
+    ``n`` exceeds the hard cap or the cost estimate exceeds the budget
+    ceiling.
+    """
+    if n < 1:
+        raise ValueError(f"n_seed_cases must be >= 1, got {n!r}")
+    if n > _MAX_SEED_CASES:
+        raise ValueError(
+            f"n_seed_cases={n} exceeds the hard cap of {_MAX_SEED_CASES}. "
+            f"Generate in multiple bootstrap runs if you genuinely need more."
+        )
+    total, per_batch, n_batches = _estimate_seed_generation_cost(
+        judge_cfg, n, batch_size,
+    )
+    if total > budget_usd:
+        raise ValueError(
+            f"estimated seed-case generation cost ${total:.2f} "
+            f"({n_batches} batches × ~${per_batch:.4f}) exceeds the "
+            f"${budget_usd:.2f} budget ceiling. Nothing was spent. "
+            f"Raise the ceiling with --budget-usd {total:.2f} "
+            f"(or bootstrap(budget_usd={total:.2f})), or lower --n-seed-cases."
+        )
+
+
 def generate_seed_cases(
     description: str,
     shape: ProductShape,
     *,
     n: int = 30,
     judge: JudgeConfig | None = None,
-) -> tuple[list[EvalCase], float]:
-    """Wrap ``multivon_eval.auto.generate_adversarial_cases`` for the
-    shape's primary failure mode. Returns ``(cases, cost_estimate_usd)``.
+    batch_size: int = _SEED_BATCH_SIZE,
+    budget_usd: float = _DEFAULT_SEED_BUDGET_USD,
+    validate_cases: bool = False,
+    baseline_model_fn: Any | None = None,
+    n_shots: int = 3,
+    hardness_band: tuple[float, float] = (0.5, 1.0),
+) -> tuple[list[EvalCase], float, "GenerationReport"]:
+    """Scaled + gated seed-case generation for the shape's primary failure mode.
+
+    Wraps ``multivon_eval.auto.generate_adversarial_cases`` in batches of
+    ``batch_size`` (one LLM call per batch, up to ``n`` ≤ 500 total), with
+    every generated case run through the :mod:`multivon_eval.case_gates`
+    pipeline:
+
+    - **well_formed** (free): non-empty input + expected behavior.
+    - **duplicate** (free, deterministic): loose-normalized identity or
+      token-Jaccard ≥ 0.85 vs every case accepted so far — across batches.
+      Each batch's prompt carries a digest of accepted inputs so the LLM
+      is steered away from duplicates before the gate has to drop them.
+    - **hardness** (paid, opt-in): when ``validate_cases=True`` AND a
+      ``baseline_model_fn`` (``str -> str``) is provided, delegates to
+      ``multivon_eval.auto.validate_adversarial_cases`` and keeps only
+      cases whose N-shot failure rate falls in ``hardness_band``.
+      Otherwise the gate is skipped and the report says so honestly.
+
+    A pre-spend budget check (``batches × per-batch estimate`` vs
+    ``budget_usd``) raises ``ValueError`` before the first LLM call.
+
+    Returns ``(accepted_cases, cost_estimate_usd, generation_report)``.
+    Each accepted case's ``metadata["generation"]`` records its batch,
+    the gates it passed, and its hardness score (or ``None``).
     """
     from .auto import generate_adversarial_cases  # lazy to avoid circular
+    from .case_gates import (
+        GenerationReport, digest_inputs, gate_duplicate, gate_hardness,
+        gate_well_formed,
+    )
+
+    if batch_size < 1:
+        raise ValueError(f"batch_size must be >= 1, got {batch_size!r}")
 
     mode = _FAILURE_MODE_FOR_SHAPE.get(shape, "off_topic")
-    try:
-        cases = generate_adversarial_cases(description, mode, n=n, judge=judge)
-    except Exception:
-        return [], 0.0
-    # Rough cost estimate: 1 Haiku call returning ~150 tokens × n
     resolved = resolve_judge(judge)
-    estimated_output_tokens = 150 * len(cases)
-    cost = _estimate_cost_from_tokens(resolved, input_tokens=2000, output_tokens=estimated_output_tokens)
-    return cases, cost
+
+    # Budget gate BEFORE the first paid call — fail fast, pre-spend.
+    _check_seed_generation_budget(resolved, n, batch_size, budget_usd)
+    n_batches = -(-n // batch_size)
+
+    report = GenerationReport(
+        requested=n, hardness_band=(hardness_band[0], hardness_band[1]),
+    )
+    accepted: list[EvalCase] = []
+    cost = 0.0
+
+    for batch_idx in range(1, n_batches + 1):
+        batch_n = min(batch_size, n - (batch_idx - 1) * batch_size)
+
+        # Diversity steering: later batches see a compact digest of what
+        # already exists and are told not to duplicate it.
+        seed_text = description
+        if accepted:
+            seed_text = (
+                description
+                + "\n\nALREADY-ACCEPTED TEST-CASE INPUTS (do NOT duplicate "
+                  "any of these — cover different angles, entities, and "
+                  "phrasings):\n"
+                + digest_inputs(accepted)
+            )
+
+        try:
+            batch = generate_adversarial_cases(seed_text, mode, n=batch_n, judge=judge)
+        except Exception:
+            # Stop spending; keep what we have. With a single batch this
+            # reproduces the legacy behavior of returning no cases.
+            break
+
+        report.n_batches = batch_idx
+        report.generated += len(batch)
+        # Same per-call cost accounting as before: 1 call returning
+        # ~150 output tokens per case.
+        cost += _estimate_cost_from_tokens(
+            resolved, input_tokens=2000, output_tokens=150 * len(batch),
+        )
+
+        batch_accepted = 0
+        for case in batch:
+            wf = gate_well_formed(case)
+            if not wf.passed:
+                report.dropped_malformed += 1
+                continue
+            dup = gate_duplicate(case, accepted)
+            if not dup.passed:
+                report.dropped_duplicate += 1
+                continue
+            case.metadata["generation"] = {
+                "batch": batch_idx,
+                "gates_passed": ["well_formed", "duplicate"],
+                "hardness": None,
+            }
+            accepted.append(case)
+            batch_accepted += 1
+
+        print(
+            f"[bootstrap] seed-case batch {batch_idx}/{n_batches}: "
+            f"{len(batch)} generated, {batch_accepted} accepted "
+            f"({len(accepted)} total)",
+            file=sys.stderr, flush=True,
+        )
+
+    if validate_cases and baseline_model_fn is not None:
+        report.hardness_skipped = False
+        report.hardness_skip_reason = ""
+        if accepted:
+            print(
+                f"[bootstrap] hardness gate: validating {len(accepted)} cases "
+                f"against the baseline ({n_shots} shots each — judge calls)…",
+                file=sys.stderr, flush=True,
+            )
+        kept, hardness_reports = gate_hardness(
+            accepted, baseline_model_fn,
+            n_shots=n_shots, hardness_band=hardness_band, judge=judge,
+        )
+        rate_by_id = {id(r.case): r.failure_rate for r in hardness_reports}
+        for case in kept:
+            gen = case.metadata.get("generation")
+            if isinstance(gen, dict):
+                gen["hardness"] = rate_by_id.get(id(case))
+                gen["gates_passed"].append("hardness")
+        report.dropped_hardness = len(accepted) - len(kept)
+        accepted = kept
+    elif validate_cases:
+        report.hardness_skip_reason = (
+            "validate_cases=True but no baseline model provided "
+            "(pass baseline_model_fn / --baseline-model)"
+        )
+
+    report.accepted = len(accepted)
+    return accepted, round(cost, 4), report
 
 
 # ─── Orchestrator ─────────────────────────────────────────────────────────
@@ -808,6 +996,11 @@ def bootstrap(
     n_seed_cases: int = 30,
     seed: int = 1729,
     repo: Path | str | None = None,
+    validate_cases: bool = False,
+    baseline_model_fn: Any | None = None,
+    validate_n_shots: int = 3,
+    hardness_band: tuple[float, float] = (0.5, 1.0),
+    budget_usd: float = _DEFAULT_SEED_BUDGET_USD,
 ) -> BootstrapResult:
     """End-to-end bootstrap pipeline.
 
@@ -823,6 +1016,19 @@ def bootstrap(
     — honestly "authored against this repo state", NEVER a fabricated
     case→site binding (seed cases are generated from the product description
     and know nothing about call sites).
+
+    Scaled + gated case generation: ``n_seed_cases`` may go up to 500 —
+    generation runs in batches with cross-batch dedupe + well-formedness
+    gates, and the run is accounted for in ``result.generation_report``
+    plus a "Case generation" section in DISCOVERY_REPORT.md. The hardness
+    gate (``validate_cases=True`` + a ``baseline_model_fn`` callable
+    ``str -> str``; tune with ``validate_n_shots`` / ``hardness_band``)
+    additionally filters cases through
+    ``multivon_eval.auto.validate_adversarial_cases`` — it costs judge
+    calls, so it is opt-in and the report says honestly when it was
+    skipped. ``budget_usd`` is a pre-spend ceiling on the seed-generation
+    cost estimate: if ``batches × per-batch cost`` exceeds it, bootstrap
+    raises ``ValueError`` before the first paid LLM call.
     """
     description = Path(description_path).read_text(encoding="utf-8")
 
@@ -830,6 +1036,14 @@ def bootstrap(
     # read-only --output fails in milliseconds, not after ~$0.12 of spend.
     out_dir = Path(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
+
+    # Budget gate, also BEFORE any paid LLM call: if the seed-generation
+    # estimate can't fit the ceiling, fail in milliseconds — not after the
+    # proposal call has already spent money.
+    if not skip_seed_cases:
+        _check_seed_generation_budget(
+            resolve_judge(judge), n_seed_cases, _SEED_BATCH_SIZE, budget_usd,
+        )
 
     def _progress(msg: str) -> None:
         print(f"[bootstrap] {msg}", file=sys.stderr, flush=True)
@@ -853,13 +1067,25 @@ def bootstrap(
     else:
         calibrated = merged
 
+    gen_report: GenerationReport | None = None
     if skip_seed_cases:
         seed_cases, seed_cost = [], 0.0
     else:
         _progress(f"generating {n_seed_cases} seed cases (LLM call — typically 1-3min)…")
-        seed_cases, seed_cost = generate_seed_cases(
+        _gen = generate_seed_cases(
             description, shape, n=n_seed_cases, judge=judge,
+            budget_usd=budget_usd,
+            validate_cases=validate_cases,
+            baseline_model_fn=baseline_model_fn,
+            n_shots=validate_n_shots,
+            hardness_band=hardness_band,
         )
+        if len(_gen) == 3:
+            seed_cases, seed_cost, gen_report = _gen
+        else:
+            # Legacy 2-tuple (older wrappers / test doubles that patch
+            # generate_seed_cases): no generation report available.
+            seed_cases, seed_cost = _gen
 
     if repo is not None:
         # Stamp in-memory BEFORE emission so provenance flows through the
@@ -879,6 +1105,7 @@ def bootstrap(
         evaluators=calibrated,
         discussion=discussion,
         seed_cases=seed_cases,
+        generation_report=gen_report,
     )
 
     if repo is not None:
@@ -894,6 +1121,7 @@ def bootstrap(
         cost_usd=round(llm_cost + seed_cost, 4),
         output_dir=out_dir,
         artifacts=artifacts,
+        generation_report=gen_report,
     )
 
 
@@ -909,6 +1137,7 @@ def _emit_artifacts(
     evaluators: list[RecommendedEvaluator],
     discussion: str,
     seed_cases: list[EvalCase],
+    generation_report: GenerationReport | None = None,
 ) -> dict[str, Path]:
     """Write the four artifacts and return their paths keyed by short name.
 
@@ -934,7 +1163,8 @@ def _emit_artifacts(
         tmp["thresholds"].write_text(
             _render_thresholds_yaml(evaluators), encoding="utf-8")
         tmp["report"].write_text(
-            _render_report_md(description, shape, summary, evaluators, discussion),
+            _render_report_md(description, shape, summary, evaluators, discussion,
+                              generation_report=generation_report),
             encoding="utf-8",
         )
 
@@ -1160,12 +1390,41 @@ def _render_why_this_mix(
     return "\n\n".join(lines)
 
 
+def _render_case_generation_section(report: GenerationReport | None) -> str:
+    """The "no silent caps" contract, rendered: exactly what was generated,
+    what survived, and what was dropped at which gate. When the hardness
+    gate didn't run, the section says so — never silently.
+    """
+    if report is None:
+        return (
+            "Seed-case generation was skipped (`--skip-seed-cases`) or ran "
+            "through a legacy code path that produced no generation report."
+        )
+    lines = [
+        f"- requested: **{report.requested}** "
+        f"(in {report.n_batches} batch(es) of ≤{_SEED_BATCH_SIZE})",
+        f"- {report.summary_line()}",
+    ]
+    if report.hardness_skipped:
+        lines.append(f"- hardness gate skipped ({report.hardness_skip_reason})")
+    else:
+        lo, hi = report.hardness_band
+        lines.append(
+            f"- hardness gate ran: per-case failure rates are in "
+            f"`seed_cases.jsonl` under `metadata.generation.hardness` "
+            f"(band kept: [{lo}, {hi}])"
+        )
+    return "\n".join(lines)
+
+
 def _render_report_md(
     description: str,
     shape: ProductShape,
     summary: TraceSummary,
     evaluators: list[RecommendedEvaluator],
     discussion: str,
+    *,
+    generation_report: GenerationReport | None = None,
 ) -> str:
     pii_line = (
         "PII redacted before LLM call: "
@@ -1235,6 +1494,10 @@ measure whether your pass-rate signal improves.
 See `seed_cases.jsonl`. These are designed to STRESS-TEST the primary
 evaluators above — a model that passes your seed cases is one that handles
 the most common failure mode for `{shape}` shape.
+
+## Case generation
+
+{_render_case_generation_section(generation_report)}
 """
 
 
