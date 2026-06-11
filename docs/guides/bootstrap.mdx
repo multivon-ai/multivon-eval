@@ -29,6 +29,23 @@ Total cost: ~$0.12 per bootstrap on default settings (or **$0.00 with `--judge-p
 
 As of 0.9.4 the emitted `eval_suite.py` is genuinely runnable end-to-end — `python eval_suite.py --runs 1` executes the full suite without further edits. Two things to know before that first run: it makes real judge calls (30 cases × your LLM evaluators ≈ 120 calls, a few cents on Haiku), and its `main()` exits 1 when the pass rate is under 50% — which is **expected** against the placeholder `stub_model` (the all-fail run is the signal to wire in your real model). (0.9.4 also fixed a stale `suite.run(cases=...)` kwarg and `report.print_summary()` call that previously broke the generated file; if you hit those on a 0.9.3-and-earlier install, upgrade.)
 
+## Scaled, gated generation (0.12.0)
+
+`--n-seed-cases` now goes to 500. Generation runs in batches of ≤30 (later
+batches are steered away from already-accepted inputs), and every case passes
+gates before acceptance: well-formed (structural), duplicate (NFC-normalized
+identity or token-Jaccard ≥ 0.85, across batches), and — with
+`--validate-cases --baseline-model-file model.py` — the hardness band from
+`auto.validate_adversarial_cases` (judge-priced, so opt-in).
+
+**No silent caps.** The CLI summary and DISCOVERY_REPORT.md print the full
+accounting: `generated 500, accepted 431 — dropped 38 duplicates, 12
+malformed, 19 outside hardness band [0.5, 1.0]` — and a skipped hardness gate
+says so explicitly. Each accepted case's `metadata["generation"]` records its
+batch, the gates it passed, and its hardness score. `--budget-usd` (default
+2.00) is a pre-spend ceiling: the cost estimate is checked before the first
+LLM call.
+
 ## What the inputs look like
 
 ### `product.md` — free-form markdown, under 5000 words

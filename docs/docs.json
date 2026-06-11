@@ -81,6 +81,7 @@
             "group": "Guides",
             "pages": [
               "guides/bootstrap",
+              "guides/simulate",
               "guides/install-skills",
               "guides/intelligent-eval",
               "guides/statistical-rigor",

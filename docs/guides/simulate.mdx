@@ -1,0 +1,83 @@
+---
+title: Simulate — persona-driven multi-turn evaluation
+description: Drive adaptive conversations against your live system with synthetic personas, scored by the conversation evaluators. Simulation with provenance, budgets, and labeled uncertainty.
+---
+
+Static multi-turn test scripts assume a fixed conversation path — the moment
+your model responds differently, the script is testing a conversation that
+never happened. `multivon-eval simulate` (0.12.0) drives the conversation
+live instead: a persona LLM with a profile, a goal, and behavior traits
+generates each user turn *in response to what your system actually said*.
+
+```bash
+multivon-eval simulate \
+    --model-cmd model.py \          # exposes model_fn(prompt) -> str
+    --personas personas.jsonl \     # or: --propose-from PRODUCT.md --n-personas 5
+    --max-turns 8 \
+    --budget 1.00 \
+    --out results.jsonl
+```
+
+## What you get
+
+One result per persona: the full transcript, a stop reason
+(`goal_reached` / `max_turns` / `assistant_refused` / `budget_exceeded` /
+`driver_error`), a goal-completion verdict judged against the persona's
+`success_criteria`, and scores from the conversation evaluators
+(`ConversationRelevance`, `KnowledgeRetention`, `TurnConsistency`) over the
+transcript.
+
+## Personas
+
+A persona is four fields plus traits:
+
+```json
+{"name": "rushed_customer",
+ "profile": "A customer in a hurry who wants a refund for order #1234.",
+ "goal": "Find out how to get a refund and confirm the refund window.",
+ "success_criteria": "The assistant stated the refund window and the process.",
+ "traits": ["terse", "impatient"]}
+```
+
+Author them in JSONL, or let `--propose-from PRODUCT.md` generate a diverse
+set with one LLM call — the proposal prompt always demands at least one
+persona with an `adversarial` trait.
+
+## The honesty contract
+
+Simulation output is synthetic, and the tool never lets you forget it:
+
+- Every result and report carries **"simulated personas — measures behavior
+  under synthetic users, not real traffic."** This is test-pinned behavior,
+  not copy.
+- **Hard budget ceiling.** The spend estimate prints before the first call;
+  hitting `--budget` mid-run stops cleanly — completed transcripts are
+  returned, cut-off personas carry `stop_reason="budget_exceeded"`. No
+  partial work is ever lost to an exception.
+- **No determinism claims.** Persona proposal is seeded; conversation turns
+  are stochastic. The judge model and temperature are recorded in every
+  result's metadata so a run is at least *describable*.
+- A `driver_error` on one persona never kills the run — it is recorded and
+  the next persona proceeds.
+
+## Simulation with provenance
+
+Each conversation binds its `case_uid` through the same contextvar the
+[runtime recorder](/guides/staleness) uses. Run your simulation under
+`pytest --record-prompts` (or wrap it in `record_prompts()`) and the prompts
+your system rendered during each simulated conversation are captured and
+bound to that conversation's case — observed case→site bindings, the same
+propose-only discipline as `staleness stamp --from-recordings`.
+
+## Python API
+
+```python
+from multivon_eval import simulate, Persona, score_simulations
+
+results = simulate(model_fn, personas, max_turns=8, budget_usd=1.00)
+summary = score_simulations(results)
+```
+
+`model_fn` has the same contract as `EvalSuite.run`: one rendered-prompt
+string in (the conversation so far, rendered like
+`EvalCase.conversation_str()`), the assistant's reply out.
