@@ -116,7 +116,9 @@ suggest re-running calibration locally if the user cares about
 threshold accuracy:
 
 ```bash
-python -m multivon_eval.benchmarks.run_calibration_v2 \
+# The calibration sweep script ships in the GitHub repo, not the pip wheel:
+git clone --depth 1 https://github.com/multivon-ai/multivon-eval /tmp/mv-eval
+python /tmp/mv-eval/benchmarks/run_calibration_v2.py \
     --judges "ollama:qwen2.5:72b-instruct"
 ```
 

@@ -128,7 +128,9 @@ straight to the failing cases.
 
 After the audit completes:
 ```bash
-cat <path-from-summary>/eval-audit-<sha>.json | jq '.summary'
+# Same <dir>/eval-audit/<head_sha>.json convention as the Output Path
+# section above — e.g. benchmarks/results/eval-audit/abc1234.json
+cat <path-from-summary>/<head_sha>.json | jq '.summary'
 ```
 
 Should show: `verdict`, `cases_run`, `evaluators_assessed`, `regressions`,

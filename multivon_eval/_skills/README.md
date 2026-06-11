@@ -45,9 +45,12 @@ or you want to vendor the skills into a different directory):
 # After: pip install multivon-eval
 PKG_PATH=$(python -c "import multivon_eval, pathlib; print(pathlib.Path(multivon_eval.__file__).parent)")
 mkdir -p ~/.claude/skills
-ln -sf "$PKG_PATH/_skills/eval-bootstrap" ~/.claude/skills/eval-bootstrap
-ln -sf "$PKG_PATH/_skills/eval-audit"     ~/.claude/skills/eval-audit
-ln -sf "$PKG_PATH/_skills/eval-explain"   ~/.claude/skills/eval-explain
+# rm first: `ln -sf` against an existing symlinked DIRECTORY creates a
+# nested link inside the target instead of replacing it.
+rm -rf ~/.claude/skills/eval-bootstrap ~/.claude/skills/eval-audit ~/.claude/skills/eval-explain
+ln -s "$PKG_PATH/_skills/eval-bootstrap" ~/.claude/skills/eval-bootstrap
+ln -s "$PKG_PATH/_skills/eval-audit"     ~/.claude/skills/eval-audit
+ln -s "$PKG_PATH/_skills/eval-explain"   ~/.claude/skills/eval-explain
 ```
 
 ### Verify
