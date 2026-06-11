@@ -43,9 +43,11 @@ from .schema import PromptRecord
 
 # Bumped whenever extraction semantics change in a way that shifts what is
 # statically resolvable (v2: one-hop module-level constant resolution +
-# loose_fingerprint). A prompt_baseline.json written by an older scanner
-# triggers a "rescan recommended" warning instead of fake drift.
-SCANNER_VERSION = 3
+# loose_fingerprint; v4: NFC-normalized fingerprints + match-statement
+# capture patterns disqualify module constants). A prompt_baseline.json
+# written by an older scanner triggers a "rescan recommended" warning
+# instead of fake drift.
+SCANNER_VERSION = 4
 
 
 # ── SDK call-site detection ────────────────────────────────────────────
@@ -209,6 +211,12 @@ def _stored_names(stmt: ast.AST) -> set[str]:
             elif isinstance(child, ast.alias):
                 out.add((child.asname or child.name).split(".")[0])
             elif isinstance(child, ast.ExceptHandler) and child.name:
+                out.add(child.name)
+            elif isinstance(child, (ast.MatchAs, ast.MatchStar)) and child.name:
+                # `case PROMPT:` / `case [*PROMPT]:` — capture patterns bind
+                # via a str field, not a Name(Store) node. Missing them lets
+                # a rebound module constant read as static (false "static"
+                # poisons trust; honest dynamic is preferred).
                 out.add(child.name)
             walk(child)
 
@@ -395,25 +403,49 @@ def scan_file(file_path: str, repo_root: Optional[str] = None) -> list[PromptRec
 
     file_path may be absolute or relative to repo_root. The PromptRecord
     file_path is stored relative to repo_root (or unchanged if no root given).
+
+    Unscannable files (syntax/encoding errors, paths resolving outside
+    repo_root) yield ``[]`` here; use :func:`scan_file_with_reason` when the
+    caller needs to distinguish "no call sites" from "could not scan" —
+    silent ``[]`` turns a syntax error into a false REMOVED downstream.
+    """
+    records, _reason = scan_file_with_reason(file_path, repo_root=repo_root)
+    return records
+
+
+def scan_file_with_reason(
+    file_path: str, repo_root: Optional[str] = None
+) -> tuple[list[PromptRecord], Optional[str]]:
+    """Like :func:`scan_file` but returns ``(records, skip_reason)``.
+
+    ``skip_reason`` is None when the file was scanned; otherwise a short
+    human-readable reason ("syntax error: …", "encoding error: …",
+    "resolves outside repo root") and ``records`` is empty.
     """
     abs_path = Path(file_path).resolve()
     if repo_root is not None:
         try:
             rel_path = str(abs_path.relative_to(Path(repo_root).resolve()))
         except ValueError:
-            rel_path = str(abs_path)
+            # A symlink (or junction) escaping the repo root. Recording the
+            # machine-specific ABSOLUTE path would poison the baseline with
+            # false REMOVED+ADDED churn on every other checkout — skip it
+            # and let the caller surface the gap honestly.
+            return ([], "resolves outside repo root")
     else:
         rel_path = str(abs_path)
 
     try:
         source = abs_path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
-        return []
+    except UnicodeDecodeError as exc:
+        return ([], f"encoding error: {exc.reason}")
+    except OSError as exc:
+        return ([], f"unreadable: {exc.strerror or exc}")
 
     try:
         tree = ast.parse(source, filename=str(abs_path))
-    except SyntaxError:
-        return []
+    except SyntaxError as exc:
+        return ([], f"syntax error: line {exc.lineno}: {exc.msg}")
 
     records: list[PromptRecord] = []
     constants = _module_constants(tree)
@@ -515,7 +547,7 @@ def scan_file(file_path: str, repo_root: Optional[str] = None) -> list[PromptRec
             stack.pop()
 
     visit(tree, [])
-    return records
+    return (records, None)
 
 
 # ── Repo-level scan ────────────────────────────────────────────────────
@@ -536,11 +568,28 @@ def scan(repo_root: str, ignore_dirs: Optional[frozenset[str]] = None) -> list[P
 
     Skips DEFAULT_IGNORE_DIRS (plus any extra names passed via ignore_dirs).
     Records are stable-sorted by (file_path, line, role_position) for
-    deterministic output.
+    deterministic output. Unscannable files are silently dropped here —
+    use :func:`scan_with_skips` when the caller must surface them.
+    """
+    records, _skipped = scan_with_skips(repo_root, ignore_dirs=ignore_dirs)
+    return records
+
+
+def scan_with_skips(
+    repo_root: str, ignore_dirs: Optional[frozenset[str]] = None
+) -> tuple[list[PromptRecord], list[tuple[str, str]]]:
+    """Like :func:`scan` but also returns the unscannable files.
+
+    Returns ``(records, skipped)`` where ``skipped`` is a sorted list of
+    ``(relative_path, reason)`` for every .py file the walk found but could
+    not scan (syntax error, encoding error, symlink resolving outside the
+    repo root). Verdicts for sites in those files are unreliable — callers
+    rendering reports must say so rather than letting them read as REMOVED.
     """
     skip = (ignore_dirs or frozenset()) | DEFAULT_IGNORE_DIRS
     root = Path(repo_root).resolve()
     all_records: list[PromptRecord] = []
+    skipped: list[tuple[str, str]] = []
     for dirpath, dirnames, filenames in os.walk(root):
         # mutate dirnames in place to prune the walk
         dirnames[:] = [d for d in dirnames if d not in skip and not d.startswith(".")]
@@ -548,6 +597,13 @@ def scan(repo_root: str, ignore_dirs: Optional[frozenset[str]] = None) -> list[P
             if not name.endswith(".py"):
                 continue
             full = os.path.join(dirpath, name)
-            all_records.extend(scan_file(full, repo_root=str(root)))
+            records, reason = scan_file_with_reason(full, repo_root=str(root))
+            if reason is not None:
+                # The walk path is always under root (only the resolved
+                # target may escape), so the relative path is stable.
+                skipped.append((os.path.relpath(full, str(root)), reason))
+                continue
+            all_records.extend(records)
     all_records.sort(key=lambda r: (r.file_path, r.line, r.role_position))
-    return all_records
+    skipped.sort()
+    return all_records, skipped

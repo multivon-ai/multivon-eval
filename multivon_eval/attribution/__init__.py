@@ -39,7 +39,9 @@ from .fingerprint import (
     normalize_text, fingerprint_text,
     loose_normalize_text, loose_fingerprint_text,
 )
-from .ast_extractor import scan, scan_file, SCANNER_VERSION
+from .ast_extractor import (
+    scan, scan_file, scan_file_with_reason, scan_with_skips, SCANNER_VERSION,
+)
 from .diff import diff_records
 from .render import render_markdown
 
@@ -53,6 +55,8 @@ __all__ = [
     "loose_fingerprint_text",
     "scan",
     "scan_file",
+    "scan_file_with_reason",
+    "scan_with_skips",
     "diff_records",
     "render_markdown",
 ]

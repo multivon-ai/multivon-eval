@@ -181,7 +181,9 @@ def read_provenance(metadata: Any) -> tuple[str, Optional[dict[str, Any]]]:
     if not isinstance(prov, dict):
         return ("unreadable", None)
     sv = prov.get("schema_version")
-    if not isinstance(sv, int):
+    # bool is a subclass of int — `schema_version: true` is malformed,
+    # not "version 1".
+    if not isinstance(sv, int) or isinstance(sv, bool):
         return ("unreadable", None)
     if sv > PROVENANCE_SCHEMA_VERSION:
         return ("unreadable_newer", prov)
@@ -211,6 +213,18 @@ def stamp_metadata_inplace(
 # ── site-spec parsing + resolution ────────────────────────────────────
 
 
+def _parse_role_position(pos: str, spec: str) -> int:
+    """Parse the '#POS' suffix of a --site spec — a clean error, never a
+    bare int() traceback (the CLI maps ProvenanceError to exit 2)."""
+    try:
+        return int(pos)
+    except ValueError:
+        raise AmbiguousSiteError(
+            f"--site {spec!r}: position {pos!r} after '#' must be an integer "
+            f"(e.g. 'app.py.user#0')"
+        ) from None
+
+
 def parse_site_spec(spec: str) -> dict[str, Any]:
     """Parse 'FILE[::QUALNAME][.ROLE[#POS]]' into its parts.
 
@@ -235,12 +249,12 @@ def parse_site_spec(spec: str) -> dict[str, Any]:
             qualname = head
             role = candidate
             if pos is not None:
-                role_position = int(pos)
+                role_position = _parse_role_position(pos, spec)
         elif rest.partition("#")[0] in _ROLES:
             # bare ROLE[#POS] after '::' (module-level call)
             candidate, _, pos = rest.partition("#")
             role = candidate
-            role_position = int(pos) if pos else None
+            role_position = _parse_role_position(pos, spec) if pos else None
         else:
             qualname = rest or None
     else:
@@ -251,7 +265,7 @@ def parse_site_spec(spec: str) -> dict[str, Any]:
             file_part = head
             role = candidate
             if pos:
-                role_position = int(pos)
+                role_position = _parse_role_position(pos, spec)
 
     return {
         "file_path": file_part,
@@ -385,7 +399,23 @@ def stamp_jsonl(
     case_idx = -1
     selected = updated = unchanged = 0
 
-    for line in lines:
+    def _loads(stripped: str, line_no: int) -> Any:
+        # A broken line raises ProvenanceError (CLI → clean exit 2) with
+        # file:line of the bad input — never a bare JSONDecodeError traceback.
+        try:
+            data = json.loads(stripped)
+        except json.JSONDecodeError as exc:
+            raise ProvenanceError(
+                f"{path}:{line_no}: line is not valid JSON ({exc})"
+            ) from exc
+        if not isinstance(data, dict):
+            raise ProvenanceError(
+                f"{path}:{line_no}: expected a JSON object, "
+                f"got {type(data).__name__}"
+            )
+        return data
+
+    for line_no, line in enumerate(lines, 1):
         stripped = line.strip()
         if not stripped:
             out_lines.append(line)
@@ -395,14 +425,14 @@ def stamp_jsonl(
         data: dict[str, Any] | None = None
         sel = select_all or (indices is not None and case_idx in indices)
         if not sel and tag is not None:
-            data = json.loads(stripped)
+            data = _loads(stripped, line_no)
             sel = tag in (data.get("tags") or [])
         if not sel:
             out_lines.append(line)
             continue
         selected += 1
         if data is None:
-            data = json.loads(stripped)
+            data = _loads(stripped, line_no)
 
         metadata = data.get("metadata")
         if metadata is None:

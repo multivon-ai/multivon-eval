@@ -409,8 +409,89 @@ def test_load_traces_skips_rows_missing_input(tmp_path):
     assert rows[0]["input"] == "q1"
 
 
-def test_load_traces_raises_on_malformed_json(tmp_path):
+def test_load_traces_raises_on_malformed_interior_json(tmp_path):
+    # A malformed INTERIOR line is data corruption — stays a loud
+    # ValueError with file:line. (A malformed FINAL line is tolerated —
+    # see test_load_traces_skips_malformed_final_line.)
     path = tmp_path / "t.jsonl"
-    path.write_text('{"input": "q1"}\n{not json\n')
-    with pytest.raises(ValueError, match="malformed"):
+    path.write_text('{"input": "q1"}\n{not json\n{"input": "q2"}\n')
+    with pytest.raises(ValueError, match=r"t\.jsonl:2.*malformed"):
         discover.load_traces(path)
+
+
+def test_load_traces_skips_malformed_final_line_with_warning(tmp_path, capsys):
+    # Truncated streamed dump — the normal failure shape: tolerate the
+    # tail, loudly, instead of failing the whole bootstrap.
+    path = tmp_path / "t.jsonl"
+    path.write_text('{"input": "q1"}\n{"input": "q2"}\n{"input": "tru')
+    rows = discover.load_traces(path)
+    assert [r["input"] for r in rows] == ["q1", "q2"]
+    err = capsys.readouterr().err
+    assert "final line is malformed JSON" in err
+    assert "t.jsonl:3" in err
+
+
+def test_load_traces_caps_at_10k_with_loud_warning(tmp_path, capsys):
+    path = tmp_path / "t.jsonl"
+    with path.open("w") as f:
+        for i in range(10_050):
+            f.write(json.dumps({"input": f"q{i}"}) + "\n")
+    rows = discover.load_traces(path)
+    assert len(rows) == 10_000
+    err = capsys.readouterr().err
+    assert "truncated to first 10,000 traces" in err
+
+
+def test_cmd_bootstrap_malformed_traces_is_clean_exit_2(tmp_path, capsys):
+    # CLI boundary: a corrupt interior traces line must exit 2 with
+    # file:line, never a ValueError traceback. load_traces runs before any
+    # LLM call, so no judge mocking is needed.
+    from argparse import Namespace
+    from multivon_eval.cli import cmd_bootstrap
+
+    product = tmp_path / "product.md"
+    product.write_text("# Product\nA bot.\n")
+    traces = tmp_path / "traces.jsonl"
+    traces.write_text('{"input": "q1"}\n{not json\n{"input": "q2"}\n')
+
+    rcode = cmd_bootstrap(Namespace(
+        product=str(product), traces=str(traces),
+        output=str(tmp_path / "out"), judge_model="m",
+        judge_provider="anthropic", judge_base_url=None,
+        n_seed_cases=1, pii_policy="redact", skip_seed_cases=True,
+        skip_calibration=True, validate=False, validate_n_shots=3,
+        repo=str(tmp_path),
+    ))
+    assert rcode == 2
+    err = capsys.readouterr().err
+    assert "error:" in err
+    assert "traces.jsonl:2" in err
+
+
+def test_emit_artifacts_is_atomic_no_partials_on_interrupt(tmp_path):
+    # Ctrl-C mid-render must leave NO half-emitted eval_suite.py that looks
+    # complete — and no .tmp- droppings.
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    summary, _ = discover.summarize_traces([{"input": "q", "output": "a"}])
+    evaluators = discover.heuristic_recommendations("qa", summary)
+    kwargs = dict(
+        out_dir=out_dir, description="d", shape="qa", summary=summary,
+        evaluators=evaluators, discussion="", seed_cases=[],
+    )
+    with patch.object(discover, "_render_report_md",
+                      side_effect=KeyboardInterrupt):
+        with pytest.raises(KeyboardInterrupt):
+            discover._emit_artifacts(**kwargs)
+    # eval_suite.py was rendered before the interrupt, but must NOT have
+    # been promoted into place; the tmp dir is cleaned up.
+    assert list(out_dir.iterdir()) == []
+
+    # Happy path: all four files land, no tmp dir remains.
+    paths = discover._emit_artifacts(**kwargs)
+    assert sorted(p.name for p in out_dir.iterdir()) == [
+        "DISCOVERY_REPORT.md", "eval_suite.py", "seed_cases.jsonl",
+        "thresholds.yaml",
+    ]
+    for p in paths.values():
+        assert p.exists()

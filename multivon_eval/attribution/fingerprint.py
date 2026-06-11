@@ -9,17 +9,23 @@ phrasing, and an over-normalized fingerprint hides real changes.
 from __future__ import annotations
 
 import hashlib
+import unicodedata
 
 
 def normalize_text(text: str) -> str:
     """Stable normalization of prompt text.
 
     Rules:
+      - NFC-normalize codepoints first: composed vs decomposed Unicode
+        (e.g. "é" as U+00E9 vs "e"+U+0301) is an editor/OS artifact, not a
+        prompt change — without it the same visible prompt fingerprints
+        differently across machines (scanner v4).
       - Strip trailing whitespace from each line (matches editor "trim on save").
       - Strip surrounding whitespace from the whole string.
       - Preserve internal blank-line structure (don't collapse paragraphs).
-      - Preserve case, punctuation, codepoints exactly.
+      - Preserve case and punctuation exactly.
     """
+    text = unicodedata.normalize("NFC", text)
     lines = [line.rstrip() for line in text.splitlines()]
     return "\n".join(lines).strip()
 
@@ -38,9 +44,11 @@ def loose_normalize_text(text: str) -> str:
 
     Collapses every run of whitespace (spaces, tabs, newlines) to a single
     space and strips the ends. Two prompts that differ only in indentation /
-    line wrapping loose-normalize to the same string.
+    line wrapping loose-normalize to the same string. NFC-normalized first,
+    same as :func:`normalize_text` — the loose fingerprint must never be
+    *stricter* than the strict one.
     """
-    return " ".join(text.split())
+    return " ".join(unicodedata.normalize("NFC", text).split())
 
 
 def loose_fingerprint_text(text: str) -> str:

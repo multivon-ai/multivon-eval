@@ -2,6 +2,54 @@
 
 All notable changes to `multivon-eval`. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) as of 0.7.0.
 
+## [0.11.1] — 2026-06-11
+
+Robustness hardening from an adversarial audit that ran the staleness /
+provenance / scanner / bootstrap surface against malformed inputs, symlink
+tricks, unicode edge cases, and concurrent writers. The theme: every failure
+the audit found was a place where the tool either crashed with a raw
+traceback or — worse — reported something *false*. Both violate the same
+contract: honest UNKNOWN over confident wrong.
+
+### Fixed
+
+- **A syntax-broken file no longer reads as REMOVED.** The scanner silently
+  returned zero records for files it couldn't parse (syntax errors, non-UTF8
+  encodings), so staleness reported every baselined site in them as REMOVED —
+  and `--fail-on removed` failed CI with a misleading verdict. Unscannable
+  files now surface as a distinct UNSCANNABLE tier ("file exists but could
+  not be parsed — verdict unknown, NOT removed"), a warning line names each
+  file with its reason in all three renderers, JSON gains `skipped_files`,
+  and `--fail-on removed` no longer trips. Skipped files are a report-time
+  concept — never written into baselines.
+- **Symlinks resolving outside the repo root are skipped, not recorded** —
+  previously they wrote machine-specific absolute paths into the baseline,
+  producing false REMOVED+ADDED churn on every other checkout.
+- **Fingerprints are NFC-normalized** (`SCANNER_VERSION` 3 → 4) — composed
+  vs decomposed unicode ("é" as one codepoint vs e+combining-accent) is an
+  editor/OS artifact, not a prompt change; it previously fingerprinted as
+  drift. Old baselines print the standing "rescan recommended" warning.
+- **`match`-statement capture patterns disqualify module constants** —
+  `case PROMPT:` rebinds via a str field the scanner didn't see, letting a
+  rebound constant read as static (a false "static" poisons every verdict).
+- **Clean errors instead of tracebacks**: `staleness stamp` on malformed
+  JSONL (file:line in the message), `staleness baseline` on a nonexistent
+  path or missing `--out` dir, `bootstrap` on a malformed traces file, and
+  `--site …#xx` with a non-integer position — all exit 2 with actionable
+  messages. `multivon-eval … | head` no longer dumps a BrokenPipeError.
+- **`attribution scan /typo/path` exits 2** instead of a green "No SDK
+  prompt call sites found" — a typo'd CI path looked permanently passing.
+- **The documented 10K trace cap is now enforced** with a loud truncation
+  warning, and a malformed *final* trace line (the normal shape of an
+  interrupted streamed dump) skips with a warning while malformed interior
+  lines stay a hard error.
+- **Bootstrap artifacts are emitted atomically** (temp dir + rename) — a
+  Ctrl-C mid-emission can no longer leave a half-written `eval_suite.py`
+  that looks complete. `schema_version: true` no longer passes the int
+  check (bool ⊂ int).
+
+34 new tests across the touched surface; 1038 green.
+
 ## [0.11.0] — 2026-06-11
 
 **The answer to the 20.9% ceiling.** The determinacy gate (0.10.1) measured scanner v3 against five real repos: 20.9% of call sites are statically resolvable — the rest build prompts dynamically and are statically unbridgeable *by construction*. The runtime prompt recorder (designed in [#9](https://github.com/multivon-ai/multivon-eval/issues/9), promoted from the 0.10.0 deferred list by the gate result) is the honest path past it: during an eval run, an opt-in interceptor records the **rendered** prompt text per call site, fingerprinted with the same `fingerprint_text` the static scanner uses. A `**kwargs` unpack the scanner can only report as UNKNOWN is, at call time, real kwargs with real text.

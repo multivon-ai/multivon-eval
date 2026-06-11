@@ -24,7 +24,9 @@ call for 30 seed adversarial cases). Hard ceiling: $0.15.
 from __future__ import annotations
 
 import json
+import os
 import random
+import shutil
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -135,6 +137,10 @@ _INPUT_ALIASES = ("input", "query", "question", "prompt", "user_input", "user_me
 _OUTPUT_ALIASES = ("output", "answer", "completion", "response", "assistant_message")
 _CONTEXT_ALIASES = ("context", "retrieved_context", "documents", "passages")
 
+# Documented cap (the CLI help promises "max 10K rows") — enforced here so a
+# 2M-row dump can't silently blow up trace summarization + calibration cost.
+_TRACE_CAP = 10_000
+
 
 def load_traces(
     path: Path | str,
@@ -154,24 +160,56 @@ def load_traces(
     how many were skipped (and why). Set ``verbose=False`` to suppress
     that output (the CLI exposes a ``--quiet`` flag for this).
 
-    A malformed JSONL line or non-object row raises ``ValueError`` — those
-    are bugs in the dump, not skip-worthy. Empty lines and ``//``/``#``
-    comment lines are silently ignored.
+    A malformed INTERIOR JSONL line or non-object row raises ``ValueError``
+    — those are bugs in the dump, not skip-worthy. A malformed FINAL line is
+    skipped with a stderr warning instead: a truncated last line is the
+    normal shape of an interrupted streamed dump, not data corruption.
+    Empty lines and ``//``/``#`` comment lines are silently ignored.
+
+    At most ``10,000`` traces are loaded (the documented cap) — extra rows
+    are dropped with a loud stderr warning.
     """
     p = Path(path)
     rows: list[dict[str, Any]] = []
     renamed = {"input": 0, "output": 0, "context": 0}
     skipped_no_input = 0
     total_records = 0
+    truncated = False
 
-    for i, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
-        line = line.strip()
-        if not line or line.startswith("//") or line.startswith("#"):
-            continue
+    numbered = [
+        (i, line.strip())
+        for i, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1)
+    ]
+    meaningful = [
+        (i, line) for i, line in numbered
+        if line and not line.startswith("//") and not line.startswith("#")
+    ]
+    last_line_no = meaningful[-1][0] if meaningful else -1
+
+    for i, line in meaningful:
+        if len(rows) >= _TRACE_CAP:
+            truncated = True
+            print(
+                f"[load_traces] WARNING: {p.name} has more than {_TRACE_CAP} "
+                f"traces — truncated to first {_TRACE_CAP:,} traces "
+                f"(documented cap; remaining rows ignored)",
+                file=sys.stderr,
+            )
+            break
         total_records += 1
         try:
             obj = json.loads(line)
         except json.JSONDecodeError as e:
+            if i == last_line_no:
+                # Truncated tail of a streamed dump — tolerate, loudly.
+                print(
+                    f"[load_traces] WARNING: {p}:{i}: final line is malformed "
+                    f"JSON ({e}) — skipped (looks like a truncated streamed "
+                    f"dump). Malformed interior lines still raise.",
+                    file=sys.stderr,
+                )
+                total_records -= 1
+                break
             raise ValueError(f"{p}:{i}: malformed JSONL ({e})") from e
         if not isinstance(obj, dict):
             raise ValueError(f"{p}:{i}: expected JSON object, got {type(obj).__name__}")
@@ -197,8 +235,9 @@ def load_traces(
         rows.append(obj)
 
     if verbose:
-        import sys
         parts = [f"loaded {len(rows)}/{total_records} traces from {p.name}"]
+        if truncated:
+            parts.append(f"truncated at the {_TRACE_CAP:,}-trace cap")
         if any(renamed.values()):
             details = ", ".join(
                 f"{n} {field}" for field, n in renamed.items() if n > 0
@@ -871,7 +910,13 @@ def _emit_artifacts(
     discussion: str,
     seed_cases: list[EvalCase],
 ) -> dict[str, Path]:
-    """Write the four artifacts and return their paths keyed by short name."""
+    """Write the four artifacts and return their paths keyed by short name.
+
+    Atomic-ish: everything is rendered into ``out_dir/.tmp-<pid>/`` first,
+    then each file is ``os.replace``d into place at the very end. A Ctrl-C
+    mid-render leaves the final paths untouched — never a half-emitted
+    ``eval_suite.py`` that looks complete.
+    """
     paths = {
         "eval_suite": out_dir / "eval_suite.py",
         "seed_cases": out_dir / "seed_cases.jsonl",
@@ -879,20 +924,34 @@ def _emit_artifacts(
         "report": out_dir / "DISCOVERY_REPORT.md",
     }
 
-    paths["eval_suite"].write_text(_render_eval_suite_py(shape, evaluators), encoding="utf-8")
-    paths["thresholds"].write_text(_render_thresholds_yaml(evaluators), encoding="utf-8")
-    paths["report"].write_text(
-        _render_report_md(description, shape, summary, evaluators, discussion),
-        encoding="utf-8",
-    )
+    tmp_dir = out_dir / f".tmp-{os.getpid()}"
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        tmp = {key: tmp_dir / final.name for key, final in paths.items()}
 
-    if seed_cases:
-        with paths["seed_cases"].open("w", encoding="utf-8") as f:
-            for case in seed_cases:
-                f.write(json.dumps(_case_to_jsonl(case), default=str))
-                f.write("\n")
-    else:
-        paths["seed_cases"].write_text("", encoding="utf-8")
+        tmp["eval_suite"].write_text(
+            _render_eval_suite_py(shape, evaluators), encoding="utf-8")
+        tmp["thresholds"].write_text(
+            _render_thresholds_yaml(evaluators), encoding="utf-8")
+        tmp["report"].write_text(
+            _render_report_md(description, shape, summary, evaluators, discussion),
+            encoding="utf-8",
+        )
+
+        if seed_cases:
+            with tmp["seed_cases"].open("w", encoding="utf-8") as f:
+                for case in seed_cases:
+                    f.write(json.dumps(_case_to_jsonl(case), default=str))
+                    f.write("\n")
+        else:
+            tmp["seed_cases"].write_text("", encoding="utf-8")
+
+        # Everything rendered — move into place (same filesystem, atomic
+        # per file).
+        for key, final in paths.items():
+            os.replace(tmp[key], final)
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
 
     return paths
 

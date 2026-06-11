@@ -18,6 +18,8 @@ from multivon_eval.attribution import (
     render_markdown,
     scan,
     scan_file,
+    scan_file_with_reason,
+    scan_with_skips,
 )
 
 
@@ -38,6 +40,18 @@ class TestNormalizeText:
     def test_preserves_case(self):
         # Case is sometimes load-bearing in prompts ("DO NOT" vs "do not").
         assert normalize_text("DO NOT") != normalize_text("do not")
+
+    def test_nfc_normalizes_composed_vs_decomposed_unicode(self):
+        # "é" as U+00E9 vs "e"+U+0301 is an editor/OS artifact, not a
+        # prompt change (audit W4, scanner v4).
+        composed = "caf\u00e9 voice"
+        decomposed = "cafe\u0301 voice"
+        assert normalize_text(composed) == normalize_text(decomposed)
+        assert fingerprint_text(composed) == fingerprint_text(decomposed)
+        assert loose_fingerprint_text(composed) == loose_fingerprint_text(decomposed)
+
+    def test_nfc_does_not_equate_actually_different_codepoints(self):
+        assert fingerprint_text("caf\u00e9") != fingerprint_text("cafe")
 
 
 class TestFingerprintText:
@@ -387,11 +401,13 @@ class TestLooseFingerprint:
             != loose_fingerprint_text("do refund")
 
 
-def test_scanner_version_is_3():
+def test_scanner_version_is_4():
     # v3: aliased-litellm-import detection + honest dynamic records for
     # **kwargs-unpack calls and messages=<variable> (2026-06-11 determinacy
     # gate — 4 of 5 real repos previously reported zero call sites).
-    assert SCANNER_VERSION == 3
+    # v4: NFC-normalized fingerprints + match-statement capture patterns
+    # disqualify module constants (robustness audit W4/W2).
+    assert SCANNER_VERSION == 4
 
 
 class TestScannerV3RealWorldShapes:
@@ -661,3 +677,145 @@ class TestRenderMarkdown:
     def test_dynamic_unscanned_count_surfaces(self):
         out = render_markdown([], dynamic_unscanned_count=3)
         assert "3 prompt source" in out
+
+
+# ── match-statement capture patterns (audit W2, scanner v4) ────────────
+
+
+class TestMatchCapturePatterns:
+    """`case PROMPT:` / `case [*PROMPT]:` bind via a str field (MatchAs /
+    MatchStar), not Name(Store) — missing them reads a rebound constant as
+    static. False static poisons trust; honest dynamic is required."""
+
+    def test_module_level_match_capture_disqualifies_constant(self, tmp_path):
+        f = _write(tmp_path, "x.py", '''
+            import anthropic
+            PROMPT = "constant text"
+            match anthropic.__name__:
+                case PROMPT:
+                    pass
+            anthropic.Anthropic().messages.create(
+                model="m", system=PROMPT, messages=[],
+            )
+        ''')
+        recs = scan_file(str(f), repo_root=str(tmp_path))
+        assert len(recs) == 1
+        assert recs[0].is_dynamic is True
+
+    def test_function_scope_match_capture_shadows_constant(self, tmp_path):
+        f = _write(tmp_path, "x.py", '''
+            import anthropic
+            PROMPT = "constant text"
+            def handler(value):
+                match value:
+                    case PROMPT:
+                        return anthropic.Anthropic().messages.create(
+                            model="m", system=PROMPT, messages=[],
+                        )
+        ''')
+        recs = scan_file(str(f), repo_root=str(tmp_path))
+        assert len(recs) == 1
+        assert recs[0].is_dynamic is True
+
+    def test_match_star_capture_shadows_constant(self, tmp_path):
+        f = _write(tmp_path, "x.py", '''
+            import anthropic
+            PROMPT = "constant text"
+            def handler(values):
+                match values:
+                    case [*PROMPT]:
+                        return anthropic.Anthropic().messages.create(
+                            model="m", system=PROMPT, messages=[],
+                        )
+        ''')
+        recs = scan_file(str(f), repo_root=str(tmp_path))
+        assert len(recs) == 1
+        assert recs[0].is_dynamic is True
+
+    def test_wildcard_case_does_not_disqualify(self, tmp_path):
+        # `case _:` binds nothing — the constant stays static.
+        f = _write(tmp_path, "x.py", '''
+            import anthropic
+            PROMPT = "constant text"
+            def handler(value):
+                match value:
+                    case _:
+                        return anthropic.Anthropic().messages.create(
+                            model="m", system=PROMPT, messages=[],
+                        )
+        ''')
+        recs = scan_file(str(f), repo_root=str(tmp_path))
+        assert len(recs) == 1
+        assert recs[0].is_dynamic is False
+        assert recs[0].text == "constant text"
+
+
+# ── unscannable files surface, never vanish (audit W1/W3) ──────────────
+
+
+_GOOD_SRC = '''
+    import anthropic
+    anthropic.Anthropic().messages.create(
+        model="m", system="good prompt", messages=[],
+    )
+'''
+
+
+class TestScanWithSkips:
+    def test_syntax_error_file_lands_in_skipped(self, tmp_path):
+        _write(tmp_path, "good.py", _GOOD_SRC)
+        _write(tmp_path, "bad.py", "def broken(: pass")
+        records, skipped = scan_with_skips(str(tmp_path))
+        assert [r.file_path for r in records] == ["good.py"]
+        assert len(skipped) == 1
+        path, reason = skipped[0]
+        assert path == "bad.py"
+        assert "syntax error" in reason
+
+    def test_encoding_error_file_lands_in_skipped(self, tmp_path):
+        _write(tmp_path, "good.py", _GOOD_SRC)
+        (tmp_path / "binary.py").write_bytes(b"\xff\xfe\x00bad")
+        records, skipped = scan_with_skips(str(tmp_path))
+        assert [r.file_path for r in records] == ["good.py"]
+        assert [(p, r.split(":")[0]) for p, r in skipped] == \
+            [("binary.py", "encoding error")]
+
+    def test_scan_file_with_reason_returns_reason(self, tmp_path):
+        f = _write(tmp_path, "bad.py", "def broken(: pass")
+        records, reason = scan_file_with_reason(str(f), repo_root=str(tmp_path))
+        assert records == []
+        assert reason is not None and "syntax error" in reason
+
+    def test_symlink_outside_repo_root_is_skipped_not_absolute(self, tmp_path):
+        # A symlink escaping the repo root used to record a machine-specific
+        # ABSOLUTE path in the baseline → false REMOVED+ADDED on every other
+        # checkout. It must be skipped with a reason instead.
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        target = _write(outside, "real.py", _GOOD_SRC)
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        _write(repo, "app.py", _GOOD_SRC)
+        (repo / "linked.py").symlink_to(target)
+
+        records, skipped = scan_with_skips(str(repo))
+        assert [r.file_path for r in records] == ["app.py"]
+        assert not any(Path(r.file_path).is_absolute() for r in records)
+        assert skipped == [("linked.py", "resolves outside repo root")]
+
+
+class TestAttributionScanCLI:
+    def test_scan_nonexistent_path_is_clean_exit_2(self, tmp_path, capsys):
+        # os.walk on a typo'd path yields nothing — exit 0 with "no call
+        # sites found" would be a lie. Must be exit 2 with a clear error.
+        from argparse import Namespace
+        from multivon_eval.cli import cmd_attribution
+
+        rcode = cmd_attribution(Namespace(
+            attribution_cmd="scan",
+            path=str(tmp_path / "no-such-dir"),
+            format="text",
+        ))
+        assert rcode == 2
+        err = capsys.readouterr().err
+        assert "does not exist" in err

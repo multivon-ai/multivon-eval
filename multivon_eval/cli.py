@@ -370,6 +370,12 @@ def cmd_attribution(args) -> int:
     from . import attribution as attr
 
     if args.attribution_cmd == "scan":
+        # A typo'd path must not exit 0 with "no call sites found" —
+        # os.walk on a nonexistent root yields nothing, silently.
+        if not os.path.isdir(args.path):
+            print(f"error: scan path does not exist or is not a directory: "
+                  f"{args.path}", file=sys.stderr)
+            return 2
         records = attr.scan(args.path)
         if args.format == "json":
             import json
@@ -454,6 +460,17 @@ def cmd_staleness(args) -> int:
     from . import staleness as st
 
     if args.staleness_cmd == "baseline":
+        # Validate paths up front: a missing repo root or --out directory
+        # would otherwise surface as a FileNotFoundError traceback from
+        # the scan / mkstemp deep inside atomic_write_text.
+        if not Path(args.path).is_dir():
+            print(f"error: repo path does not exist or is not a directory: "
+                  f"{args.path}", file=sys.stderr)
+            return 2
+        if args.out and not Path(args.out).resolve().parent.is_dir():
+            print(f"error: --out directory does not exist: "
+                  f"{Path(args.out).resolve().parent}", file=sys.stderr)
+            return 2
         out_path = args.out or str(Path(args.path) / st.DEFAULT_BASELINE_NAME)
         merge_rec = getattr(args, "merge_recordings", None)
         if merge_rec is not None:
@@ -596,6 +613,12 @@ def cmd_staleness(args) -> int:
         return 0
 
     # report (default subcommand)
+    # A nonexistent path technically exits 2 anyway (no baseline there),
+    # but with a misleading "no baseline found" message — say what's wrong.
+    if not Path(args.path).is_dir():
+        print(f"error: repo path does not exist or is not a directory: "
+              f"{args.path}", file=sys.stderr)
+        return 2
     fail_on = tuple(
         p.strip() for p in (args.fail_on or "").split(",") if p.strip()
     )
@@ -992,6 +1015,21 @@ def main():
 
     args = parser.parse_args(_normalize_staleness_argv(sys.argv[1:]))
 
+    try:
+        _dispatch(args, parser)
+    except BrokenPipeError:
+        # Downstream closed the pipe (`multivon-eval ... | head`) — exit 0
+        # quietly. Point stdout at devnull first so the interpreter's
+        # shutdown flush doesn't raise a second BrokenPipeError.
+        try:
+            devnull = os.open(os.devnull, os.O_WRONLY)
+            os.dup2(devnull, sys.stdout.fileno())
+        except OSError:
+            pass
+        sys.exit(0)
+
+
+def _dispatch(args, parser) -> None:
     if args.command == "init":
         sys.exit(cmd_init(args) or 0)
     elif args.command == "run":
@@ -1067,17 +1105,23 @@ def cmd_bootstrap(args) -> int:
     print(f"  pii policy: {args.pii_policy}")
     print()
 
-    result = bootstrap(
-        description_path=product,
-        traces_path=traces,
-        output_dir=args.output,
-        judge=judge,
-        pii_policy=args.pii_policy,
-        skip_seed_cases=args.skip_seed_cases,
-        skip_calibration=args.skip_calibration,
-        n_seed_cases=args.n_seed_cases,
-        repo=args.repo,
-    )
+    try:
+        result = bootstrap(
+            description_path=product,
+            traces_path=traces,
+            output_dir=args.output,
+            judge=judge,
+            pii_policy=args.pii_policy,
+            skip_seed_cases=args.skip_seed_cases,
+            skip_calibration=args.skip_calibration,
+            n_seed_cases=args.n_seed_cases,
+            repo=args.repo,
+        )
+    except (ValueError, OSError) as exc:
+        # Malformed traces JSONL (load_traces reports file:line), unreadable
+        # inputs, unwritable output dir — clean exit 2, never a traceback.
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
 
     print(f"  ✓ inferred shape: {result.shape}")
     print(f"  ✓ traces analyzed: {result.summary.count}")

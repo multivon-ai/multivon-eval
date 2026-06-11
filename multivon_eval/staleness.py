@@ -30,7 +30,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
-from .attribution import PromptRecord, SCANNER_VERSION, scan
+from .attribution import PromptRecord, SCANNER_VERSION, scan_with_skips
 from .provenance import (
     PROVENANCE_KEY,
     atomic_write_text,
@@ -67,6 +67,22 @@ _REMOVED_CAVEAT = (
     "feature removed, OR renamed+edited in one commit, OR prompt moved "
     "beyond static reach (kwarg-only anthropic/openai/litellm Python call sites)."
 )
+
+# The fourth way a site vanishes from a static scan: its file still exists
+# but could not be parsed (syntax/encoding error). Honest UNKNOWN — never
+# reported as removed, never trips --fail-on removed.
+_UNSCANNABLE_CAVEAT = (
+    "file exists but could not be parsed (syntax/encoding) — verdict "
+    "unknown, NOT removed. Fix the file and re-run."
+)
+
+
+def _skipped_files_warning(skipped: list[tuple[str, str]]) -> str:
+    n = len(skipped)
+    return (
+        f"{n} file{'s' if n != 1 else ''} unscannable (syntax/encoding) — "
+        f"verdicts for sites in those files are unreliable"
+    )
 
 _RECORD_FIELDS = (
     "file_path", "line", "sdk", "call_site", "role", "role_position",
@@ -135,10 +151,18 @@ def scan_repo(
     repo_root: str | Path,
     ignore_dirs: Any = None,
     include_tests: bool = False,
-) -> tuple[list[PromptRecord], list[str]]:
-    """Live scan with the staleness-default ignores. Returns (records, ignores)."""
+) -> tuple[list[PromptRecord], list[str], list[tuple[str, str]]]:
+    """Live scan with the staleness-default ignores.
+
+    Returns ``(records, ignores, skipped)`` — ``skipped`` is the
+    unscannable-files list ``[(relative_path, reason)]`` (syntax/encoding
+    errors, symlinks resolving outside the repo root). Skipped files are a
+    REPORT-TIME concept only: they are never written into baselines, and a
+    baselined site whose file is unscannable must read UNSCANNABLE, never
+    REMOVED."""
     extra = staleness_ignores(ignore_dirs, include_tests)
-    return scan(str(repo_root), ignore_dirs=extra), sorted(extra)
+    records, skipped = scan_with_skips(str(repo_root), ignore_dirs=extra)
+    return records, sorted(extra), skipped
 
 
 def load_baseline(path: str | Path) -> Baseline:
@@ -189,7 +213,9 @@ def write_baseline(
     baseline). Writes via temp file + os.replace; --dry-run writes nothing."""
     root = Path(repo_root)
     out_path = Path(out) if out else root / DEFAULT_BASELINE_NAME
-    records, ignores = scan_repo(root, ignore_dirs, include_tests)
+    # Skipped (unscannable) files are a report-time concept — never written
+    # into the baseline (older readers must not see unknown keys as drift).
+    records, ignores, skipped = scan_repo(root, ignore_dirs, include_tests)
     baseline = Baseline(
         schema_version=SCHEMA_VERSION,
         scanner_version=SCANNER_VERSION,
@@ -210,11 +236,15 @@ def write_baseline(
             # A static rescan never discards runtime observations — the
             # two trust tiers live in separate keys and refresh separately.
             baseline.runtime_records = list(old.runtime_records)
-            verdicts, added = match_records(old.records, records)
+            verdicts, added = match_records(
+                old.records, records,
+                unscannable_files={path for path, _ in skipped},
+            )
             for v in verdicts:
                 if v.status == "unchanged" and not v.labels:
                     continue
-                if v.status == "unknown" and "became-dynamic" not in v.labels:
+                if v.status == "unknown" and "became-dynamic" not in v.labels \
+                        and "unscannable" not in v.labels:
                     continue  # a persisting dynamic site is not a change
                 anchor = v.baseline.call_site_id if v.baseline else "?"
                 label = f" [{', '.join(v.labels)}]" if v.labels else ""
@@ -271,6 +301,8 @@ def _anchor_nofile(r: PromptRecord) -> tuple:
 def match_records(
     baseline_records: list[PromptRecord],
     live_records: list[PromptRecord],
+    *,
+    unscannable_files: Optional[set[str]] = None,
 ) -> tuple[list[SiteVerdict], list[PromptRecord]]:
     """Content-first, structure-second matching. Returns (verdicts, added).
 
@@ -285,7 +317,22 @@ def match_records(
     rename+edit in one commit is statically unbridgeable and must degrade
     to REMOVED, never a fuzzy CHANGED.
     Line numbers are tie-breakers only; git SHAs never participate.
+
+    ``unscannable_files``: relative paths the live scan found but could not
+    parse (syntax/encoding). A baseline site in one of those files would
+    otherwise degrade to a FALSE removed — it reads UNKNOWN with an
+    "unscannable" label instead (the file still exists; we just can't see
+    inside it). It never trips ``--fail-on removed``.
     """
+    unscannable_files = unscannable_files or set()
+
+    def _gone(b: PromptRecord, extra_labels: list[str]) -> SiteVerdict:
+        if b.file_path in unscannable_files:
+            return SiteVerdict(
+                "unknown", [*extra_labels, "unscannable"], "structural", b, None,
+            )
+        return SiteVerdict("removed", extra_labels, "structural", b, None)
+
     live_static = [l for l in live_records if not l.is_dynamic]
     fp_index: dict[str, list[PromptRecord]] = {}
     for l in live_static:
@@ -310,8 +357,9 @@ def match_records(
             results[i] = SiteVerdict("unknown", ["dynamic"], "structural", b, live)
         else:
             # dynamic baseline whose structural anchor disappeared degrades
-            # to REMOVED normally.
-            results[i] = SiteVerdict("removed", ["dynamic"], "structural", b, None)
+            # to REMOVED normally (UNKNOWN/unscannable when its file exists
+            # but could not be parsed).
+            results[i] = _gone(b, ["dynamic"])
 
     # STEP 1a — anchor-consistent exact-fingerprint claims.
     still: list[tuple[int, PromptRecord]] = []
@@ -386,7 +434,9 @@ def match_records(
             )
             continue
         # Tier C — gone. Mandatory three-way caveat lives in the renderers.
-        results[i] = SiteVerdict("removed", [], "structural", b, None)
+        # (Unless the file exists but is unscannable — then UNKNOWN, the
+        # fourth way a site can vanish from a static scan.)
+        results[i] = _gone(b, [])
 
     baseline_fps = {b.fingerprint for b in baseline_records if not b.is_dynamic}
     baseline_anchors = {_anchor(b) for b in baseline_records}
@@ -438,7 +488,8 @@ def _record_from_target(t: dict[str, Any]) -> PromptRecord:
 
 
 def match_target(
-    target: dict[str, Any], live_records: list[PromptRecord]
+    target: dict[str, Any], live_records: list[PromptRecord],
+    unscannable_files: Optional[set[str]] = None,
 ) -> tuple[str, list[str]]:
     """Per-target verdict — algorithm identical to site-level matching."""
     if target.get("source") == "external":
@@ -451,7 +502,10 @@ def match_target(
     if target.get("is_dynamic"):
         # a dynamic target is reported unknown forever, by rule.
         return ("unknown", ["dynamic"])
-    verdicts, _added = match_records([_record_from_target(target)], live_records)
+    verdicts, _added = match_records(
+        [_record_from_target(target)], live_records,
+        unscannable_files=unscannable_files,
+    )
     v = verdicts[0]
     return (v.status, v.labels)
 
@@ -507,6 +561,7 @@ def _cases_from_suite(spec: str) -> list[tuple[int, Any]]:
 def evaluate_cases(
     case_sources: list[tuple[str, list[tuple[int, Any]]]],
     live_records: list[PromptRecord],
+    unscannable_files: Optional[set[str]] = None,
 ) -> list[CaseVerdict]:
     out: list[CaseVerdict] = []
     for label, entries in case_sources:
@@ -546,7 +601,9 @@ def evaluate_cases(
                 continue
             statuses = []
             for t in targets:
-                t_status, _labels = match_target(t, live_records)
+                t_status, _labels = match_target(
+                    t, live_records, unscannable_files=unscannable_files,
+                )
                 statuses.append(t_status)
             out.append(CaseVerdict(
                 label, idx, prov.get("case_uid"), "bound", _rollup(statuses),
@@ -580,6 +637,10 @@ class StalenessReport:
     has_current_recordings: bool = False
     recordings_warning: Optional[str] = None
     unmerged_runtime: int = 0
+    # Files the live scan found but could not parse (syntax/encoding) or
+    # that resolve outside the repo root: [(relative_path, reason)].
+    # Report-time only — never written into baselines.
+    skipped_files: list[tuple[str, str]] = field(default_factory=list)
 
     # — determinacy: live-scan counts —
     @property
@@ -595,7 +656,8 @@ class StalenessReport:
 
     def counts(self) -> dict[str, int]:
         c = {"unchanged": 0, "moved": 0, "changed": 0, "formatting_only": 0,
-             "removed": 0, "unknown": 0, "added": len(self.added)}
+             "removed": 0, "unknown": 0, "unscannable": 0,
+             "added": len(self.added)}
         for v in self.verdicts:
             if v.status == "unchanged":
                 c["moved" if "moved" in v.labels else "unchanged"] += 1
@@ -606,7 +668,9 @@ class StalenessReport:
             elif v.status == "removed":
                 c["removed"] += 1
             elif v.status == "unknown":
-                c["unknown"] += 1
+                # unscannable = file exists but didn't parse; never counted
+                # as removed (and never trips --fail-on removed).
+                c["unscannable" if "unscannable" in v.labels else "unknown"] += 1
         return c
 
     def case_stats(self) -> dict[str, int]:
@@ -722,7 +786,7 @@ def build_staleness_report(
     rpath = Path(recordings_path) if recordings_path \
         else root / DEFAULT_RECORDINGS_NAME
 
-    live, ignores = scan_repo(root, ignore_dirs, include_tests)
+    live, ignores, skipped_files = scan_repo(root, ignore_dirs, include_tests)
 
     baseline: Optional[Baseline] = None
     no_baseline = False
@@ -747,7 +811,10 @@ def build_staleness_report(
         )
 
     if baseline is not None:
-        verdicts, added = match_records(baseline.records, live)
+        verdicts, added = match_records(
+            baseline.records, live,
+            unscannable_files={path for path, _ in skipped_files},
+        )
     else:
         verdicts, added = [], []
 
@@ -758,7 +825,9 @@ def build_staleness_report(
         sources.append((str(f), list(_iter_jsonl_cases(Path(f)))))
     if suite:
         sources.append((f"<suite {suite}>", _cases_from_suite(suite)))
-    case_verdicts = evaluate_cases(sources, live)
+    case_verdicts = evaluate_cases(
+        sources, live, unscannable_files={path for path, _ in skipped_files},
+    )
 
     # — runtime tier: recordings vs recordings, never vs the static scan —
     runtime_records = baseline.runtime_records if baseline else []
@@ -791,6 +860,7 @@ def build_staleness_report(
         has_current_recordings=current_recordings is not None,
         recordings_warning=recordings_warning,
         unmerged_runtime=unmerged,
+        skipped_files=skipped_files,
     )
     _attach_bound_cases(report)
     return report
@@ -960,6 +1030,10 @@ def render_text(report: StalenessReport) -> str:
                  report.recordings_warning):
         if warn:
             lines.append(f"warning: {warn}")
+    if report.skipped_files:
+        lines.append(f"warning: {_skipped_files_warning(report.skipped_files)}")
+        for path, reason in report.skipped_files:
+            lines.append(f"  {path}: {reason}")
     if report.scanner_mismatch and report.baseline is not None:
         lines.append(
             f"warning: baseline written by scanner "
@@ -983,7 +1057,9 @@ def render_text(report: StalenessReport) -> str:
 
     changed = [v for v in report.verdicts if v.status == "changed"]
     removed = [v for v in report.verdicts if v.status == "removed"]
-    unknown = [v for v in report.verdicts if v.status == "unknown"]
+    unscannable = [v for v in report.verdicts if "unscannable" in v.labels]
+    unknown = [v for v in report.verdicts
+               if v.status == "unknown" and "unscannable" not in v.labels]
     moved = [v for v in report.verdicts
              if v.status == "unchanged" and "moved" in v.labels]
 
@@ -1025,6 +1101,18 @@ def render_text(report: StalenessReport) -> str:
             lines.append(f"    note: {_REMOVED_CAVEAT}")
         lines.append("")
 
+    if unscannable:
+        lines.append(
+            f"UNSCANNABLE ({len(unscannable)}) — baselined site's file exists "
+            f"but did not parse; cannot verify"
+        )
+        for v in unscannable:
+            assert v.baseline is not None
+            lines.append(f"  {v.baseline.file_path}  "
+                         f"{v.baseline.sdk}.{v.baseline.role} in {v.baseline.qualname}")
+            lines.append(f"    note: {_UNSCANNABLE_CAVEAT}")
+        lines.append("")
+
     if report.added:
         lines.append(f"ADDED since baseline ({len(report.added)})")
         for rec in report.added:
@@ -1060,7 +1148,8 @@ def render_text(report: StalenessReport) -> str:
         lines.extend(observed_lines)
         lines.append("")
 
-    if not (changed or removed or report.added or unknown or moved):
+    if not (changed or removed or unscannable or report.added or unknown
+            or moved):
         lines.append("all call sites unchanged vs baseline.")
         lines.append("")
 
@@ -1115,6 +1204,7 @@ def render_json(report: StalenessReport) -> str:
             "added": c["added"],
             "moved": c["moved"],
             "unknown_dynamic": c["unknown"],
+            "unscannable": c["unscannable"],
             "cases_total": s["total"],
             "cases_bound": s["bound"],
             "cases_unstamped": s["unstamped"],
@@ -1124,6 +1214,12 @@ def render_json(report: StalenessReport) -> str:
         },
         "sites": [_verdict_dict(v) for v in report.verdicts],
         "added": [_record_to_dict(r) for r in report.added],
+        # Files the live scan could not parse — verdicts for sites in these
+        # files are unreliable (report-time only; never in the baseline).
+        "skipped_files": [
+            {"path": path, "reason": reason}
+            for path, reason in report.skipped_files
+        ],
         # OBSERVED tier — runtime-sourced, recordings-vs-recordings only.
         # Always k-of-N: a site is never "fresh" because one rendering matched.
         "observed": [
@@ -1159,6 +1255,8 @@ def render_json(report: StalenessReport) -> str:
             "no baseline found" if report.no_baseline else None,
             "scanner version mismatch — rescan recommended"
             if report.scanner_mismatch else None,
+            _skipped_files_warning(report.skipped_files)
+            if report.skipped_files else None,
         ) if w],
         "blind_spots": list(BLIND_SPOTS),
         "exit_code": report.exit_code,
@@ -1172,6 +1270,11 @@ def render_markdown(report: StalenessReport) -> str:
     lines = ["## Prompt staleness", ""]
     lines.append(f"_{_determinacy_line(report)}_")
     lines.append("")
+    if report.skipped_files:
+        lines.append(
+            f"**Warning:** {_skipped_files_warning(report.skipped_files)}"
+        )
+        lines.append("")
     if report.no_baseline:
         lines.append(
             "No baseline found — run `multivon-eval staleness baseline .` "
@@ -1191,6 +1294,8 @@ def render_markdown(report: StalenessReport) -> str:
             f"{c['removed']} removed · {c['added']} added · "
             f"{c['unknown']} unknown (dynamic) · {c['moved']} moved"
         )
+        if c["unscannable"]:
+            summary += f" · {c['unscannable']} unscannable"
         lines.append(summary)
         lines.append("")
         for v in report.verdicts:
@@ -1202,6 +1307,8 @@ def render_markdown(report: StalenessReport) -> str:
             lines.append(f"- **{v.status}** `{_site_line(rec)}`{label}")
             if v.status == "removed":
                 lines.append(f"  - note: {_REMOVED_CAVEAT}")
+            elif "unscannable" in v.labels:
+                lines.append(f"  - note: {_UNSCANNABLE_CAVEAT}")
         for rec in report.added:
             lines.append(
                 f"- **added** `{_site_line(rec)}` — no cases reference this prompt"

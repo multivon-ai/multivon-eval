@@ -22,6 +22,7 @@ from multivon_eval.provenance import (
     PROVENANCE_SCHEMA_VERSION,
     AmbiguousSiteError,
     NonConformingProvenanceError,
+    ProvenanceError,
     merge_targets,
     new_provenance,
     parse_site_spec,
@@ -326,3 +327,64 @@ class TestMergeTargets:
         t2 = {"fingerprint": "f2", "anchor": {"file_path": "b.py"}}
         merged = merge_targets([t1], [t1b, t2])
         assert merged == [t1b, t2]
+
+
+# ── CLEAN ERRORS AT THE CLI BOUNDARY (audit C1-C3) ─────────────────────
+
+
+class TestStampJsonlMalformedInput:
+    def test_malformed_line_raises_provenance_error_with_file_and_line(
+            self, repo, tmp_path):
+        cases = tmp_path / "cases.jsonl"
+        cases.write_text(
+            '{"input": "ok"}\n{not json at all\n', encoding="utf-8",
+        )
+        with pytest.raises(ProvenanceError, match=r"cases\.jsonl:2.*not valid JSON"):
+            stamp_jsonl(cases, [_system_target(repo)], select_all=True,
+                        repo=repo)
+
+    def test_malformed_line_raises_under_tag_selection_too(self, repo, tmp_path):
+        # The tag path json.loads's UNSELECTED lines as well.
+        cases = tmp_path / "cases.jsonl"
+        cases.write_text('}{broken\n', encoding="utf-8")
+        with pytest.raises(ProvenanceError, match=r"cases\.jsonl:1"):
+            stamp_jsonl(cases, [_system_target(repo)], tag="x", repo=repo)
+
+    def test_non_object_line_raises_provenance_error(self, repo, tmp_path):
+        cases = tmp_path / "cases.jsonl"
+        cases.write_text('[1, 2, 3]\n', encoding="utf-8")
+        with pytest.raises(ProvenanceError, match=r"cases\.jsonl:1.*JSON object"):
+            stamp_jsonl(cases, [_system_target(repo)], select_all=True,
+                        repo=repo)
+
+
+class TestSiteSpecPositionParsing:
+    def test_non_integer_position_is_clean_error(self):
+        # `--site app.py.user#xx` → AmbiguousSiteError (CLI exit 2),
+        # never a bare int() ValueError traceback.
+        with pytest.raises(AmbiguousSiteError, match="must be an integer"):
+            parse_site_spec("app.py.user#xx")
+
+    def test_non_integer_position_with_qualname_is_clean_error(self):
+        with pytest.raises(AmbiguousSiteError, match="must be an integer"):
+            parse_site_spec("app.py::Extractor.extract.user#xx")
+
+    def test_non_integer_position_bare_role_after_colons(self):
+        with pytest.raises(AmbiguousSiteError, match="must be an integer"):
+            parse_site_spec("app.py::user#zz")
+
+    def test_integer_positions_still_parse(self):
+        parsed = parse_site_spec("app.py.user#2")
+        assert parsed["role"] == "user"
+        assert parsed["role_position"] == 2
+
+
+class TestBoolSchemaVersionIsMalformed:
+    def test_schema_version_true_is_unreadable_not_v1(self):
+        # bool ⊂ int in Python — `schema_version: true` must not pass the
+        # integer check and read as "version 1".
+        status, prov = read_provenance(
+            {PROVENANCE_KEY: {"schema_version": True, "targets": []}}
+        )
+        assert status == "unreadable"
+        assert prov is None

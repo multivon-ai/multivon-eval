@@ -320,7 +320,7 @@ class TestFormattingOnly:
 
 class TestSelfScan:
     def test_default_ignores_keep_test_fixtures_out_of_the_corpus(self):
-        records, ignores = scan_repo(REPO_ROOT)
+        records, ignores, _skipped = scan_repo(REPO_ROOT)
         assert "tests" in ignores and "examples" in ignores
         assert not any(r.file_path.startswith("tests/") for r in records)
         assert not any(r.file_path.startswith("examples/") for r in records)
@@ -594,3 +594,147 @@ class TestRenderers:
         text = render_text(self._report(tmp_path))
         assert "lower bound, static sites only" in text
         assert "binding" in text  # zero bound cases → hint, not a 100%-uncovered wall
+
+
+# ── 11. UNSCANNABLE FILES (audit W1/W3) ────────────────────────────────
+
+
+class TestUnscannableFiles:
+    """A baselined site whose file still EXISTS but no longer parses must
+    never read REMOVED — false removed poisons trust. It reads UNKNOWN
+    with an "unscannable" label, never trips --fail-on removed, and all
+    three renderers carry the unreliability warning."""
+
+    def _broken_repo(self, tmp_path) -> Path:
+        _write(tmp_path, "app.py", _STATIC_APP)
+        write_baseline(tmp_path)
+        # File still exists, but a syntax error makes it unscannable.
+        (tmp_path / "app.py").write_text("def broken(: pass", encoding="utf-8")
+        return tmp_path
+
+    def test_unscannable_site_is_unknown_not_removed(self, tmp_path):
+        report = build_staleness_report(self._broken_repo(tmp_path))
+        c = report.counts()
+        assert c["removed"] == 0
+        assert c["unscannable"] == 2  # system + user message sites
+        for v in report.verdicts:
+            assert v.status == "unknown"
+            assert "unscannable" in v.labels
+
+    def test_unscannable_never_trips_fail_on_removed(self, tmp_path):
+        report = build_staleness_report(
+            self._broken_repo(tmp_path), fail_on=("removed",),
+        )
+        assert report.exit_code == 0
+
+    def test_text_renderer_warns_and_labels_unscannable(self, tmp_path):
+        text = render_text(build_staleness_report(self._broken_repo(tmp_path)))
+        assert "1 file unscannable (syntax/encoding)" in text
+        assert "verdicts for sites in those files are unreliable" in text
+        assert "UNSCANNABLE (2)" in text
+        assert "NOT removed" in text
+        assert "REMOVED" not in text.replace("NOT removed", "")
+
+    def test_json_renderer_carries_skipped_files(self, tmp_path):
+        payload = json.loads(
+            render_json(build_staleness_report(self._broken_repo(tmp_path)))
+        )
+        assert payload["summary"]["removed"] == 0
+        assert payload["summary"]["unscannable"] == 2
+        (entry,) = payload["skipped_files"]
+        assert entry["path"] == "app.py"
+        assert "syntax error" in entry["reason"]
+        assert any("unreliable" in w for w in payload["warnings"])
+
+    def test_markdown_renderer_warns(self, tmp_path):
+        md = render_markdown(build_staleness_report(self._broken_repo(tmp_path)))
+        assert "unscannable" in md
+        assert "unreliable" in md
+
+    def test_skipped_files_never_written_into_baseline(self, tmp_path):
+        _write(tmp_path, "app.py", _STATIC_APP)
+        _write(tmp_path, "bad.py", "def broken(: pass")
+        write_baseline(tmp_path)
+        payload = json.loads(
+            (tmp_path / DEFAULT_BASELINE_NAME).read_text(encoding="utf-8")
+        )
+        assert "skipped_files" not in payload
+        assert all("bad.py" != r["file_path"] for r in payload["records"])
+
+    def test_truly_removed_still_reads_removed(self, tmp_path):
+        # The honest-removed path stays intact: file deleted → REMOVED.
+        _write(tmp_path, "app.py", _STATIC_APP)
+        write_baseline(tmp_path)
+        (tmp_path / "app.py").unlink()
+        report = build_staleness_report(tmp_path)
+        assert report.counts()["removed"] == 2
+        assert report.counts()["unscannable"] == 0
+
+
+# ── 12. CLI PATH VALIDATION + SIGPIPE (audit C4/U1) ────────────────────
+
+
+class TestStalenessCLIPathValidation:
+    def _report_ns(self, path, **over):
+        from argparse import Namespace
+        ns = dict(
+            staleness_cmd="report", path=str(path), baseline=None, cases=None,
+            suite=None, ignore=None, include_tests=False, fail_on=None,
+            format="text", recordings=None,
+        )
+        ns.update(over)
+        return Namespace(**ns)
+
+    def test_report_nonexistent_path_is_clean_exit_2(self, tmp_path, capsys):
+        from multivon_eval.cli import cmd_staleness
+
+        rcode = cmd_staleness(self._report_ns(tmp_path / "no-such-dir"))
+        assert rcode == 2
+        assert "does not exist" in capsys.readouterr().err
+
+    def test_baseline_nonexistent_path_is_clean_exit_2(self, tmp_path, capsys):
+        from argparse import Namespace
+        from multivon_eval.cli import cmd_staleness
+
+        rcode = cmd_staleness(Namespace(
+            staleness_cmd="baseline", path=str(tmp_path / "no-such-dir"),
+            out=None, dry_run=False, merge_recordings=None,
+        ))
+        assert rcode == 2
+        assert "does not exist" in capsys.readouterr().err
+
+    def test_baseline_out_into_missing_dir_is_clean_exit_2(self, tmp_path, capsys):
+        from argparse import Namespace
+        from multivon_eval.cli import cmd_staleness
+
+        _write(tmp_path, "app.py", _STATIC_APP)
+        rcode = cmd_staleness(Namespace(
+            staleness_cmd="baseline", path=str(tmp_path),
+            out=str(tmp_path / "missing-dir" / "baseline.json"),
+            dry_run=False, merge_recordings=None,
+        ))
+        assert rcode == 2
+        assert "--out directory does not exist" in capsys.readouterr().err
+
+
+def test_cli_broken_pipe_exits_0_quietly():
+    # `multivon-eval staleness . | head` must not traceback when the pager
+    # closes the pipe. Run in a subprocess so the devnull dup2 in the
+    # handler can't disturb pytest's capture fds.
+    import subprocess
+    import sys as _sys
+
+    code = (
+        "import sys\n"
+        "from multivon_eval import cli\n"
+        "cli.cmd_discover = "
+        "lambda args: (_ for _ in ()).throw(BrokenPipeError())\n"
+        "sys.argv = ['multivon-eval', 'discover']\n"
+        "cli.main()\n"
+    )
+    proc = subprocess.run(
+        [_sys.executable, "-c", code], capture_output=True, text=True,
+        timeout=60,
+    )
+    assert proc.returncode == 0
+    assert "Traceback" not in proc.stderr
