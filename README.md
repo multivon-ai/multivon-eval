@@ -11,7 +11,7 @@
 
 **AI evaluation for teams that ship models to production.**
 
-### Why we exist — the credibility story
+### Why we exist
 
 The three popular eval frameworks (multivon-eval, DeepEval, RAGAS) **agree on a binary hallucination judgment only 56% of the time** on the same dataset and labels. Cohen's **κ = 0.03** — statistically indistinguishable from chance. If your CI gate flips on which framework you adopted, your "regression" is framework noise, not model quality. We ran this study and published the raw data in [eval-framework-benchmark](https://github.com/multivon-ai/eval-framework-benchmark).
 
