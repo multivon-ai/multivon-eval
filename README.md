@@ -21,6 +21,24 @@ The release sequence 0.9.4 → 0.9.5 → 0.9.6 → 0.9.7 is the audit trail. A p
 
 Run structured evals over your AI outputs — from simple string checks to LLM-as-judge scoring to agent trace validation — with a clean Python API, beautiful terminal reports, and CI/CD integration out of the box.
 
+**Index:**
+[Quickstart](#quickstart--30-seconds-no-api-key) ·
+[What's new 0.10–0.12](#whats-new-in-010012) ·
+[Ecosystem](#the-multivon-ecosystem) ·
+[Why multivon-eval](#why-multivon-eval) ·
+[Install](#install) ·
+[Core concepts](#core-concepts) ·
+[Compliance & privacy](#compliance--privacy) ·
+[Statistical rigor](#statistical-rigor) ·
+[Synthetic data](#synthetic-dataset-generation) ·
+[Experiments](#experiment-tracking) ·
+[CLI](#cli) ·
+[CI/CD](#cicd-integration) ·
+[Architecture](#architecture) ·
+[Examples](#examples) ·
+[Tests](#tests) ·
+[Roadmap](#roadmap)
+
 ## Quickstart — 30 seconds, no API key
 
 ```bash
