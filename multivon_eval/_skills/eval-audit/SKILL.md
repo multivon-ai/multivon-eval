@@ -25,8 +25,8 @@ allowed-tools: Bash, Read, Grep, Edit
 
 # eval-audit
 
-Eval as a pre-flight check, not a nightly batch. Runs only the cases
-that stress what the PR actually changed.
+A pre-flight eval check that runs only the cases stressing what the
+PR actually changed, rather than the full nightly batch.
 
 ## When to invoke
 
@@ -55,7 +55,7 @@ that stress what the PR actually changed.
    definition change affects cases whose `expected_tool_calls`
    reference that tool).
 3. **Targeted run** — execute only the marked cases. Don't run the
-   full suite — that's the point. Aim for <60s wall-clock on a
+   full suite. Aim for <60s wall-clock on a
    typical PR. For flaky-sensitive evaluators, re-run multiple times
    to surface real signal vs noise — the bootstrap-generated
    `eval_suite.py` accepts `python eval_suite.py --runs 3` (it

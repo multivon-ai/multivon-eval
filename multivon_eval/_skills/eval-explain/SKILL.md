@@ -22,8 +22,8 @@ allowed-tools: Read, Grep, WebFetch
 
 # eval-explain
 
-Closes the "black box recommender" DX gap. Bootstrap picks evaluators
-based on inferred shape; this skill explains why.
+Bootstrap picks evaluators based on inferred shape; this skill
+explains why.
 
 ## When to invoke
 

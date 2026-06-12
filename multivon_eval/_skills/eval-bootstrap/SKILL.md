@@ -24,8 +24,8 @@ allowed-tools: Bash, Read, Edit, Write, Glob
 # eval-bootstrap
 
 Turns a one-paragraph product description + a handful of sample traces
-into a runnable eval suite. The point: a fresh project can go from "no
-eval scaffolding" to "first eval running" in under three minutes.
+into a runnable eval suite, so a fresh project can go from no eval
+scaffolding to a first eval running in under three minutes.
 
 ## When to invoke
 

@@ -64,11 +64,11 @@ ls ~/.claude/skills/
 
 Anthropic's skill model lets CLI tools teach Claude Code how to use
 them correctly. Without a skill, Claude Code has to infer evaluator
-selection / threshold calibration / bootstrap flow from your docs — and
-hallucinates command names half the time. With a skill, the tool's own
-team writes the workflow once and every Claude Code session inherits
-it. The Quarkdown / Anthropic skill-creator / gstack ecosystems are all
-converging on this pattern.
+selection, threshold calibration, and the bootstrap flow from your
+docs, and it hallucinates command names half the time. With a skill,
+the tool's own team writes the workflow once and every Claude Code
+session inherits it. The Quarkdown / Anthropic skill-creator / gstack
+ecosystems are all converging on this pattern.
 
 If you want to extend or fork these skills, the SKILL.md spec
 ([reference](https://docs.claude.com/en/docs/agents-and-tools/agent-skills))
