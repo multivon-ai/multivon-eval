@@ -6,6 +6,17 @@ All notable changes to `multivon-eval`. The format follows [Keep a Changelog](ht
 
 (reserved for in-flight work — empty)
 
+## [0.12.3] — 2026-06-13
+
+### Fixed
+
+- **`phone_intl` detects real-world spaced international numbers.** The
+  regex allowed only one separator after the country code, so the docs' own
+  example ("+44 7911 123456") scored "No PII detected" — caught by the
+  release-readiness re-verification pass against the published 0.12.2 wheel.
+  Now: 6-14 digits after the country code, each optionally separated;
+  arithmetic/version strings still not flagged (test-pinned both ways).
+
 ## [0.12.2] — 2026-06-13
 
 The release-readiness campaign: six persona agents installed the stack fresh

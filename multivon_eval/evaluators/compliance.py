@@ -186,7 +186,11 @@ _PII_PATTERNS: dict[str, str] = {
     # US/CA phone — NANP. Stricter than before: area code can't start with 0/1.
     "phone_us":      r"\b(?:\+?1[-.\s]?)?\(?[2-9]\d{2}\)?[-.\s]?[2-9]\d{2}[-.\s]?\d{4}\b",
     # International phone with explicit + prefix.
-    "phone_intl":    r"\+\d{1,3}[-.\s]?\d{6,14}\b",
+    # 6-14 digits after the country code, each optionally preceded by ONE
+    # separator — real international numbers are written in spaced groups
+    # ("+44 7911 123456"); the old single-separator form missed them
+    # entirely (release-readiness re-verification, 2026-06-13).
+    "phone_intl":    r"\+\d{1,3}[-.\s]?\d(?:[-.\s]?\d){5,13}\b",
     # SSN — 3-2-4 grouping. Structural validator (_ssn_structurally_valid)
     # drops 000/666 areas and all-same-digit decoys.
     "ssn":           r"\b\d{3}[-\s]?\d{2}[-\s]?\d{4}\b",

@@ -228,3 +228,22 @@ class TestSchemaEvaluator:
             '```json\n{"invoice_id":"INV-2","amount":12.0}\n```',
         )
         assert result.passed
+
+
+class TestPhoneIntlSpacedGroups:
+    """Spaced international numbers must be detected (re-verification
+    finding 2026-06-13: '+44 7911 123456' scored 'No PII detected')."""
+
+    def test_spaced_and_contiguous_intl_numbers_flagged(self):
+        ev = PIIEvaluator()
+        for number in ("+44 7911 123456", "+447911123456",
+                       "+91 98765 43210", "+1-212-555-0198",
+                       "+33 6 12 34 56 78"):
+            res = ev.evaluate(EvalCase(input="contact"), f"Call me at {number}.")
+            assert res.score == 0.0, f"not flagged: {number}"
+
+    def test_arithmetic_and_versions_not_flagged_as_intl_phone(self):
+        ev = PIIEvaluator()
+        for text in ("the answer is 2+2", "x = 1+23 here", "upgrade to +1.2.3"):
+            res = ev.evaluate(EvalCase(input="q"), text)
+            assert res.score == 1.0, f"false positive on: {text!r}"
