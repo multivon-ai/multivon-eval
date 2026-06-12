@@ -80,4 +80,22 @@ summary = score_simulations(results)
 
 `model_fn` has the same contract as `EvalSuite.run`: one rendered-prompt
 string in (the conversation so far, rendered like
-`EvalCase.conversation_str()`), the assistant's reply out.
+`EvalCase.conversation_str()` — `USER: ...` / `ASSISTANT: ...` lines), the
+assistant's reply out.
+
+<Warning>
+Because `model_fn` receives the **full** conversation, a keyword-routing
+test double that matches on the whole string will match its *own earlier
+replies* and derail. Route on the last user message:
+`prompt.rsplit("USER:", 1)[-1]`. (If you ship that bug anyway, the
+simulator surfaces it loudly — flat-zero conversation-relevance scores.)
+</Warning>
+
+## Adversarial personas and refusals
+
+A refusal from your model stops a normal persona's conversation
+(`stop_reason="assistant_refused"`). Personas with an `adversarial` trait
+are different by design (0.12.1): they exist to probe *past* refusals, so
+a refusal is recorded in the result metadata (`refusals_observed`) and the
+conversation continues to goal or `max_turns`. One polite "I can't do
+that" at turn 1 is not evidence your system resists a persistent attacker.

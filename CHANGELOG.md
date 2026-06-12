@@ -6,6 +6,33 @@ All notable changes to `multivon-eval`. The format follows [Keep a Changelog](ht
 
 (reserved for in-flight work — empty)
 
+## [0.12.1] — 2026-06-13
+
+Dogfood release: installed 0.12.0 fresh from PyPI and ran `simulate
+--propose-from` against a toy support bot with proposed personas.
+
+### Fixed
+
+- **Adversarial personas no longer stop at the first refusal.** The refusal
+  heuristic ended a "persistent, adversarial" probe at turn 1 on a *partial*
+  refusal ("I can't create discounts, **but** sign up for…") — systematically
+  undertesting exactly the scenario adversarial personas exist for. Personas
+  with an `adversarial` trait now run to goal or `max_turns`; refusals are
+  counted in result metadata (`refusals_observed`) instead of being terminal.
+  Non-adversarial personas keep the refusal stop.
+
+### Notes
+
+- The same session caught a documentation trap: `model_fn` receives the FULL
+  rendered conversation, so keyword-routing test doubles that match the whole
+  string match their own earlier replies. The simulate guide and example 06
+  now show the right idiom (`prompt.rsplit("USER:", 1)[-1]`). The failure
+  mode is loud — flat-zero conversation-relevance scores — which is itself
+  the evaluators working as designed.
+- Live-verified pre-release: persona proposal from PRODUCT.md produced 4
+  coherent personas including an auto-included adversarial probe; artifact
+  integrity held (provenance stamp, simulated flag, judge metadata).
+
 ## [0.12.0] — 2026-06-12
 
 Two features adapted from the synthetic-eval-data space (issues #10/#11) — with the

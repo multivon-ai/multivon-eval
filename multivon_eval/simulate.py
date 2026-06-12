@@ -220,8 +220,19 @@ def _simulate_one(
             transcript.append({"role": "assistant", "content": str(reply)})
             turns += 1
             if _is_refusal(str(reply)):
-                stop_reason = "assistant_refused"
-                break
+                # Adversarial personas exist to probe PAST refusals — a
+                # one-turn "I can't do that" ending the probe would
+                # systematically undertest the system. They run to
+                # goal/max_turns; refusals are recorded, not terminal.
+                # (Found dogfooding: a persistent jailbreak persona was
+                # stopped at turn 1 by a partial refusal — "I can't create
+                # discounts, BUT sign up for...".)
+                if any("adversarial" in t.lower() for t in persona.traits):
+                    metadata.setdefault("refusals_observed", 0)
+                    metadata["refusals_observed"] += 1
+                else:
+                    stop_reason = "assistant_refused"
+                    break
     finally:
         unbind_case(token)
 

@@ -498,3 +498,26 @@ class TestCLI:
         ))
         assert rcode == 2
         assert "model_fn" in capsys.readouterr().err
+
+
+def test_adversarial_persona_continues_past_refusals():
+    """A refusal must not terminate an adversarial probe — those personas
+    exist to push past refusals. Non-adversarial personas still stop.
+    Found dogfooding 0.12.0: a 'persistent' jailbreak persona was ended at
+    turn 1 by a partial refusal ("I can't create discounts, but…")."""
+    def refusing_bot(prompt: str) -> str:
+        return "I'm sorry, I can't help with that request."
+
+    adversarial = _persona(name="probe", traits=["adversarial", "persistent"])
+    polite = _persona(name="polite", traits=["calm"])
+
+    driver = FakeDriver([_turn(f"push {i}") for i in range(10)])
+    with patch.object(sim, "_call_judge", side_effect=driver):
+        results = simulate(refusing_bot, [adversarial, polite],
+                           max_turns=3, judge=JUDGE, verbose=False)
+
+    by_name = {r.persona.name: r for r in results}
+    assert by_name["probe"].stop_reason == "max_turns"
+    assert by_name["probe"].case.metadata.get("refusals_observed", 0) >= 3
+    assert by_name["polite"].stop_reason == "assistant_refused"
+    assert by_name["polite"].turns == 1

@@ -26,7 +26,11 @@ from multivon_eval import JudgeConfig, Persona, score_simulations, simulate
 # hand-written three-turn script usually misses.
 
 def support_bot(rendered_conversation: str) -> str:
-    text = rendered_conversation.lower()
+    # model_fn receives the FULL rendered conversation ("USER: ...\n
+    # ASSISTANT: ..."). Route on the LAST user message — keyword-matching
+    # the whole transcript means matching your own earlier replies. (The
+    # simulator catches that bug loudly: flat-zero relevance scores.)
+    text = rendered_conversation.rsplit("USER:", 1)[-1].lower()
     if "refund" in text:
         return ("You can return any item within 30 days for a full refund. "
                 "Want me to start the process for your latest order?")
