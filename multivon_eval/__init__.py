@@ -23,7 +23,7 @@ Experiment tracking (compare runs across versions):
     exp.compare(old_run_id, run_id)
 """
 
-__version__ = "0.12.3"
+__version__ = "0.13.0"
 
 from .suite import EvalSuite
 from .case import EvalCase, AgentStep, ToolCall
@@ -37,7 +37,13 @@ from .integrations import (
     LangGraphTracer, OpenAIAgentsTracer,
 )
 from .dataset import load, load_jsonl, load_csv
-from .generate import generate_from_text, generate_from_file, generate_hallucination_pairs
+from .generate import (
+    generate_from_text, generate_from_file, generate_hallucination_pairs,
+    generate_contrast_pairs,
+)
+# Deterministic generation toolkit (0.13.0): mutators + template grids ($0)
+from .mutate import MUTATIONS, mutate_cases, cases_from_template
+from .case_gates import GenerationReport
 from .experiments import (
     Experiment, list_experiments, wilson_interval, bootstrap_interval,
     runs_needed, min_detectable_effect, cohens_h, benjamini_hochberg,
@@ -74,6 +80,7 @@ from .auto import (
 from .simulate import (
     Persona, SimulationResult, simulate,
     personas_from_jsonl, propose_personas, score_simulations,
+    results_to_cases,
 )
 # Prompt-drift staleness + case provenance (0.9.x)
 from .staleness import (
@@ -176,6 +183,9 @@ __all__ = [
     "load", "load_jsonl", "load_csv",
     # Generation
     "generate_from_text", "generate_from_file", "generate_hallucination_pairs",
+    # Generation toolkit (0.13.0): mutators, template grids, contrast pairs
+    "generate_contrast_pairs", "mutate_cases", "cases_from_template",
+    "MUTATIONS", "GenerationReport",
     # Experiments + statistics
     "Experiment", "list_experiments", "wilson_interval", "bootstrap_interval",
     "runs_needed", "min_detectable_effect", "cohens_h", "benjamini_hochberg",
@@ -244,6 +254,7 @@ __all__ = [
     # Persona simulator (simulated personas — synthetic users, not real traffic)
     "Persona", "SimulationResult", "simulate",
     "personas_from_jsonl", "propose_personas", "score_simulations",
+    "results_to_cases",
     # Intelligent-eval (auto) prototype (0.8.0)
     "auto_evaluators", "EvaluatorRecommendation", "AmbiguousCaseShape",
     "generate_adversarial_cases", "generate_unicode_obfuscation_cases",

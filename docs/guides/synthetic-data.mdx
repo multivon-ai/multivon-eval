@@ -1,11 +1,80 @@
 ---
 title: Synthetic dataset generation
-description: Generate eval cases from raw text or files — no labeled data required.
+description: Generate eval cases from text, mutations, template grids, contrast pairs, and simulation transcripts — several of them free.
 ---
 
 When you don't have a labeled eval set yet, point `multivon-eval` at your existing docs, knowledge base, or transcripts and have it produce ready-to-run cases. Useful for cold-starting an eval suite, expanding coverage, or building hallucination benchmarks.
 
-Generation uses the same LLM judge backend as the rest of the SDK, so set `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` before running.
+Since 0.13.0 the toolkit covers five ways to generate, and two of them cost
+nothing: deterministic [mutations](#mutations-free) and [template
+grids](#template-grids-free) run without an LLM. The LLM-backed generators
+use the same judge backend as the rest of the SDK, so set
+`ANTHROPIC_API_KEY` or `OPENAI_API_KEY` for those.
+
+Every generator stamps provenance (`authored_by="generator:<kind>"`, seed
+recorded), routes through the dedupe gates, and returns an accounting
+report: `generated N, accepted M — dropped k duplicates, j malformed`.
+
+## Mutations (free)
+
+CheckList-style robustness suites from cases you already have. Each mutant
+records its transformation and what you should expect: `invariant` (the
+model's answer shouldn't materially change) or `flip` (the old label no
+longer applies — the expectation is cleared, never silently kept).
+
+```python
+from multivon_eval import mutate_cases
+
+mutants, report = mutate_cases(cases, seed=7, per_case=2)
+# mutations: typo_noise, whitespace_noise, case_noise,
+#            unicode_confusable, punctuation_strip, negation_flip (flip)
+```
+
+```bash
+multivon-eval generate --mutate cases.jsonl --per-case 2 --seed 7 --out mutants.jsonl
+```
+
+Deterministic per seed. Zero LLM calls.
+
+## Template grids (free)
+
+Parametric coverage over axes you define. `sample="all"` is the full
+product (capped at 2000); `sample="pairwise"` is a greedy covering array
+that hits every value pair at least once.
+
+```python
+from multivon_eval import cases_from_template
+
+cases, report = cases_from_template(
+    "Refund question about {item} bought {when}",
+    axes={"item": ["a laptop", "shoes", "an ebook"],
+          "when": ["yesterday", "40 days ago"]},
+    sample="pairwise",
+)
+```
+
+Rows without `expected_output` are valid — judge evaluators score outputs
+without a reference answer. No label is ever invented.
+
+## Contrast pairs
+
+For each passing case, an LLM proposes a minimally-edited unfaithful twin,
+and a judge verifies the flip is real before the twin is accepted. Rejected
+twins are counted in the report, not kept. Twins share a `pair_id` with
+their source case, so downstream comparisons are genuinely paired.
+
+```python
+from multivon_eval import generate_contrast_pairs
+
+pairs, report = generate_contrast_pairs(cases, verify=True, budget_usd=1.0)
+```
+
+## Simulation transcripts as datasets
+
+`multivon-eval simulate ... --export-cases cases.jsonl` turns persona
+conversation transcripts into conversation-shaped `EvalCase`s (empty
+transcripts are skipped and counted). See the [simulate
+guide](/guides/simulate).
 
 ## From raw text
 
@@ -29,6 +98,15 @@ cases = generate_from_text(
 | `context_window` | int | `3000` | Max characters of source included per generation prompt. Long inputs are split into overlapping chunks. |
 
 Returns a `list[EvalCase]` ready to pass to `suite.add_cases()`.
+
+Two upgrades since 0.13.0: `record_spans=True` (the default) writes each
+QA case's exact source span — start/end offsets plus a chunk hash — into
+`metadata["source_span"]`, so a Faithfulness verdict traces to the
+evidence it was generated from. And `unanswerable_fraction=0.2` makes a
+fifth of the questions deliberately unanswerable from the text; their
+expected behavior is refusal (`expected_output` stays `None`), which is
+the cheapest hallucination bait there is. Spans that can't be located in
+the source are recorded as `None` and counted, not guessed.
 
 ## From a file
 

@@ -6,6 +6,23 @@ All notable changes to `multivon-eval`. The format follows [Keep a Changelog](ht
 
 (reserved for in-flight work — empty)
 
+## [0.13.0] — 2026-06-13
+
+The generation toolkit ([#13](https://github.com/multivon-ai/multivon-eval/issues/13)): five ways to generate eval data, two of them free. Every generator stamps provenance, routes through the dedupe gates, and reports its rejects.
+
+### Added
+
+- **`mutate_cases`** — deterministic, zero-LLM robustness mutations (typo/whitespace/case noise, unicode confusables, punctuation strip, conservative negation flip). Each mutant records its transformation and expectation: `invariant`, or `flip` with the old label cleared rather than silently kept. Byte-deterministic per seed.
+- **`cases_from_template`** — parametric grids over named axes; full product (capped 2000) or greedy pairwise covering array. Rows without an expected output are valid for judge evaluators; no label is invented.
+- **`generate_contrast_pairs`** — a minimally-edited unfaithful twin per case, judge-verified to actually flip before acceptance; rejected twins counted. Twins share a `pair_id` for genuinely paired comparisons.
+- **Span-grounded doc-QA** — `generate_from_text/from_file` record each case's source span (offsets + chunk hash); `unanswerable_fraction` generates refusal-bait questions whose expected behavior is refusal. Unlocatable spans recorded as None and counted.
+- **`simulate --export-cases`** / `results_to_cases` — persona transcripts become conversation EvalCases; empty transcripts skipped and counted.
+- CLI: `multivon-eval generate` gains `--mutate`, `--template/--axes/--sample`, `--contrast/--no-verify`, `--unanswerable-fraction`, `--per-case`, `--seed`.
+
+### Notes
+
+- 73 new tests. Mutation batches dedupe on exact input identity rather than the Jaccard gate (mutants are near-duplicates by construction — the gate would reject the suite it exists to create).
+
 ## [0.12.3] — 2026-06-13
 
 ### Fixed

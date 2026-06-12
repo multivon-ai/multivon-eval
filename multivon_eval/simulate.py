@@ -493,6 +493,58 @@ def score_simulations(
     }
 
 
+# ─── Transcript → dataset export ──────────────────────────────────────────
+
+
+def results_to_cases(
+    results: list[SimulationResult],
+) -> tuple[list[EvalCase], "GenerationReport"]:
+    """Convert simulation transcripts into conversation EvalCases.
+
+    Each result becomes an EvalCase with ``conversation=transcript`` and
+    ``input=persona.goal``; metadata carries the persona name/traits/
+    stop_reason/``simulated=True`` plus the provenance stamp the
+    simulator already wrote (``authored_by="simulator"`` — not restamped
+    here). The persona's ``success_criteria`` is recorded as
+    ``expected_behavior`` so the well-formed gate (and downstream judges)
+    know what success looks like.
+
+    Empty transcripts are skipped and counted (``dropped_malformed`` —
+    there is no conversation to evaluate). Accepted cases pass
+    ``gate_well_formed`` + ``gate_duplicate`` vs this batch.
+
+    Returns ``(cases, GenerationReport)``.
+    """
+    from .case_gates import GenerationReport, gate_duplicate, gate_well_formed
+
+    report = GenerationReport(requested=len(results), kind="simulate_export")
+    accepted: list[EvalCase] = []
+    for r in results:
+        report.generated += 1
+        if not r.transcript:
+            # Nothing was ever said (e.g. driver_error / budget_exceeded
+            # before turn 1) — no conversation to export. Counted, not kept.
+            report.dropped_malformed += 1
+            continue
+        metadata = dict(r.case.metadata)
+        metadata.setdefault("expected_behavior", r.persona.success_criteria)
+        case = EvalCase(
+            input=r.persona.goal,
+            conversation=[dict(m) for m in r.transcript],
+            metadata=metadata,
+            tags=list(r.case.tags),
+        )
+        if not gate_well_formed(case).passed:
+            report.dropped_malformed += 1
+            continue
+        if not gate_duplicate(case, accepted).passed:
+            report.dropped_duplicate += 1
+            continue
+        accepted.append(case)
+    report.accepted = len(accepted)
+    return accepted, report
+
+
 __all__ = [
     "SIMULATED_DISCLAIMER",
     "STOP_REASONS",
@@ -502,4 +554,5 @@ __all__ = [
     "personas_from_jsonl",
     "propose_personas",
     "score_simulations",
+    "results_to_cases",
 ]

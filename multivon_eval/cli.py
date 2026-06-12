@@ -235,36 +235,139 @@ def cmd_experiments(args):
         print("Usage: multivon-eval experiments [list|history|compare]")
 
 
+def _emit_generated_cases(cases, report, output):
+    """Shared emit path for the gated generators (mutate/template/contrast/
+    simulate-export): full-fidelity JSONL via the existing _case_to_jsonl
+    serialization (metadata — spans, pair_ids, provenance — survives)."""
+    from .discover import _case_to_jsonl
+
+    if output:
+        with open(output, "w", encoding="utf-8") as f:
+            for c in cases:
+                f.write(json.dumps(_case_to_jsonl(c), ensure_ascii=False,
+                                   default=str) + "\n")
+        print(f"  Saved {len(cases)} cases to {output}")
+    else:
+        for i, c in enumerate(cases, 1):
+            print(f"\n[{i}] input:    {c.input[:120]}")
+            if c.expected_output:
+                print(f"     expected: {str(c.expected_output)[:120]}")
+    print(f"\n  {report.summary_line()}")
+
+
 def cmd_generate(args):
     from dotenv import load_dotenv
     load_dotenv()
 
-    from .generate import generate_from_file, generate_from_text
-    import os
-
-    if args.source:
-        print(f"Generating {args.n} {args.task} cases from {args.source}...")
-        cases = generate_from_file(args.source, n=args.n, task=args.task)
-    elif args.text:
-        cases = generate_from_text(args.text, n=args.n, task=args.task)
-    else:
-        print("Provide --from <file> or --text <text>")
+    # New generation modes (issue #13). getattr keeps older Namespace
+    # callers (tests) working without the new attributes.
+    mutate_from = getattr(args, "mutate", None)
+    template = getattr(args, "template", None)
+    contrast_from = getattr(args, "contrast", None)
+    seed = getattr(args, "seed", 0)
+    modes = [name for flag, name in (
+        (mutate_from, "--mutate"), (template, "--template"),
+        (contrast_from, "--contrast"), (args.source or args.text, "--from/--text"),
+    ) if flag]
+    if len(modes) > 1:
+        print(f"Provide only one generation mode (got {', '.join(modes)})",
+              file=sys.stderr)
         sys.exit(1)
 
-    out = [
-        {
+    if mutate_from:
+        from .dataset import load_jsonl
+        from .mutate import mutate_cases
+        raw = getattr(args, "mutations", None) or ""
+        names = [m.strip() for m in raw.split(",") if m.strip()] or None
+        try:
+            cases, report = mutate_cases(
+                load_jsonl(mutate_from), mutations=names, seed=seed,
+                per_case=getattr(args, "per_case", 1),
+            )
+        except (ValueError, OSError) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            sys.exit(1)
+        _emit_generated_cases(cases, report, args.output)
+        return
+
+    if template:
+        from .mutate import cases_from_template
+        axes_raw = getattr(args, "axes", None)
+        if not axes_raw:
+            print("error: --template requires --axes '{\"axis\": [\"v1\", ...]}'",
+                  file=sys.stderr)
+            sys.exit(1)
+        try:
+            axes = json.loads(axes_raw)
+            cases, report = cases_from_template(
+                template, axes, sample=getattr(args, "sample", "all"),
+                n=args.n, seed=seed,  # only subsamples when --n was given
+                expected_output=getattr(args, "expected_output", None),
+                expected_behavior=getattr(args, "expected_behavior", None),
+            )
+        except (ValueError, json.JSONDecodeError) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            sys.exit(1)
+        _emit_generated_cases(cases, report, args.output)
+        return
+
+    if contrast_from:
+        from .dataset import load_jsonl
+        from .generate import generate_contrast_pairs
+        try:
+            sources = load_jsonl(contrast_from)
+        except (ValueError, OSError) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            sys.exit(1)
+        cases, report = generate_contrast_pairs(
+            sources, verify=not getattr(args, "no_verify", False),
+            budget_usd=getattr(args, "budget_usd", 1.0),
+        )
+        _emit_generated_cases(cases, report, args.output)
+        return
+
+    from .generate import generate_from_file, generate_from_text
+
+    unanswerable = getattr(args, "unanswerable_fraction", 0.0) or 0.0
+    n = args.n if args.n is not None else 10
+    try:
+        if args.source:
+            print(f"Generating {n} {args.task} cases from {args.source}...")
+            cases = generate_from_file(
+                args.source, n=n, task=args.task,
+                unanswerable_fraction=unanswerable,
+            )
+        elif args.text:
+            cases = generate_from_text(
+                args.text, n=n, task=args.task,
+                unanswerable_fraction=unanswerable,
+            )
+        else:
+            print("Provide --from <file>, --text <text>, --mutate FROM.jsonl, "
+                  "--template ... --axes ..., or --contrast FROM.jsonl")
+            sys.exit(1)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+    out = []
+    for c in cases:
+        row = {
             "input": c.input,
             "expected_output": c.expected_output or "",
             "context": c.context or "",
         }
-        for c in cases
-    ]
+        # Doc-QA cases now carry source_span / expected_behavior metadata —
+        # keep it (older call paths / mocks without metadata still work).
+        metadata = getattr(c, "metadata", None)
+        if metadata:
+            row["metadata"] = metadata
+        out.append(row)
 
     if args.output:
-        import json
         with open(args.output, "w") as f:
             for row in out:
-                f.write(json.dumps(row) + "\n")
+                f.write(json.dumps(row, ensure_ascii=False, default=str) + "\n")
         print(f"  Saved {len(cases)} cases to {args.output}")
     else:
         for i, c in enumerate(cases, 1):
@@ -736,14 +839,64 @@ def main():
     cmp_p.add_argument("run_a", help="First run ID (baseline)")
     cmp_p.add_argument("run_b", help="Second run ID (new)")
 
-    # generate
+    # generate — one subcommand, four modes (LLM doc-QA / mutate / template /
+    # contrast). Kept as flags rather than sub-subcommands so the existing
+    # `generate --from/--text` call shape stays untouched.
     gen_p = sub.add_parser("generate", help="Generate eval cases from text or files")
     gen_p.add_argument("--from", dest="source", help="Source file path")
     gen_p.add_argument("--text", help="Raw text to generate from")
-    gen_p.add_argument("--n", type=int, default=10, help="Number of cases to generate")
+    gen_p.add_argument("--n", type=int, default=None,
+                       help="Number of cases to generate (default: 10 for "
+                            "--from/--text; with --template, an optional "
+                            "seeded subsample of the grid)")
     gen_p.add_argument("--task", default="qa", choices=["qa", "summarization", "hallucination"],
                        help="Type of eval cases to generate")
     gen_p.add_argument("--output", "-o", help="Save to JSONL file (default: print to stdout)")
+    gen_p.add_argument("--unanswerable-fraction", type=float, default=0.0,
+                       help="(task=qa) fraction of cases deliberately NOT "
+                            "answerable from the text — expected behavior: "
+                            "refusal (default: 0.0)")
+    gen_p.add_argument("--seed", type=int, default=0,
+                       help="Determinism seed for --mutate / --template (default: 0)")
+    # mode: deterministic mutators ($0, no LLM)
+    gen_p.add_argument("--mutate", metavar="FROM.jsonl",
+                       help="Mutation mode: apply deterministic mutators "
+                            "(typo/whitespace/case noise, unicode confusables, "
+                            "punctuation strip, negation flips) to these cases")
+    gen_p.add_argument("--mutations", default=None,
+                       help="Comma-separated mutation names for --mutate "
+                            "(default: all; see multivon_eval.mutate.MUTATIONS)")
+    gen_p.add_argument("--per-case", type=int, default=1,
+                       help="Mutant attempts per (case, mutation) for --mutate "
+                            "(default: 1)")
+    # mode: template grids ($0, no LLM)
+    gen_p.add_argument("--template",
+                       help="Template-grid mode: a string with {placeholders}, "
+                            "expanded over --axes values")
+    gen_p.add_argument("--axes", default=None,
+                       help='JSON object of axis values for --template, e.g. '
+                            '\'{"item": ["laptop", "phone"], "when": ["today"]}\'')
+    gen_p.add_argument("--sample", choices=["all", "pairwise"], default="all",
+                       help="--template sampling: full product (capped at 2000) "
+                            "or greedy pairwise covering array (default: all)")
+    gen_p.add_argument("--expected-output", default=None,
+                       help="expected_output for --template cases (may use the "
+                            "same {placeholders})")
+    gen_p.add_argument("--expected-behavior", default=None,
+                       help="expected-behavior text for --template cases without "
+                            "an expected_output (the well-formed gate requires "
+                            "one or the other)")
+    # mode: contrast pairs (LLM + judge verification)
+    gen_p.add_argument("--contrast", metavar="FROM.jsonl",
+                       help="Contrast mode: for each case with context+"
+                            "expected_output, propose a judge-verified "
+                            "minimally-edited UNFAITHFUL twin (shared pair_id)")
+    gen_p.add_argument("--no-verify", action="store_true",
+                       help="--contrast: skip the Faithfulness flip check "
+                            "(cheaper; twins are marked verified=false)")
+    gen_p.add_argument("--budget-usd", type=float, default=1.0,
+                       help="--contrast: HARD judge-spend ceiling; partial "
+                            "results preserved when hit (default: 1.00)")
 
     # audit-package — one-shot compliance evidence zip
     audit_p = sub.add_parser(
@@ -892,6 +1045,10 @@ def main():
     sim_p.add_argument("--judge-provider", default="anthropic",
                        choices=["anthropic", "openai", "google", "ollama", "litellm"],
                        help="Judge provider (default: anthropic)")
+    sim_p.add_argument("--export-cases", default=None, metavar="PATH",
+                       help="Also export the transcripts as conversation "
+                            "EvalCases JSONL (empty transcripts skipped and "
+                            "counted; loadable via load_jsonl)")
 
     # install-skills — symlink bundled Claude Code skills into ~/.claude/skills/
     skills_p = sub.add_parser(
@@ -1388,6 +1545,17 @@ def cmd_simulate(args) -> int:
                 "scores": per.get("scores", {}),
                 "metadata": dict(r.case.metadata),
             }, ensure_ascii=False, default=str) + "\n")
+
+    export_path = getattr(args, "export_cases", None)
+    if export_path:
+        from .discover import _case_to_jsonl
+        from .simulate import results_to_cases
+        cases, export_report = results_to_cases(results)
+        with _Path(export_path).open("w", encoding="utf-8") as f:
+            for c in cases:
+                f.write(_json.dumps(_case_to_jsonl(c), ensure_ascii=False,
+                                    default=str) + "\n")
+        print(f"  exported cases: {export_path} — {export_report.summary_line()}")
 
     print(f"\n  simulation summary — {SIMULATED_DISCLAIMER}\n")
     for r in results:

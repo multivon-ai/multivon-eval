@@ -18,6 +18,7 @@ def load_jsonl(path: str) -> list[EvalCase]:
                 input=data["input"],
                 expected_output=data.get("expected_output"),
                 context=data.get("context"),
+                conversation=data.get("conversation"),
                 metadata=data.get("metadata", {}),
                 tags=data.get("tags", []),
             ))

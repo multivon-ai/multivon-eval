@@ -62,8 +62,16 @@ class GenerationReport:
     """Full accounting of a scaled case-generation run — no silent caps.
 
     Invariant: ``generated == accepted + dropped_malformed +
-    dropped_duplicate + dropped_hardness``. Every generated case lands in
-    exactly one bucket.
+    dropped_duplicate + dropped_hardness + dropped_unverified``. Every
+    generated case lands in exactly one bucket. (``dropped_unverified``
+    is only used by contrast-pair generation: proposed twins whose label
+    flip the judge could NOT confirm — counted, never kept.)
+
+    ``kind`` names the generator that produced the report ("mutation",
+    "template", "contrast", "doc_qa", "simulate_export", …; "" for the
+    original bootstrap seed-case pipeline). ``spans_missing`` counts
+    accepted doc-QA cases whose grounding quote could not be located in
+    the source text (their span is recorded as None, honestly).
     """
 
     requested: int
@@ -76,6 +84,9 @@ class GenerationReport:
     hardness_skip_reason: str = "no --validate-cases / baseline model"
     hardness_band: tuple[float, float] = (0.5, 1.0)
     n_batches: int = 0
+    kind: str = ""
+    dropped_unverified: int = 0
+    spans_missing: int = 0
 
     def summary_line(self) -> str:
         """One-line human summary, e.g. ``generated 500, accepted 431 —
@@ -87,6 +98,10 @@ class GenerationReport:
             f"dropped {self.dropped_duplicate} duplicates, "
             f"{self.dropped_malformed} malformed"
         )
+        if self.dropped_unverified:
+            base += f", {self.dropped_unverified} unverified (flip not confirmed)"
+        if self.spans_missing:
+            base += f" ({self.spans_missing} accepted without a locatable source span)"
         if self.hardness_skipped:
             return base
         lo, hi = self.hardness_band
