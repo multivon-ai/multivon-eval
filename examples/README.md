@@ -22,6 +22,8 @@ export OPENAI_API_KEY=sk-proj-...
 | 2 | `02_contract_pdfhell_trap.py`                   | `pdfhell.score_case`                                  | OpenAI gpt-4o (vision)    | <$0.30  |
 | 3 | `03_support_qa_multi_evaluator.py`              | `Faithfulness`, `Relevance`, `CheckEvaluator`         | Anthropic claude-haiku-4-5 | <$0.15  |
 | 4 | `04_pii_medical_records.py`                     | `PIIEvaluator`                                        | none — regex only         | $0      |
+| 5 | `05_staleness_drift.py`                         | `staleness` (baseline → stamp → CHANGED → CI gate)    | none — static analysis    | $0      |
+| 6 | `06_simulate_personas.py`                       | `simulate`, conversation evaluators, goal judge       | Anthropic claude-haiku-4-5 | <$0.05  |
 
 Each script:
 
