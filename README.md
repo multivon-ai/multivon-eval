@@ -13,13 +13,13 @@
 
 ### Why we exist
 
-The three popular eval frameworks (multivon-eval, DeepEval, RAGAS) **agree on a binary hallucination judgment only 56% of the time** on the same dataset and labels. Cohen's **κ = 0.03** — statistically indistinguishable from chance. If your CI gate flips on which framework you adopted, your "regression" is framework noise, not model quality. We ran this study and published the raw data in [eval-framework-benchmark](https://github.com/multivon-ai/eval-framework-benchmark).
+We measured the three popular eval frameworks (multivon-eval, DeepEval, RAGAS) on the same dataset with the same labels. They agree on a binary hallucination judgment 56% of the time. Cohen's **κ = 0.03**, which is statistically indistinguishable from chance. If your CI gate flips depending on which framework you happened to adopt, the "regression" is framework noise, not model quality. Raw data and code: [eval-framework-benchmark](https://github.com/multivon-ai/eval-framework-benchmark).
 
 On the cross-distribution held-out test we hold ourselves to — Hallucination evaluator calibrated on HaluEval-QA, tested without re-tuning on HaluEval-Sum (n=60) — multivon-eval scores **F1 0.830 [0.70–0.92]**. The lower bound of our CI (0.71) clears DeepEval's upper bound (0.68) on the in-distribution comparison (F1 0.804 [0.71–0.88] vs 0.586 [0.48–0.68]). The full methodology + raw counts are in [`benchmarks/README.md`](benchmarks/README.md) Benchmark 4.
 
-The release sequence 0.9.4 → 0.9.5 → 0.9.6 → 0.9.7 is the audit trail. A peer-review round caught a "held-out" claim in 0.9.4 that was actually in-distribution. 0.9.5 corrected the framing and added an actually-held-out test. 0.9.6 fixed three runtime blockers in the bootstrap template. 0.9.7 caught a threshold-vs-default mismatch that was inflating the held-out F1 from 0.830 (calibrated threshold 0.55) to 0.852 (init-time default 0.7). Four releases in eight hours. Every prior release left on PyPI as the historical record. **The framework's discipline matches what we ask users to apply to their own systems** — that *is* the pitch.
+The release sequence 0.9.4 → 0.9.5 → 0.9.6 → 0.9.7 is our own audit trail. A review round caught a "held-out" claim in 0.9.4 that was actually in-distribution; 0.9.5 corrected it and added a genuinely held-out test. 0.9.6 fixed three runtime blockers in the bootstrap template. 0.9.7 caught a threshold mismatch that had inflated the held-out F1 from 0.830 to 0.852. Four releases in a day, all of them still on PyPI. We hold the framework to the same discipline it asks of your models.
 
-Run structured evals over your AI outputs — from simple string checks to LLM-as-judge scoring to agent trace validation — with a clean Python API, beautiful terminal reports, and CI/CD integration out of the box.
+multivon-eval runs structured evals over model outputs: string checks, LLM-judge scoring, agent traces, multi-turn conversations. Python API, terminal and HTML reports, CI hooks.
 
 **Index:**
 [Quickstart](#quickstart--30-seconds-no-api-key) ·
@@ -48,7 +48,7 @@ multivon-eval init -t quickstart -d my-eval   # scaffold your own (offline)
 cd my-eval && python eval.py
 ```
 
-That's it. The `quickstart` template uses only deterministic evaluators (`NotEmpty`, `Contains`, `WordCount`) so the first eval runs without an API key.
+The `quickstart` template sticks to deterministic evaluators (`NotEmpty`, `Contains`, `WordCount`), so the first run needs no API key at all.
 
 ### Pick your path
 
@@ -67,15 +67,15 @@ LLM-judge evaluators auto-activate when `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, o
 
 ## What's new in 0.10–0.12
 
-- **Prompt-drift staleness + case provenance (0.10.0)** — `multivon-eval staleness` diffs a committed `prompt_baseline.json` against a live scan of every prompt call site in your repo and reports exactly which prompts changed since your cases were authored: **CHANGED** (with before/after fingerprints and bound cases), **REMOVED** (always with the three-way caveat), **ADDED** (new prompts with no covering cases), **UNKNOWN** (dynamic prompts — never guessed at). `staleness stamp` binds cases to the call sites they exercise; `--fail-on changed,removed` gates CI. Every report opens with a determinacy headline ("N of M call sites statically resolvable") and closes with a standing blind-spots footer — the tool never overclaims what static analysis can know.
+- **Prompt-drift staleness + case provenance (0.10.0).** Your code changes; your eval cases quietly rot. `multivon-eval staleness` diffs a committed `prompt_baseline.json` against a live scan of every prompt call site and names which prompts changed since your cases were written: `CHANGED` (before/after fingerprints, plus the cases bound to that prompt), `REMOVED`, `ADDED`, and `UNKNOWN` for dynamic prompts it refuses to guess at. `staleness stamp` binds cases to call sites. `--fail-on changed,removed` gates CI. Every report opens with a determinacy headline ("N of M call sites statically resolvable") and ends with a blind-spots footer listing what static analysis cannot see.
 
-- **Scanner v3 + the determinacy-gate result (0.10.1)** — we ran the scanner against five real repos (aider, gpt-researcher, open-interpreter, letta, pr-agent) as a gate on the staleness epic ([#4](https://github.com/multivon-ai/multivon-eval/issues/4)). Honest detection grew the denominator from 73 to 278 call sites, and static resolvability came out at **20.9% — below the 50% bar we set ourselves**. Conclusion published as-is: real-world prompt traffic is mostly dynamic construction; static analysis tracks call-site add/remove for all of it but verifies text drift only for prompts-as-constants codebases. That failure set the 0.11.0 roadmap.
+- **Scanner v3 and a failed gate (0.10.1).** Before claiming drift coverage, we measured how much real prompt traffic static analysis can actually read, across five real repos (aider, gpt-researcher, open-interpreter, letta, pr-agent). We set ourselves a 50% bar. The result was 20.9%, and it's published as-is on [#4](https://github.com/multivon-ai/multivon-eval/issues/4): most real-world prompts are built dynamically, so static analysis tracks call-site add/remove for everything but can verify text drift only where prompts live as constants. That failure decided what 0.11.0 had to be.
 
-- **Runtime prompt recorder (0.11.0, [#9](https://github.com/multivon-ai/multivon-eval/issues/9))** — the answer to the 20.9% ceiling. `pytest --record-prompts` (or the `record_prompts()` context manager) intercepts anthropic/openai/litellm calls during an eval run and records the **rendered** prompt per call site — a `**kwargs` unpack the scanner can only call UNKNOWN is, at call time, real kwargs with real text. Three labeled trust tiers, never collapsed: **static** (the scan proves the prompt text), **runtime** (recordings prove only the renderings *observed* — verdicts say "matched k of N previously observed renderings", never "fresh"), **templates/external** (deferred, unverifiable). Fingerprints only by default, recordings stay local. `staleness baseline --merge-recordings` and `staleness stamp --from-recordings --apply` consume them.
+- **Runtime prompt recorder (0.11.0, [#9](https://github.com/multivon-ai/multivon-eval/issues/9)).** The way past that 20.9% ceiling: `pytest --record-prompts` (or the `record_prompts()` context manager) intercepts anthropic/openai/litellm calls during an eval run and records the rendered prompt per call site. A `**kwargs` unpack the scanner can only call UNKNOWN is, at call time, real kwargs with real text. Recordings get their own trust tier and stay there: the static scan proves prompt text, recordings prove only the renderings actually observed (reports say "matched k of N previously observed renderings", never "fresh"), and template/external prompts remain honestly out of scope. Fingerprints only by default; nothing leaves your machine. Merge with `staleness baseline --merge-recordings`.
 
-- **Robustness hardening (0.11.1)** — an adversarial audit ran the staleness/scanner/bootstrap surface against malformed inputs, symlink tricks, and unicode edge cases; every failure found was a crash or a *false* report. Theme of the fixes: honest UNKNOWN over confident wrong. A syntax-broken file now reports as a distinct **UNSCANNABLE** tier instead of falsely REMOVED; fingerprints are NFC-normalized (`SCANNER_VERSION` 3 → 4); `match`-statement rebinding disqualifies module constants; CLI errors exit 2 with actionable messages instead of tracebacks.
+- **Robustness hardening (0.11.1).** We threw malformed inputs, symlink tricks, and unicode edge cases at the staleness/scanner/bootstrap surface. Every failure found was either a crash or, worse, a false report. So: a syntax-broken file now surfaces as `UNSCANNABLE` instead of falsely `REMOVED`, fingerprints are NFC-normalized (`SCANNER_VERSION` 3 → 4), `match`-statement rebinding disqualifies module constants from static resolution, and CLI errors exit 2 with a usable message instead of a traceback. The rule behind all of them: an honest UNKNOWN beats a confident wrong answer.
 
-- **Persona simulator + scaled gated generation (0.12.0, [#10](https://github.com/multivon-ai/multivon-eval/issues/10)/[#11](https://github.com/multivon-ai/multivon-eval/issues/11))** — `multivon-eval simulate` drives adaptive multi-turn conversations: a persona LLM (profile, goal, success criteria, traits) converses with your `model_fn`, adapting each turn; transcripts are scored by the conversation evaluators plus a goal-completion judge. Every output carries "simulated personas — measures behavior under synthetic users, not real traffic" (test-pinned), with a hard `--budget` ceiling and no determinism claims. And `bootstrap --n-seed-cases` now scales to 500 generated cases behind explicit gates (structural, duplicate, optional `--validate-cases` hardness band) with no silent caps — the report prints "generated N, accepted M — dropped k duplicates, j malformed". `--budget-usd` checks the spend estimate before any LLM call.
+- **Persona simulator + scaled case generation (0.12.0, [#10](https://github.com/multivon-ai/multivon-eval/issues/10)/[#11](https://github.com/multivon-ai/multivon-eval/issues/11)).** Static multi-turn test scripts break the moment your model answers differently. `multivon-eval simulate` drives the conversation live instead: a persona LLM with a profile, a goal, and a temper talks to your `model_fn`, adapting each turn, and the transcript gets scored by the conversation evaluators plus a goal judge. Every output is labeled "simulated personas — measures behavior under synthetic users, not real traffic", and there's a hard `--budget` ceiling. Separately, `bootstrap --n-seed-cases` now scales to 500 cases behind duplicate and hardness gates, and the report accounts for every reject: "generated 500, accepted 431 — dropped 38 duplicates, 12 malformed".
 
 <details>
 <summary><strong>What's new in 0.9.x (older)</strong></summary>
@@ -97,7 +97,7 @@ LLM-judge evaluators auto-activate when `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, o
 
 - **Bootstrap CLI expansions** —
   - `--judge-provider ollama` + `--judge-provider litellm` for fully-local bootstrap (was cloud-only before 0.9.4).
-  - `--judge-base-url` (0.9.4) for vLLM / LM Studio / custom Ollama endpoints — injects a dummy API key when paired with `--judge-provider openai` so OpenAI-shim servers Just Work.
+  - `--judge-base-url` (0.9.4) for vLLM / LM Studio / custom Ollama endpoints — injects a placeholder API key when paired with `--judge-provider openai`, so OpenAI-compatible servers work without a real key.
   - `--validate` (0.9.0) runs the N-shot judge-noise filter (`auto.validate_adversarial_cases`) on the generated seed cases — drops anything outside the (0.5, 1.0) hardness band. Adds ~$0.03 but removes 20–40% of synthetic noise.
   - `--validate-n-shots` controls the rerun count for `--validate` (default 3).
 
@@ -107,7 +107,7 @@ LLM-judge evaluators auto-activate when `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, o
 
 ### Carried forward from 0.8.x
 
-- **`multivon-eval bootstrap`** — cold-start eval generator. Describe your LLM product + hand over a JSONL of sample traces, get back a runnable `EvalSuite` + 30 adversarial seed cases + thresholds calibrated from your data + a forwardable `DISCOVERY_REPORT.md`. ~60 seconds, ~$0.12 per run. PII / secrets redacted locally before any LLM call. Best documented path is the [bootstrap guide](https://docs.multivon.ai/guides/bootstrap).
+- **`multivon-eval bootstrap`** — cold-start eval generator. Describe your LLM product + hand over a JSONL of sample traces, get back a runnable `EvalSuite`, 30 adversarial seed cases, thresholds calibrated from your data, and a forwardable `DISCOVERY_REPORT.md`. A few minutes and a few cents per run. PII / secrets redacted locally before any LLM call. Best documented path is the [bootstrap guide](https://docs.multivon.ai/guides/bootstrap).
 
   ```bash
   multivon-eval bootstrap --product PRODUCT.md --traces TRACES.jsonl --output ./eval-bootstrap/
@@ -154,7 +154,7 @@ Five public + one early-access package, all built on a shared evaluation engine:
 | To see how multivon-eval stacks up against DeepEval / RAGAS | [eval-framework-benchmark](https://github.com/multivon-ai/eval-framework-benchmark) |
 | Just to gate on a single LLM judge call without a suite | call `Faithfulness(...).evaluate(case, output)` directly — overkill to spin up an `EvalSuite` |
 
-> **Three agent-facing surfaces, one engine.** Claude Code skills run *inside Claude Code*; the MCP server runs alongside *any* MCP-compatible client (Cursor / Cline / Claude Desktop / OpenCode); the GitHub Action runs *on every PR*. All three call the same `multivon-eval` evaluators against the same calibration table — they differ only in *where* the agent lives.
+> Claude Code skills run inside Claude Code; the MCP server works with any MCP client (Cursor, Cline, Claude Desktop, OpenCode); the GitHub Action runs on every PR. All three call the same evaluators against the same calibration table. The only difference is where the agent lives.
 
 ---
 
@@ -209,7 +209,7 @@ report = suite.run(support_bot)
 
 ## Why multivon-eval
 
-Every team building AI products hits the same problem: **how do you know if your model is getting better or worse?**
+The question every team eventually hits: did this change make the model better or worse?
 
 | Feature | multivon-eval | DeepEval | RAGAS | Promptfoo |
 |---|:---:|:---:|:---:|:---:|
