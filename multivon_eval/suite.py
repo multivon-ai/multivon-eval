@@ -360,9 +360,15 @@ class EvalSuite:
         judge_retry: "JudgeRetry | None" = None,
         save_json: str | None = None,
         save_junit_xml: str | None = None,
+        save_html: str | None = None,
     ) -> EvalReport:
         """
         Run all evaluators over all cases.
+
+        The ``save_json`` / ``save_junit_xml`` / ``save_html`` kwargs write
+        the report BEFORE the ``fail_threshold`` gate raises, so a failing
+        eval still leaves its artifacts behind — calling ``report.save_*``
+        after a gated ``run()`` never executes on failure.
 
         Args:
             model_fn:        Callable str → str.
@@ -487,7 +493,7 @@ class EvalSuite:
         # so a failing eval still leaves a JSON for `multivon-eval view`
         # / `compare` — the moments users need the artifact MOST.
         import os as _os
-        if html_path := _os.environ.get("MULTIVON_HTML_OUTPUT"):
+        if html_path := (save_html or _os.environ.get("MULTIVON_HTML_OUTPUT")):
             report.save_html(html_path)
             print(f"  HTML report saved → {html_path}")
         if json_path := (save_json or _os.environ.get("MULTIVON_JSON_OUTPUT")):

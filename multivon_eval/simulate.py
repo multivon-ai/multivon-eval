@@ -416,6 +416,12 @@ def score_simulations(
     EvalSuite internals. Adds the goal_achieved verdicts and returns a
     plain summary dict. Evaluator crashes are recorded per-evaluator,
     never raised.
+
+    Honesty rule (absence of evidence ≠ evidence): a persona with an EMPTY
+    transcript (e.g. ``driver_error`` before the first exchange), or an
+    evaluator that *skipped* the case (``EvalResult.metadata["skipped"]``),
+    records the score as ``None`` with a ``"skipped: <reason>"`` marker —
+    NEVER the evaluator's pass-through 1.0, and never an invented 0.0.
     """
     if evaluators is None:
         from .evaluators.conversation import (
@@ -438,10 +444,28 @@ def score_simulations(
         reasons: dict[str, str] = {}
         for ev in evaluators:
             name = getattr(ev, "name", type(ev).__name__)
+            if not r.transcript:
+                # Nothing was ever said — there is no conversation to score.
+                # A None-with-reason beats a vacuous 1.00 or an invented 0.
+                scores[name] = None
+                reasons[name] = (
+                    f"skipped: empty transcript "
+                    f"(stop_reason={r.stop_reason}) — no conversation to score"
+                )
+                continue
             try:
                 res = ev.evaluate(r.case, output)
-                scores[name] = float(res.score)
-                reasons[name] = res.reason
+                if res.metadata.get("skipped"):
+                    # Evaluator skipped the case (shape mismatch) — its
+                    # pass-through score must not masquerade as a real 1.00.
+                    reason = res.reason
+                    if reason.startswith("[skipped] "):
+                        reason = reason[len("[skipped] "):]
+                    scores[name] = None
+                    reasons[name] = f"skipped: {reason}"
+                else:
+                    scores[name] = float(res.score)
+                    reasons[name] = res.reason
             except Exception as exc:  # evaluator crash is data, not fatal
                 scores[name] = None
                 reasons[name] = f"[evaluator error: {type(exc).__name__}: {exc}]"

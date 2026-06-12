@@ -209,7 +209,7 @@ class Experiment:
         print(f"  {'-'*90}")
         for r in runs:
             ts = r.timestamp[:19].replace("T", " ")
-            model = (r.model_id or "-")[:18]
+            model = (r.model_id or r.tags.get("model", "") or "-")[:18]
             tags = " ".join(f"{k}={v}" for k, v in r.tags.items())
             print(f"  {r.run_id:<12} {ts:<22} {model:<20} {r.pass_rate:>9.1%} {r.avg_score:>10.4f} {tags}")
         print()
@@ -232,10 +232,14 @@ def _short_id() -> str:
     return uuid.uuid4().hex[:8]
 
 
-def _delta(a: float, b: float) -> str:
+def _delta(a: float, b: float, pct: bool = False) -> str:
     diff = b - a
     if abs(diff) < 0.0001:
         return "  (no change)"
+    # Percent-formatted rows get a percent-formatted delta — "-0.2500"
+    # next to "75.0% → 50.0%" reads like a score, not a 25-point drop.
+    if pct:
+        return f"  {diff:+.1%}"
     return f"  {diff:+.4f}"
 
 
@@ -592,7 +596,7 @@ def _print_comparison(a: RunRecord, b: RunRecord) -> None:
     def _row(label: str, va: Any, vb: Any, fmt: str = "", suffix: str = "") -> None:
         if fmt == "%":
             sa, sb = f"{va:.1%}", f"{vb:.1%}"
-            delta = _delta(va, vb)
+            delta = _delta(va, vb, pct=True)
         elif fmt == "f":
             sa, sb = f"{va:.4f}", f"{vb:.4f}"
             delta = _delta(va, vb)
@@ -604,7 +608,11 @@ def _print_comparison(a: RunRecord, b: RunRecord) -> None:
 
     print(f"  {'Metric':<24} {'Before':>12}     {'After':<12}")
     print(f"  {'-'*60}")
-    _row("Model", a.model_id or "-", b.model_id or "-")
+    # model_id is often blank (model_fn-based runs) while the run carries a
+    # model tag — surface the tag rather than "-".
+    _row("Model",
+         a.model_id or a.tags.get("model") or "-",
+         b.model_id or b.tags.get("model") or "-")
     _row("Timestamp", a.timestamp[:19], b.timestamp[:19])
     _row("Pass rate", a.pass_rate, b.pass_rate, "%")
     _row("Avg score", a.avg_score, b.avg_score, "f")
@@ -694,10 +702,14 @@ def _print_comparison(a: RunRecord, b: RunRecord) -> None:
         if needed > max(denom_a, denom_b):
             print(f"  Hint: need ≥{needed} test cases to detect this {abs(delta_pass):.0%} delta at 80% power.")
 
-    # Verdict
+    # Verdict — must respect the significance test printed above (house
+    # rule: never call winners/losers on noise). A non-significant delta
+    # is NOT a verdict of IMPROVED/REGRESSION, whatever its sign.
     print(f"  Verdict: ", end="")
     if abs(delta_pass) < 0.01:
         print("No meaningful change in pass rate.")
+    elif p_value >= 0.05:
+        print(f"NO MEANINGFUL CHANGE (delta {delta_pass:+.1%}, not significant)")
     elif delta_pass > 0:
         print(f"IMPROVED — pass rate up {delta_pass:+.1%}")
     else:

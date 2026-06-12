@@ -30,7 +30,10 @@ A case fails if any PII is detected in the output. The failure reason lists each
 # All patterns (default)
 PIIEvaluator()
 
-# GDPR (EU) — adds EU VAT numbers
+# GDPR (EU) — adds EU VAT plus ~13 national-ID patterns: UK NI and NHS
+# numbers, Spain DNI/NIE, Italy codice fiscale, France NIR, Germany tax
+# ID, Netherlands BSN, Poland PESEL, Sweden personnummer, Denmark CPR,
+# Ireland PPSN, Finland HETU
 PIIEvaluator(jurisdiction="gdpr")
 
 # CCPA (California) — adds bank account numbers
@@ -71,7 +74,7 @@ PIIEvaluator(redact=True)
 | Pattern | Examples |
 |---------|---------|
 | `email` | user@company.com |
-| `phone_us` | 555-123-4567, (800) 555-0100 |
+| `phone_us` | (800) 555-0100, 212-555-0198 |
 | `phone_intl` | +44 7911 123456 |
 | `ssn` | 123-45-6789 |
 | `credit_card` | 4111 1111 1111 1111 |
@@ -160,7 +163,7 @@ reporter = ComplianceReporter(
 
 report = suite.run(model_fn)
 record_id = reporter.record(report, tags={"version": "2.1", "env": "staging"})
-# [compliance] audit record → a3f9b2c1  (hr_bot_eval.audit.ndjson)
+# [compliance] summary record → a3f9b2c1  (hr_bot_eval.audit.ndjson)
 # [compliance] framework: eu-ai-act
 ```
 

@@ -1192,7 +1192,22 @@ def cmd_bootstrap(args) -> int:
     if result.summary.pii_label_counts:
         pii_str = ", ".join(f"{k}={v}" for k, v in result.summary.pii_label_counts.items())
         print(f"  ✓ pii redacted before LLM call: {pii_str}")
-    print(f"  ✓ recommended {len(result.evaluators)} evaluators")
+    # Constructibility accounting (no silent caps): evaluators the emitted
+    # eval_suite.py can't construct (required args beyond threshold=) are
+    # excluded from the file — say so loudly here and in the report.
+    from .discover import unconstructible_evaluators
+    _excluded = unconstructible_evaluators(result.evaluators)
+    n_emitted = len(result.evaluators) - len(_excluded)
+    print(f"  ✓ recommended {len(result.evaluators)} evaluators "
+          f"({n_emitted} emitted to eval_suite.py)")
+    if _excluded:
+        names = ", ".join(
+            f"{name} (needs {', '.join(params)})"
+            for name, params in _excluded.items()
+        )
+        print(f"  ⚠ {len(_excluded)} recommended but NOT emitted — requires "
+              f"constructor args bootstrap cannot infer: {names}. "
+              f"See DISCOVERY_REPORT.md to add them manually.")
     if result.generation_report is not None:
         print(f"  ✓ seed cases: {result.generation_report.summary_line()}")
     else:
@@ -1377,8 +1392,19 @@ def cmd_simulate(args) -> int:
     print(f"\n  simulation summary — {SIMULATED_DISCLAIMER}\n")
     for r in results:
         per = summary["per_persona"].get(r.persona.name, {})
+
+        def _fmt(name, s, reasons):
+            if s is not None:
+                return f"{name}={s:.2f}"
+            # None means skipped (no evidence) or evaluator error — say
+            # which; never render a fake score for either.
+            if str(reasons.get(name, "")).startswith("skipped:"):
+                return f"{name}=skipped"
+            return f"{name}=err"
+
+        _reasons = per.get("reasons", {})
         score_str = ", ".join(
-            f"{name}={s:.2f}" if s is not None else f"{name}=err"
+            _fmt(name, s, _reasons)
             for name, s in per.get("scores", {}).items()
         ) or "(no scores)"
         print(f"    {r.persona.name:<24} turns={r.turns} "

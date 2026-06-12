@@ -799,3 +799,117 @@ def test_bootstrap_skip_seed_cases_report_says_skipped(tmp_path):
     report_md = result.artifacts["report"].read_text()
     assert "## Case generation" in report_md
     assert "skipped" in report_md
+
+
+# ─── Constructibility gate on emitted evaluators ─────────────────────────
+
+
+def test_unconstructible_evaluators_flags_known_offenders():
+    recs = [
+        discover.RecommendedEvaluator("Contains", "guardrail", 0.95, "r", "llm"),
+        discover.RecommendedEvaluator("RegexMatch", "guardrail", 1.0, "r", "llm"),
+        discover.RecommendedEvaluator("SchemaEvaluator", "primary", 1.0, "r", "llm"),
+        discover.RecommendedEvaluator("NotEmpty", "guardrail", 1.0, "r", "heuristic"),
+        discover.RecommendedEvaluator("Faithfulness", "primary", 0.7, "r", "llm"),
+    ]
+    bad = discover.unconstructible_evaluators(recs)
+    assert bad["Contains"] == ["substrings"]
+    assert bad["RegexMatch"] == ["pattern"]
+    assert bad["SchemaEvaluator"] == ["schema"]
+    assert "NotEmpty" not in bad
+    assert "Faithfulness" not in bad
+
+
+def test_contains_recommendation_excluded_from_suite_but_reported(tmp_path):
+    # A real bootstrap emitted Contains(threshold=0.95) — the generated
+    # eval_suite.py crashed at import (missing required `substrings`).
+    # Emission must exclude unconstructible evaluators from the file while
+    # reporting them honestly (no silent drop).
+    import importlib.util
+
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    summary, _ = discover.summarize_traces([{"input": "q", "output": "a"}])
+    evaluators = [
+        discover.RecommendedEvaluator("NotEmpty", "guardrail", 1.0,
+                                      "sanity", "heuristic"),
+        discover.RecommendedEvaluator("Contains", "guardrail", 0.95,
+                                      "llm proposed it", "llm"),
+    ]
+    paths = discover._emit_artifacts(
+        out_dir=out_dir, description="d", shape="qa", summary=summary,
+        evaluators=evaluators, discussion="", seed_cases=[],
+    )
+
+    suite_src = paths["eval_suite"].read_text()
+    assert "Contains(" not in suite_src
+    assert "NotEmpty(threshold=1.0)" in suite_src
+
+    # The emitted file must IMPORT cleanly — the "runnable without edits"
+    # headline.
+    spec = importlib.util.spec_from_file_location(
+        "bootstrap_suite_under_test", paths["eval_suite"])
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    suite = module.make_suite()
+    assert [type(e).__name__ for e in suite.evaluators] == ["NotEmpty"]
+
+    # Honest report line + still present in thresholds.yaml.
+    report_md = paths["report"].read_text()
+    assert "not emitted" in report_md
+    assert "`substrings`" in report_md
+    assert "Contains:" in paths["thresholds"].read_text()
+
+
+def test_cmd_bootstrap_checklist_counts_unemitted_evaluators(tmp_path, capsys):
+    from argparse import Namespace
+    from multivon_eval.cli import cmd_bootstrap
+
+    product = tmp_path / "product.md"
+    product.write_text("# Product\nA bot.\n")
+    traces = tmp_path / "traces.jsonl"
+    traces.write_text(json.dumps({"input": "q", "output": "a"}) + "\n")
+
+    proposal = json.dumps({
+        "evaluators": [
+            {"name": "Contains", "tier": "guardrail", "threshold": 0.95,
+             "rationale": "x"},
+            {"name": "NotEmpty", "tier": "guardrail", "threshold": 1.0,
+             "rationale": "y"},
+        ],
+        "discussion": "",
+    })
+    with patch.object(discover, "_call_judge", return_value=proposal):
+        rcode = cmd_bootstrap(Namespace(
+            product=str(product), traces=str(traces),
+            output=str(tmp_path / "out"), judge_model="m",
+            judge_provider="anthropic", judge_base_url=None,
+            n_seed_cases=1, pii_policy="redact", skip_seed_cases=True,
+            skip_calibration=True, validate=False, validate_n_shots=3,
+            repo=str(tmp_path),
+        ))
+    assert rcode == 0
+    out = capsys.readouterr().out
+    assert "NOT emitted" in out
+    assert "Contains (needs substrings)" in out
+
+
+def test_bootstrap_n_seed_cases_validation_runs_before_mkdir(tmp_path):
+    # `--n-seed-cases 600` must fail fast WITHOUT leaving an empty output
+    # dir behind: validate n/budget before mkdir (mkdir still precedes any
+    # LLM call).
+    product = tmp_path / "product.md"
+    product.write_text("# Product\nA bot.\n")
+    traces = tmp_path / "traces.jsonl"
+    traces.write_text(json.dumps({"input": "q", "output": "a"}) + "\n")
+    out_dir = tmp_path / "out"
+
+    with patch.object(discover, "_call_judge") as judge_mock:
+        with pytest.raises(ValueError, match="hard cap"):
+            discover.bootstrap(
+                description_path=product, traces_path=traces,
+                output_dir=out_dir, skip_calibration=True,
+                n_seed_cases=600,
+            )
+    judge_mock.assert_not_called()
+    assert not out_dir.exists()

@@ -12,7 +12,7 @@ pip install multivon-eval
 multivon-eval bootstrap --product product.md --traces traces.jsonl --output ./eval-bootstrap/
 ```
 
-Returns four files: `eval_suite.py` (runnable), `seed_cases.jsonl` (30 adversarial cases), `thresholds.yaml` (calibrated from your traces), and `DISCOVERY_REPORT.md` (an eval design review). Cost: ~$0.12 default (or free with `--judge-provider ollama`). **[Full walkthrough →](/guides/bootstrap)**
+Returns five files: `eval_suite.py` (runnable), `seed_cases.jsonl` (30 adversarial cases), `thresholds.yaml` (calibrated from your traces), `DISCOVERY_REPORT.md` (an eval design review), and `prompt_baseline.json` (a prompt call-site baseline written at the repo root for staleness tracking). Cost: ~$0.12 default (or free with `--judge-provider ollama`). **[Full walkthrough →](/guides/bootstrap)**
 
 Run it fully offline with a local judge:
 

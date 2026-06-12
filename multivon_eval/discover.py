@@ -120,6 +120,53 @@ _ALLOWED_EVALUATORS = frozenset({
 # Per-evaluator default threshold when the LLM gives a bogus one.
 _DEFAULT_THRESHOLD = 0.7
 
+# The only constructor argument the emitted eval_suite.py supplies
+# (``Name(threshold=...)``). Any evaluator whose __init__ has OTHER
+# required (no-default) parameters — Contains needs ``substrings``,
+# RegexMatch needs ``pattern``, SchemaEvaluator needs ``schema`` — cannot
+# be constructed by the generated file and would crash it at import time.
+_PIPELINE_SUPPLIED_INIT_PARAMS = frozenset({"threshold"})
+
+
+def unconstructible_evaluators(
+    evaluators: list[RecommendedEvaluator],
+) -> dict[str, list[str]]:
+    """Map evaluator name → required __init__ params the pipeline can't supply.
+
+    The emitted ``eval_suite.py`` constructs every evaluator as
+    ``Name(threshold=...)``. An evaluator whose constructor has required
+    parameters beyond ``threshold`` (e.g. ``Contains(substrings=...)``)
+    would make the generated file crash at import — breaking the
+    "runnable without edits" contract. This inspects the real constructor
+    signatures so emission can exclude them honestly (they stay in
+    DISCOVERY_REPORT.md with a "not emitted" note — never a silent drop).
+    """
+    import inspect
+
+    import multivon_eval as m
+
+    out: dict[str, list[str]] = {}
+    for rec in evaluators:
+        cls = getattr(m, rec.name, None)
+        if cls is None:
+            continue
+        try:
+            sig = inspect.signature(cls.__init__)
+        except (TypeError, ValueError):
+            continue
+        missing = [
+            p.name for p in sig.parameters.values()
+            if p.name != "self"
+            and p.kind in (inspect.Parameter.POSITIONAL_ONLY,
+                           inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                           inspect.Parameter.KEYWORD_ONLY)
+            and p.default is inspect.Parameter.empty
+            and p.name not in _PIPELINE_SUPPLIED_INIT_PARAMS
+        ]
+        if missing:
+            out[rec.name] = missing
+    return out
+
 # Evaluators that need a judge configured (and therefore cost money to
 # calibrate). Used to gate calibration onto a small subset.
 _LLM_JUDGE_EVALUATORS = frozenset({
@@ -1032,18 +1079,19 @@ def bootstrap(
     """
     description = Path(description_path).read_text(encoding="utf-8")
 
-    # Create the output dir BEFORE any paid LLM call so a typo'd or
-    # read-only --output fails in milliseconds, not after ~$0.12 of spend.
-    out_dir = Path(output_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    # Budget gate, also BEFORE any paid LLM call: if the seed-generation
-    # estimate can't fit the ceiling, fail in milliseconds — not after the
-    # proposal call has already spent money.
+    # Budget + n-cap gate FIRST — before the output dir is even created,
+    # so a typo'd --n-seed-cases doesn't leave an empty directory behind,
+    # and before any paid LLM call so nothing is spent.
     if not skip_seed_cases:
         _check_seed_generation_budget(
             resolve_judge(judge), n_seed_cases, _SEED_BATCH_SIZE, budget_usd,
         )
+
+    # Create the output dir AFTER validation but BEFORE any paid LLM call,
+    # so a typo'd or read-only --output fails in milliseconds, not after
+    # ~$0.12 of spend.
+    out_dir = Path(output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
 
     def _progress(msg: str) -> None:
         print(f"[bootstrap] {msg}", file=sys.stderr, flush=True)
@@ -1153,18 +1201,25 @@ def _emit_artifacts(
         "report": out_dir / "DISCOVERY_REPORT.md",
     }
 
+    # Constructibility gate: evaluators the generated file can't construct
+    # (required args beyond threshold=) are excluded from eval_suite.py so
+    # the file stays importable, and reported honestly everywhere else.
+    excluded = unconstructible_evaluators(evaluators)
+    emitted = [r for r in evaluators if r.name not in excluded]
+
     tmp_dir = out_dir / f".tmp-{os.getpid()}"
     tmp_dir.mkdir(parents=True, exist_ok=True)
     try:
         tmp = {key: tmp_dir / final.name for key, final in paths.items()}
 
         tmp["eval_suite"].write_text(
-            _render_eval_suite_py(shape, evaluators), encoding="utf-8")
+            _render_eval_suite_py(shape, emitted), encoding="utf-8")
         tmp["thresholds"].write_text(
             _render_thresholds_yaml(evaluators), encoding="utf-8")
         tmp["report"].write_text(
             _render_report_md(description, shape, summary, evaluators, discussion,
-                              generation_report=generation_report),
+                              generation_report=generation_report,
+                              excluded=excluded),
             encoding="utf-8",
         )
 
@@ -1188,7 +1243,8 @@ def _emit_artifacts(
 
 def _render_eval_suite_py(shape: ProductShape, evaluators: list[RecommendedEvaluator]) -> str:
     imports = sorted({r.name for r in evaluators})
-    import_line = "from multivon_eval import EvalSuite, EvalCase, " + ", ".join(imports)
+    names = ["EvalSuite", "EvalCase"] + imports
+    import_line = "from multivon_eval import " + ", ".join(names)
 
     # Build the rationale block as a docstring above the suite-construction
     # so we never have to truncate a multi-sentence rationale into an inline
@@ -1425,17 +1481,32 @@ def _render_report_md(
     discussion: str,
     *,
     generation_report: GenerationReport | None = None,
+    excluded: dict[str, list[str]] | None = None,
 ) -> str:
     pii_line = (
         "PII redacted before LLM call: "
         + (", ".join(f"{k}={v}" for k, v in summary.pii_label_counts.items()) or "none")
     )
 
+    excluded = excluded or {}
     eval_rows = []
     for r in evaluators:
         eval_rows.append(
             f"| `{r.name}` | {r.tier} | {r.threshold:.2f} | {r.source} | {r.rationale} |"
         )
+
+    # Honest accounting of evaluators recommended but NOT in eval_suite.py
+    # (no silent caps): the generated file can only pass threshold=, so an
+    # evaluator with other required constructor args would crash it at import.
+    excluded_lines = []
+    for name, params in excluded.items():
+        plist = ", ".join(f"`{p}`" for p in params)
+        excluded_lines.append(
+            f"> ⚠ `{name}` recommended but **not emitted** to `eval_suite.py` — "
+            f"{name} requires {plist} the proposer cannot infer; add it manually, "
+            f"e.g. `suite.add_evaluators({name}(...))` with your own {plist}."
+        )
+    excluded_block = ("\n".join(excluded_lines) + "\n\n") if excluded_lines else ""
 
     summary_rows = [
         f"- traces analyzed: **{summary.count}**",
@@ -1469,7 +1540,7 @@ def _render_report_md(
 |-----------|------|-----------|--------|-----------|
 {chr(10).join(eval_rows)}
 
-## Why this mix
+{excluded_block}## Why this mix
 
 {_render_why_this_mix(shape, summary, evaluators, discussion)}
 

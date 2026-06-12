@@ -521,3 +521,172 @@ def test_adversarial_persona_continues_past_refusals():
     assert by_name["probe"].case.metadata.get("refusals_observed", 0) >= 3
     assert by_name["polite"].stop_reason == "assistant_refused"
     assert by_name["polite"].turns == 1
+
+
+# ─── Skipped scores stay None (never a vacuous 1.00) ──────────────────────
+
+
+class TestSkippedScores:
+    def _mixed_results(self):
+        """One persona that errors before any exchange (empty transcript),
+        one normal persona — same run."""
+        broken = _persona(name="broken")
+        normal = _persona(name="normal")
+
+        calls = {"n": 0}
+
+        def driver(_cfg, system, _user):
+            if "impartial judge" in system:
+                return '{"goal_achieved": true}'
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise RuntimeError("persona LLM down")  # broken, turn 1
+            if calls["n"] == 2:
+                return _turn("hello there")  # normal, turn 1
+            return _turn("", reached=True)
+
+        with patch.object(sim, "_call_judge", side_effect=driver):
+            return simulate(lambda p: "helpful answer", [broken, normal],
+                            judge=JUDGE, verbose=False)
+
+    def test_empty_transcript_scores_are_none_with_skip_reason(self):
+        results = self._mixed_results()
+        broken = next(r for r in results if r.persona.name == "broken")
+        assert broken.stop_reason == "driver_error"
+        assert broken.transcript == []
+
+        summary = score_simulations(results)
+        per = summary["per_persona"]["broken"]
+        # Never a real-looking 1.00 for a conversation that never happened —
+        # and never an invented 0 either.
+        assert all(s is None for s in per["scores"].values())
+        assert all(r.startswith("skipped:") for r in per["reasons"].values())
+        assert "empty transcript" in next(iter(per["reasons"].values()))
+
+    def test_normal_persona_unaffected_by_skip_handling(self):
+        results = self._mixed_results()
+        with patch("multivon_eval.evaluators.conversation._qag_eval",
+                   return_value=(1.0, ["looks good"])):
+            summary = score_simulations(results)
+        per = summary["per_persona"]["normal"]
+        assert per["scores"] == {
+            "conversation_relevance": 1.0,
+            "knowledge_retention": 1.0,
+            "turn_consistency": 1.0,
+        }
+        assert not any(str(r).startswith("skipped:")
+                       for r in per["reasons"].values())
+
+    def test_evaluator_level_skip_is_recorded_as_none(self):
+        # An evaluator that returns a _skipped() pass (metadata.skipped) must
+        # surface as None + "skipped: <reason>", not as its pass score.
+        from multivon_eval.result import EvalResult
+
+        class SkippyEval:
+            name = "skippy"
+
+            def evaluate(self, case, output):
+                return EvalResult(
+                    evaluator="skippy", score=1.0, passed=True,
+                    reason="[skipped] Requires case.expected_output — supply it.",
+                    metadata={"skipped": True},
+                )
+
+        driver = FakeDriver([_turn("q1"), _turn("", reached=True)])
+        with patch.object(sim, "_call_judge", side_effect=driver):
+            results = simulate(lambda p: "answer", [_persona()],
+                               judge=JUDGE, verbose=False)
+        summary = score_simulations(results, evaluators=[SkippyEval()])
+        per = summary["per_persona"]["alice"]
+        assert per["scores"]["skippy"] is None
+        assert per["reasons"]["skippy"] == (
+            "skipped: Requires case.expected_output — supply it."
+        )
+
+    def test_cli_renders_skipped_not_a_score(self, tmp_path, capsys):
+        from multivon_eval.cli import cmd_simulate
+
+        model_path = tmp_path / "model.py"
+        model_path.write_text(
+            "def model_fn(prompt):\n    return 'ok'\n", encoding="utf-8")
+        personas_path = tmp_path / "personas.jsonl"
+        personas_path.write_text(json.dumps({
+            "name": "broken", "profile": "p", "goal": "g",
+            "success_criteria": "s",
+        }) + "\n", encoding="utf-8")
+
+        def driver(_cfg, system, _user):
+            raise RuntimeError("persona LLM down")
+
+        with patch.object(sim, "_call_judge", side_effect=driver):
+            rcode = cmd_simulate(Namespace(
+                model_cmd=str(model_path), personas=str(personas_path),
+                propose_from=None, n_personas=5, max_turns=4, budget=1.0,
+                out=str(tmp_path / "r.jsonl"), seed=0,
+                judge_model="claude-haiku-4-5-20251001",
+                judge_provider="anthropic",
+            ))
+        assert rcode == 0
+        out = capsys.readouterr().out
+        assert "conversation_relevance=skipped" in out
+        assert "=1.00" not in out
+        assert "=err" not in out
+
+
+# ─── --judge-provider ollama routes via the OpenAI-compatible path ───────
+
+
+class TestOllamaRouting:
+    """`simulate --judge-provider ollama` must not require the [litellm]
+    extra: ollama serves an OpenAI-compatible /v1 endpoint and the openai
+    SDK is a core dependency (same route the demo + pdfhell use). These
+    tests assert ROUTING (provider/base_url on the translated config), not
+    a live call."""
+
+    def test_ollama_translates_to_openai_compatible_config(self, monkeypatch):
+        from multivon_eval.judge import _ollama_as_openai
+
+        monkeypatch.delenv("OLLAMA_HOST", raising=False)
+        cfg = JudgeConfig(provider="ollama", model="qwen2.5:7b").resolve()
+        routed = _ollama_as_openai(cfg)
+        assert routed.provider == "openai"
+        assert routed.base_url == "http://localhost:11434/v1"
+        assert routed.model == "qwen2.5:7b"
+
+    def test_ollama_respects_ollama_host(self, monkeypatch):
+        from multivon_eval.judge import _ollama_as_openai
+
+        monkeypatch.setenv("OLLAMA_HOST", "http://gpu-box:11434")
+        cfg = JudgeConfig(provider="ollama", model="llama3").resolve()
+        routed = _ollama_as_openai(cfg)
+        assert routed.base_url == "http://gpu-box:11434/v1"
+
+    def test_simulate_judge_path_lands_on_openai_not_litellm(self, monkeypatch):
+        # The exact call chain simulate uses: discover._call_judge →
+        # make_judge_call → openai-compatible call. No litellm import.
+        from multivon_eval import judge as judge_mod
+        from multivon_eval.discover import _call_judge
+
+        monkeypatch.delenv("OLLAMA_HOST", raising=False)
+        seen = {}
+
+        def fake_openai_call(prompt, config):
+            seen["provider"] = config.provider
+            seen["base_url"] = config.base_url
+            seen["model"] = config.model
+            return "ok"
+
+        def boom(prompt, config):  # litellm must never be touched
+            raise AssertionError("ollama routed through litellm")
+
+        monkeypatch.setattr(judge_mod, "_sync_openai_call", fake_openai_call)
+        monkeypatch.setattr(judge_mod, "_sync_litellm_call", boom)
+
+        from multivon_eval.judge import resolve_judge
+        cfg = resolve_judge(JudgeConfig(provider="ollama", model="qwen2.5:7b"))
+        assert _call_judge(cfg, "system", "user") == "ok"
+        assert seen == {
+            "provider": "openai",
+            "base_url": "http://localhost:11434/v1",
+            "model": "qwen2.5:7b",
+        }

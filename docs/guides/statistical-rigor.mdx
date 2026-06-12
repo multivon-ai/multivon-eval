@@ -53,7 +53,7 @@ print(f"95% CI: [{lo:.1%}, {hi:.1%}]")
 # Small test suite: 8 of 10 passing
 lo, hi = wilson_interval(8, 10)
 print(f"95% CI: [{lo:.1%}, {hi:.1%}]")
-# → 95% CI: [49.0%, 97.3%]
+# → 95% CI: [49.0%, 94.3%]
 # Wide interval — you can't conclude much from 10 cases
 ```
 
@@ -85,11 +85,11 @@ n = runs_needed(delta=0.05)
 
 # Higher power threshold
 n = runs_needed(delta=0.10, power=0.90)
-# → 390
+# → 389
 
 # Different baseline pass rate
 n = runs_needed(delta=0.10, baseline=0.85)
-# → 193
+# → 138
 ```
 
 **Rule of thumb:**
@@ -99,9 +99,9 @@ n = runs_needed(delta=0.10, baseline=0.85)
 | 15% improvement | ~118 |
 | 10% improvement | ~291 |
 | 5% improvement | ~1,248 |
-| 2% improvement | ~7,700 |
+| 2% improvement | ~8,077 |
 
-A 2% improvement requires ~7,700 cases to confirm statistically. Most teams shouldn't chase differences that small.
+A 2% improvement requires ~8,000 cases to confirm statistically. Most teams shouldn't chase differences that small.
 
 ---
 
@@ -112,7 +112,7 @@ When `compare()` finds a difference that doesn't reach p < 0.05, it tells you ho
 ```
   Statistical significance: p=0.23 not significant (likely noise)
   Hint: need ≥291 test cases to detect this 10% delta at 80% power.
-  Verdict: No meaningful change in pass rate.
+  Verdict: NO MEANINGFUL CHANGE (delta +10.0%, not significant)
 ```
 
 This is the difference between "we improved" and "we think we improved but can't tell yet."

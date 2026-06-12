@@ -342,6 +342,9 @@ Mechanics, by design constraint:
   **Fingerprints only by default** — rendered text is stored only behind an
   explicit `--record-text`. Storage is append-safe: duplicate
   (anchor, role, fingerprint) keys merge counts and case_uids on write.
+- **Recording happens BEFORE the SDK call executes**, so prompts from calls
+  that subsequently fail (timeout, auth error, rate limit) are still
+  captured — a failing run leaves evidence, not a gap.
 - **Case binding by observation.** A contextvar carries the active
   `case_uid`: `EvalSuite` binds it per case from `_provenance.case_uid`,
   and the pytest plugin binds the test nodeid per test. Recordings carry
@@ -356,6 +359,11 @@ Mechanics, by design constraint:
 ```bash
 multivon-eval staleness baseline . --merge-recordings   # default: ./prompt_recordings.jsonl
 ```
+
+`--merge-recordings` is merge-only and needs an **existing**
+`prompt_baseline.json` — on a fresh repo it errors out (exit 2) with
+"no baseline at … — run `multivon-eval staleness baseline .` first". Run the
+plain `staleness baseline .` static scan once before your first merge.
 
 Merges recordings into `prompt_baseline.json` as `source:"runtime"` records
 with fingerprint SETS, stored under a separate `runtime_records` key.

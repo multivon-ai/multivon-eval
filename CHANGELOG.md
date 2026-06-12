@@ -6,6 +6,46 @@ All notable changes to `multivon-eval`. The format follows [Keep a Changelog](ht
 
 (reserved for in-flight work — empty)
 
+## [0.12.2] — 2026-06-13
+
+The release-readiness campaign: six persona agents installed the stack fresh
+from PyPI and exercised 15 documented scenarios end-to-end, docs-only. One
+HIGH, several burns — all fixed here, every fix live-verified before close.
+
+### Fixed
+
+- **Bootstrap no longer emits unconstructible evaluators** (HIGH). A real run
+  emitted `Contains(threshold=0.95)` with no required `substrings` — the
+  generated eval_suite.py crashed at import, breaking the "runnable without
+  edits" promise. Evaluators whose required params the pipeline cannot supply
+  are now excluded from the emitted file and named honestly in
+  DISCOVERY_REPORT ("recommended but not emitted — requires `substrings`").
+- **Skipped conversation scores no longer read as perfect.** A persona with a
+  driver error / empty transcript reported conversation_relevance=1.00 (the
+  evaluator skip-pass leaking through). Skips now record `None` +
+  "skipped: <reason>" and render as "skipped" — never a vacuous 1.00, never
+  an invented 0.
+- **`--judge-provider ollama` works with zero extras.** It routed through
+  litellm (an optional extra) and failed confusingly; it now uses Ollama's
+  OpenAI-compatible /v1 endpoint — the same path the keyless demo and pdfhell
+  use. Respects OLLAMA_HOST.
+- **`Experiment.compare` verdict respects its own significance test** — no
+  more "not significant (likely noise)" followed by "Verdict: REGRESSION".
+  Not significant → "NO MEANINGFUL CHANGE".
+- `suite.run` gains a `save_html=` kwarg (pre-gate, like save_json) — the
+  ci-cd guide previously showed saves placed after a raising gate, losing
+  artifacts exactly on failure; HTML reports now include the Wilson CI;
+  experiments CLI prints percent deltas and lifts the model tag;
+  scaled-generation fail-fast no longer leaves an empty output dir.
+- Docs, copy-paste-verified by execution: agent-trace flagship example
+  (crashed twice as printed), compliance phone-number example (the documented
+  number was not detectable by the shipped regex), statistical-rigor sample
+  outputs (three wrong numbers), quickstart bootstrap file count, staleness
+  merge-recordings prerequisite + records-before-call note, langgraph extra
+  guidance.
+- Version-string hygiene: the published 0.12.1 wheel reported
+  `__version__ = "0.12.0"` (bump committed without staging `__init__.py`).
+
 ## [0.12.1] — 2026-06-13
 
 Dogfood release: installed 0.12.0 fresh from PyPI and ran `simulate

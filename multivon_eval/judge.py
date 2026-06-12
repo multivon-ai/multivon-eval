@@ -40,10 +40,11 @@ __all__ = ["JudgeConfig", "configure", "get_global_judge"]
 
 # Supported judge providers. ``ollama`` is the colon-style alias for
 # locally-served models (e.g. JudgeConfig(provider="ollama",
-# model="qwen2.5:7b")); internally it resolves to litellm's
-# ``ollama/<model>`` so the existing litellm path handles it. We added
-# the colon form so it matches the convention pdfhell + the rest of
-# the SDK use for cloud providers (anthropic:, openai:, google:).
+# model="qwen2.5:7b")); internally it routes through Ollama's
+# OpenAI-compatible ``/v1`` endpoint (the openai SDK is a core dep, so
+# no extras are needed — the same path the demo and pdfhell use). We
+# added the colon form so it matches the convention pdfhell + the rest
+# of the SDK use for cloud providers (anthropic:, openai:, google:).
 _SUPPORTED_PROVIDERS = {"anthropic", "openai", "google", "litellm", "ollama"}
 
 _DEFAULT_MODELS: dict[str, str] = {
@@ -358,28 +359,36 @@ def _sync_google_call(prompt: str, config: JudgeConfig) -> str:
     return text or ""
 
 
-def _ollama_as_litellm(config: JudgeConfig) -> JudgeConfig:
-    """Translate the ``ollama:<model>`` convention to litellm's ``ollama/<model>``.
+def _ollama_as_openai(config: JudgeConfig) -> JudgeConfig:
+    """Translate ``provider='ollama'`` onto the OpenAI-compatible path.
 
-    The colon convention matches the rest of the SDK (``anthropic:``,
-    ``openai:``, ``google:``) and matches what pdfhell uses. Internally
-    we route through litellm because its ``ollama/<model>`` driver
-    already handles the local 127.0.0.1:11434 transport and the
-    OpenAI-compatible message shape that ollama exposes.
+    Ollama serves an OpenAI-compatible API at ``<host>/v1`` — the same
+    route the ``python -m multivon_eval`` demo and pdfhell already use
+    (provider ``openai`` + ``base_url http://localhost:11434/v1``). The
+    ``openai`` SDK is a core dependency, so this works with zero extras —
+    unlike the old litellm route, which made ``--judge-provider ollama``
+    fail with "provider='litellm' requires the litellm package" unless
+    the ``[litellm]`` extra happened to be installed.
 
-    Also sets ``api_base`` to the OLLAMA_HOST env var when present (or
-    the default 127.0.0.1:11434) so non-default ollama deployments work
-    without further config.
+    Respects ``OLLAMA_HOST`` (default ``http://localhost:11434``) and any
+    explicit ``base_url`` on the config. ``_openai_client_kwargs`` injects
+    the placeholder API key local servers need.
     """
     import os as _os
     from dataclasses import replace as _replace
-    api_base = _os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434")
-    return _replace(
-        config,
-        provider="litellm",
-        model=f"ollama/{config.model}" if not config.model.startswith("ollama/") else config.model,
-        base_url=config.base_url or api_base,
-    )
+
+    base = config.base_url
+    if not base:
+        host = _os.environ.get("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
+        if not host.startswith(("http://", "https://")):
+            host = "http://" + host
+        base = host + "/v1"
+    elif not base.rstrip("/").endswith("/v1"):
+        base = base.rstrip("/") + "/v1"
+    model = config.model
+    if model.startswith("ollama/"):
+        model = model[len("ollama/"):]
+    return _replace(config, provider="openai", model=model, base_url=base)
 
 
 def _sync_litellm_call(prompt: str, config: JudgeConfig) -> str:
@@ -427,9 +436,9 @@ def _make_judge_call_uncached(prompt: str, config: JudgeConfig) -> str:
             if config.provider == "litellm":
                 return _sync_litellm_call(prompt, config)
             if config.provider == "ollama":
-                # Route ollama via litellm — its ollama/<model> driver
-                # handles the local 127.0.0.1:11434 transport already.
-                return _sync_litellm_call(prompt, _ollama_as_litellm(config))
+                # Route ollama via its OpenAI-compatible /v1 endpoint —
+                # the openai SDK is a core dep, so no [litellm] extra needed.
+                return _sync_openai_call(prompt, _ollama_as_openai(config))
             raise JudgeUnavailable(
                 f"Unsupported provider: {config.provider!r}",
                 provider=config.provider,
@@ -659,7 +668,7 @@ async def _make_judge_call_async_uncached(prompt: str, config: JudgeConfig) -> s
             if config.provider == "litellm":
                 return await _async_litellm_call(prompt, config)
             if config.provider == "ollama":
-                return await _async_litellm_call(prompt, _ollama_as_litellm(config))
+                return await _async_openai_call(prompt, _ollama_as_openai(config))
             raise JudgeUnavailable(
                 f"Unsupported provider: {config.provider!r}",
                 provider=config.provider,

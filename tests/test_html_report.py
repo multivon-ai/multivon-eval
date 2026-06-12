@@ -84,6 +84,15 @@ class TestToHtml:
         assert "PASS" in html
         assert "FAIL" in html
 
+    def test_pass_rate_ci_rendered(self):
+        # Console + JSON carry a Wilson CI on the pass rate; the HTML
+        # report must too (release-readiness campaign finding).
+        report = _make_report()
+        html = report.to_html()
+        lo, hi = report.pass_rate_ci()
+        assert "95% CI (Wilson)" in html
+        assert f"[{lo:.1%}, {hi:.1%}]" in html
+
     def test_multi_run_shows_flaky(self):
         html = _make_report(multi_run=True).to_html()
         assert "FLAKY" in html

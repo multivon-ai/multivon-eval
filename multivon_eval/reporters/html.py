@@ -401,10 +401,19 @@ def to_html(report: "EvalReport") -> str:
         cards.append(card(str(report.flaky_count), "Flaky", "c-warn" if report.flaky_count > 0 else ""))
     summary_html = '<div class="summary">' + "".join(cards) + '</div>'
 
-    # ── Pass-rate bar ──────────────────────────────────────────
+    # ── Pass-rate bar (+ Wilson CI, matching console/JSON output) ─
     bar_pct = int(report.pass_rate * 100)
+    ci_html = ""
+    if report.evaluated > 0:
+        ci_lo, ci_hi = report.pass_rate_ci()
+        ci_html = (
+            f'<div style="color:var(--muted);font-size:12px;margin-top:4px">'
+            f'95% CI (Wilson): [{ci_lo:.1%}, {ci_hi:.1%}] '
+            f'over {report.evaluated} evaluated case(s)</div>'
+        )
     bar_html = (
         f'<div class="bar-wrap"><div class="bar-fill" style="width:{bar_pct}%"></div></div>'
+        f'{ci_html}'
     )
 
     # ── Flaky callout ─────────────────────────────────────────

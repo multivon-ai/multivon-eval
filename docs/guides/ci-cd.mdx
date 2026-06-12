@@ -16,13 +16,20 @@ suite.add_cases(load("tests/cases.jsonl"))
 suite.add_evaluators(NotEmpty(), Faithfulness())
 
 report = suite.run(
-    model_fn=my_model,
-    fail_threshold=0.85,   # block deployment if < 85% pass
-    verbose=True,
+    my_model,
+    fail_threshold=0.85,             # block deployment if < 85% pass
+    save_json="eval_results.json",   # written BEFORE the gate fires
+    save_html="eval_results.html",
 )
-
-report.save_json("eval_results.json")
 ```
+
+<Warning>
+  Save through the `save_json` / `save_html` / `save_junit_xml` **kwargs**, not
+  by calling `report.save_json(...)` on the line after a gated `run()`. A
+  failing gate raises `EvalGateFailure` from inside `run()`, so statements
+  after it never execute — exactly the runs whose artifacts you need most.
+  The kwargs write the report before the gate is evaluated.
+</Warning>
 
 ## GitHub Actions
 

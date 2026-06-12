@@ -297,6 +297,19 @@ graph = create_react_agent(model="openai:gpt-4o-mini",
                            tools=[lookup_order, issue_refund])
 
 tracer = LangGraphTracer()
+```
+
+<Note>
+  The `"openai:gpt-4o-mini"` string-model syntax resolves through
+  `langchain.chat_models.init_chat_model`, which lives in the full `langchain`
+  package — `pip install 'multivon-eval[langgraph]'` alone raises an
+  `ImportError` asking for it. Either `pip install langchain langchain-openai`
+  as well, or pass a model instance
+  (`create_react_agent(model=ChatOpenAI(model="gpt-4o-mini"), ...)`) to skip
+  the string resolver.
+</Note>
+
+```python
 
 def model_fn(input_text: str, **kwargs) -> str:
     result = graph.invoke(
@@ -306,31 +319,31 @@ def model_fn(input_text: str, **kwargs) -> str:
     return result["messages"][-1].content
 
 
-suite = EvalSuite(
-    cases=[
-        # Positive: agent should look up first, then refund.
-        EvalCase(
-            input="Please refund order 1234.",
-            expected_tool_calls=["lookup_order", "issue_refund"],
-        ),
-        # Negative: order is already refunded — agent must NOT re-call issue_refund.
-        EvalCase(
-            input="Refund order 1234, which was already refunded yesterday.",
-            expected_tool_calls=["lookup_order"],
-            metadata={"strict": True},
-        ),
-    ],
-    evaluators=[
-        ToolCallAccuracy(require_order=True),                       # positive
-        ToolCallAccuracy(penalize_unexpected=True),                 # negative
-        TrajectoryEfficiency(threshold=0.7),                        # both
-    ],
+suite = EvalSuite("refund-agent")
+suite.add_cases([
+    # Positive: agent should look up first, then refund.
+    EvalCase(
+        input="Please refund order 1234.",
+        expected_tool_calls=["lookup_order", "issue_refund"],
+    ),
+    # Negative: order is already refunded — agent must NOT re-call issue_refund.
+    EvalCase(
+        input="Refund order 1234, which was already refunded yesterday.",
+        expected_tool_calls=["lookup_order"],
+        metadata={"strict": True},
+    ),
+])
+suite.add_evaluators(
+    ToolCallAccuracy(require_order=True),                       # positive
+    ToolCallAccuracy(penalize_unexpected=True),                 # negative
+    TrajectoryEfficiency(threshold=0.7),                        # both
 )
 
 # workers=1 is required (and auto-set) when a tracer is attached;
 # tracers are stateful so the suite serializes case execution.
+# run() prints the terminal report itself (verbose=True is the default).
 report = suite.run(model_fn, tracer=tracer)
-print(report.summary())
+print(f"pass rate: {report.pass_rate:.1%} ({report.passed}/{report.total})")
 ```
 
 If LangGraph isn't available — or you want to score a case the framework adapter
