@@ -5,7 +5,7 @@ description: How multivon-eval helps with the Digital Personal Data Protection A
 
 This page maps `multivon-eval` against the **Digital Personal Data Protection Act, 2023** (DPDP Act), India's principal data-protection law. The Act regulates the processing of digital personal data, imposes penalties for unauthorised processing or cross-border transfer, and requires Data Fiduciaries to implement reasonable security safeguards.
 
-Because DPDP penalties for unauthorised cross-border transfer can be steep (up to ₹250 crore per instance under §33), **local-first PII detection — running the check in your own VPC, with no data egress to a third-party API** — is often the safer architecture for any eval pipeline that touches Indian personal data. `multivon-eval`'s `PIIEvaluator` is regex-only and runs entirely offline.
+Because DPDP penalties for unauthorised cross-border transfer can be steep (up to ₹250 crore per instance under §33), **local-first PII detection** (running the check in your own VPC, with no data egress to a third-party API) is often the safer architecture for any eval pipeline that touches Indian personal data. `multivon-eval`'s `PIIEvaluator` is regex-only and runs entirely offline.
 
 <Note>
 We are not your law firm. The mappings below are our best reading of the published text. Your DPO, your specific role under the Act (Data Fiduciary, Significant Data Fiduciary, or Data Processor), and your deployment context should be reviewed by qualified Indian counsel.

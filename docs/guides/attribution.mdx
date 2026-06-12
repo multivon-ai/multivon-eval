@@ -1,6 +1,6 @@
 ---
 title: "Prompt attribution"
-description: "Structured prompt-diff for PR review — find every LLM-SDK call site in a Python repo, then diff two checkouts to surface every prompt change."
+description: "Structured prompt-diff for PR review: find every LLM-SDK call site in a Python repo, then diff two checkouts to surface every prompt change."
 icon: "git-compare"
 ---
 
@@ -58,7 +58,7 @@ litellm.completion(messages=[...])
 litellm.acompletion(messages=[...])
 ```
 
-Matching is method-name-based, not type-inferred — any object whose method
+Matching is method-name-based, not type-inferred: any object whose method
 chain ends in one of these is captured. This trades some recall for
 simplicity; false matches without a `system` or `messages` kwarg are
 silently dropped.
@@ -71,8 +71,8 @@ Literals captured as static:
 - Module-level string constants referenced by name at the call site
   (one hop, same file; see below)
 
-Everything else — `Attribute` lookups, runtime f-strings, `.join(...)`
-calls, names that don't resolve under the rules below — is recorded as a
+Everything else (`Attribute` lookups, runtime f-strings, `.join(...)`
+calls, names that don't resolve under the rules below) is recorded as a
 `PromptRecord` with `is_dynamic=True` and a placeholder text. The count is
 preserved and the gap is visible in the diff, but the actual text isn't
 compared.
@@ -96,7 +96,7 @@ spots found by running the scanner against five real open-source repos
 
 - **Aliased litellm imports** (`import litellm as llm`, `from litellm
   import completion as c`) now resolve to litellm call sites.
-- **`**kwargs`-unpacked calls** are recorded as honest dynamic records
+- **`**kwargs`-unpacked calls** are recorded as dynamic records
   with placeholder `<dynamic:KwargsUnpack>` instead of being invisible.
 - **`messages=<variable>`** (the dominant real-world pattern) produces an
   honest dynamic record instead of nothing. A statically-known empty
@@ -105,20 +105,20 @@ spots found by running the scanner against five real open-source repos
 - **One-hop module-constant resolution.** `SYSTEM_PROMPT = "..."` at module
   scope followed by `system=SYSTEM_PROMPT` at a call site now resolves to
   the real text instead of a dynamic placeholder. The rules are deliberately
-  conservative — a false "dynamic" is honest, a false "static" poisons every
-  downstream verdict. A name assigned more than once, assigned under a
-  conditional/loop/try, augmented, tuple-unpacked, shadowed in the enclosing
-  scope, declared `global`, or defined in another module stays dynamic.
-  One hop only: `X = Y` chains do not resolve.
-- **`loose_fingerprint`** on every record — a hash of the
+  conservative, because a false "static" poisons every downstream verdict
+  while a false "dynamic" is merely cautious. A name assigned more than
+  once, assigned under a conditional/loop/try, augmented, tuple-unpacked,
+  shadowed in the enclosing scope, declared `global`, or defined in another
+  module stays dynamic. One hop only: `X = Y` chains do not resolve.
+- **`loose_fingerprint`** on every record: a hash of the
   whitespace-collapsed prompt text, alongside the strict `fingerprint`. It
   exists solely to *label* a change as formatting-only, never to suppress it.
 
 ## Scanner v4 (0.11.1)
 
 The scanner that ships with 0.11.1+ is versioned `SCANNER_VERSION = 4`.
-v4 is robustness hardening from an adversarial audit — every fix replaces
-a crash or a *false* verdict with an honest one:
+v4 is hardening from an adversarial audit. Every fix replaces a crash or a
+*false* verdict with an accurate one:
 
 - **Fingerprints are NFC-normalized** (the version bump). Composed vs
   decomposed unicode ("é" as one codepoint vs `e` + combining accent) is
@@ -126,20 +126,20 @@ a crash or a *false* verdict with an honest one:
   as drift.
 - **`match`-statement capture patterns disqualify module constants.**
   `case PROMPT:` rebinds the name through a path the constant resolver
-  didn't see, letting a rebound constant read as static — and a false
-  "static" poisons every downstream verdict. Such names now stay dynamic.
+  didn't see, letting a rebound constant read as static. Such names now
+  stay dynamic.
 - **Unscannable files surface as UNSCANNABLE, never REMOVED.** A file the
   scanner can't parse (syntax error, non-UTF8 encoding) previously
   returned zero records, so the [staleness report](/guides/staleness)
-  marked every baselined site in it REMOVED — and `--fail-on removed`
+  marked every baselined site in it REMOVED, and `--fail-on removed`
   failed CI with a misleading verdict. They now report as a distinct
   UNSCANNABLE tier ("file exists but could not be parsed — verdict
   unknown, NOT removed"): a warning names each file with its reason in
   all three renderers, the JSON report gains `skipped_files`, and
   `--fail-on removed` no longer trips. Skipped files are a report-time
-  concept — never written into baselines.
-- **Symlinks resolving outside the repo root are skipped, not recorded** —
-  they previously wrote machine-specific absolute paths into the baseline,
+  concept, never written into baselines.
+- **Symlinks resolving outside the repo root are skipped, not recorded.**
+  They previously wrote machine-specific absolute paths into the baseline,
   producing false REMOVED+ADDED churn on every other checkout.
 
 The scanner version is recorded in `prompt_baseline.json`; a baseline
@@ -147,7 +147,7 @@ written by an older scanner version read by a newer scan prints a "rescan
 recommended" warning instead of fake drift.
 
 Attribution is the scanner; the [staleness report](/guides/staleness)
-(also 0.10.0) is the drift detector built on it — a committed baseline of
+(also 0.10.0) is the drift detector built on it: a committed baseline of
 every call site plus per-case provenance, answering "which prompts changed
 since my cases were authored?" rather than "what changed between these two
 checkouts?".

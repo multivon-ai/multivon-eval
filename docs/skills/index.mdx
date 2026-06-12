@@ -4,11 +4,11 @@ description: Three skills that teach Claude Code how to bootstrap, audit, and ex
 icon: sparkles
 ---
 
-multivon-eval ships three [Anthropic Agent Skills](https://docs.claude.com/en/docs/agents-and-tools/agent-skills) so Claude Code knows when to bootstrap an eval suite, when to gate a PR on it, and how to explain why a particular evaluator was picked. The skills are plain Markdown with YAML frontmatter — no DSL — and they live in `multivon_eval/_skills/` inside the PyPI package.
+multivon-eval ships three [Anthropic Agent Skills](https://docs.claude.com/en/docs/agents-and-tools/agent-skills) so Claude Code knows when to bootstrap an eval suite, when to gate a PR on it, and how to explain why a particular evaluator was picked. The skills are plain Markdown with YAML frontmatter (no DSL), and they live in `multivon_eval/_skills/` inside the PyPI package.
 
 ## What is an Agent Skill?
 
-A skill is a directory containing a `SKILL.md` file that Claude Code auto-loads from `~/.claude/skills/`. The frontmatter declares `name`, `description`, and `allowed-tools`; the body is instructions Claude Code reads when the description matches the user's request. Without skills, Claude Code has to infer evaluator selection and CLI flags from your docs — and hallucinates command names half the time. With skills, the tool's own team writes the workflow once and every Claude Code session inherits it.
+A skill is a directory containing a `SKILL.md` file that Claude Code auto-loads from `~/.claude/skills/`. The frontmatter declares `name`, `description`, and `allowed-tools`; the body is instructions Claude Code reads when the description matches the user's request. Without skills, Claude Code has to infer evaluator selection and CLI flags from your docs, and hallucinates command names half the time. With skills, the tool's own team writes the workflow once and every Claude Code session inherits it.
 
 ## The bootstrap to audit to explain loop
 
@@ -51,7 +51,7 @@ Two flags worth knowing:
 
 ## Auto-discovery flow
 
-Once the symlinks exist under `~/.claude/skills/`, Claude Code auto-loads them on session start — no config edit, no restart of an existing session required (a new session picks them up on next launch). Each session's tool list includes the skill names; Claude Code matches user phrases against each skill's `description` and invokes the matching skill before answering. The auto-invoke triggers are spelled out on each skill's detail page.
+Once the symlinks exist under `~/.claude/skills/`, Claude Code auto-loads them on session start. No config edit is needed; a new session picks them up on next launch. Each session's tool list includes the skill names; Claude Code matches user phrases against each skill's `description` and invokes the matching skill before answering. The auto-invoke triggers are spelled out on each skill's detail page.
 
 Verify the install:
 

@@ -131,6 +131,6 @@ multivon-eval run eval.py --html results.html --json results.json
 
 ## Tips
 
-- **Keep a golden dataset** — a small set of cases (20-50) that cover your most critical behaviors. Run these on every PR.
-- **Separate eval sets** — use tags to split fast deterministic evals (run on every commit) from slower LLM-judge evals (run nightly or on main only).
-- **Store results as artifacts** — track score trends over time by archiving `results.json` per run.
+- Keep a golden dataset: a small set of cases (20-50) that cover your most critical behaviors, run on every PR.
+- Use tags to split fast deterministic evals (every commit) from slower LLM-judge evals (nightly, or main only).
+- Archive `results.json` per run as a build artifact so you can track score trends over time.

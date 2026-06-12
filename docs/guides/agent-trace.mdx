@@ -4,7 +4,7 @@ description: "Capture multi-step agent execution and score it with eight trace-a
 icon: "route"
 ---
 
-Most LLM evals stop at the final string. Agent evals can't — the same output can come
+Most LLM evals stop at the final string. Agent evals can't: the same output can come
 from a clean three-step plan or a thirty-call death spiral, and you want to fail the
 death spiral. `multivon-eval` ships a framework-agnostic trace model, three tracer
 adapters, and eight evaluators that score the trajectory itself.
@@ -37,9 +37,8 @@ class AgentStep:
 An agent trace is `list[AgentStep]`, attached to an `EvalCase` as `agent_trace`.
 The semantic unit is **one `AgentStep` per LLM/agent turn**, not per framework
 event. A ReAct loop that thinks, decides to call three tools in parallel, and then
-incorporates the results produces ONE step with three `ToolCall` entries — not three
-steps. This choice is enforced by every shipped tracer and is what the evaluators
-assume.
+incorporates the results produces ONE step with three `ToolCall` entries, not three
+steps. Every shipped tracer enforces this, and it's what the evaluators assume.
 
 <Note>
   `EvalCase.expected_tool_calls` is the assertion surface. `ToolCall.arguments` and
@@ -70,7 +69,7 @@ A tracer wraps your `model_fn` so the suite gets back not just a string but a
 
 ### LangGraphTracer
 
-A `CallbackTracer` subclass — it builds a `BaseCallbackHandler` and injects it via
+A `CallbackTracer` subclass: it builds a `BaseCallbackHandler` and injects it via
 `config={"callbacks": [...]}` on the compiled graph's `invoke`. Implementation in
 [`integrations/langgraph.py`](https://github.com/multivon-ai/multivon-eval/blob/main/multivon_eval/integrations/langgraph.py).
 
@@ -91,7 +90,7 @@ suite.run(model_fn, tracer=tracer)
 
 The tracer uses LangGraph metadata (`langgraph_node`, `langgraph_checkpoint_ns`,
 `graph:step:N` tags) to attribute calls to the right node. The `tools` node of a
-ReAct graph collapses into the preceding LLM turn — that's the semantic unit
+ReAct graph collapses into the preceding LLM turn, which is the semantic unit
 evaluators score against.
 
 <Warning>
@@ -146,7 +145,7 @@ ComputerCall / CodeInterpreter / ToolSearch items) are preserved as visible
 
 ### ManualTracer
 
-Your fallback for any agent that isn't LangGraph or the OpenAI SDK. You record
+The fallback for any agent that isn't LangGraph or the OpenAI SDK: you record
 steps explicitly. Source in
 [`integrations/manual.py`](https://github.com/multivon-ai/multivon-eval/blob/main/multivon_eval/integrations/manual.py).
 
@@ -168,9 +167,9 @@ suite.run(my_agent, tracer=tracer)
 ```
 
 `step()` returns a `_StepRecorder` context manager that flushes on exit.
-`record_tool_call` and `record_output` are also available without a step block —
+`record_tool_call` and `record_output` are also available without a step block;
 they create implicit single-call steps. ManualTracer is what powers most custom
-agents in production: it's the lowest-friction adapter and has zero framework
+agents in production. It's the lowest-friction adapter and has zero framework
 dependencies.
 
 <Tip>
@@ -185,8 +184,8 @@ dependencies.
 All eight live in
 [`multivon_eval/evaluators/agent.py`](https://github.com/multivon-ai/multivon-eval/blob/main/multivon_eval/evaluators/agent.py).
 Two are deterministic; six use an LLM judge (the QAG eval pattern documented in
-[LLM-judge evaluators](/evaluators/llm-judge)). Every evaluator returns a skipped pass — not a
-0.0 — when the case shape doesn't fit it (e.g. no `agent_trace`, no
+[LLM-judge evaluators](/evaluators/llm-judge)). Every evaluator returns a skipped pass, not a
+0.0, when the case shape doesn't fit it (e.g. no `agent_trace`, no
 `expected_tool_calls`). This was hardened in
 [0.9.0](https://github.com/multivon-ai/multivon-eval/blob/main/CHANGELOG.md#090--2026-05-23).
 
@@ -240,27 +239,27 @@ The remaining seven are sketched here; for the judge resolution logic, see
 [Judge calibration](/guides/statistical-rigor#judge-calibration) and the rest of
 [Statistical rigor](/guides/statistical-rigor).
 
-- **`ToolArgumentAccuracy`** — per-call yes/no judge prompt: *"Are these arguments
-  appropriate and well-formed for `<tool>` given the task?"* Capped at the first
-  8 calls to bound judge cost.
-- **`PlanQuality`** — 5-question QAG over the full trace: addresses task,
+- **`ToolArgumentAccuracy`** runs a per-call yes/no judge prompt: *"Are these
+  arguments appropriate and well-formed for `<tool>` given the task?"* Capped
+  at the first 8 calls to bound judge cost.
+- **`PlanQuality`** is a 5-question QAG over the full trace: addresses task,
   logical order, no redundancy, follows from prior steps, expert-efficient.
-- **`TaskCompletion`** — 4-question QAG. Includes a negated check (*"Did the
-  agent fail / error?"*) so an error trace can't slip through with a confident
-  partial-credit score.
-- **`StepFaithfulness`** — per-step judge: *"Does this step follow logically
+- **`TaskCompletion`** is a 4-question QAG. It includes a negated check
+  (*"Did the agent fail / error?"*) so an error trace can't slip through with
+  a confident partial-credit score.
+- **`StepFaithfulness`** judges each step: *"Does this step follow logically
   from the task and prior steps, without introducing contradictions or
   hallucinated information?"* Catches reasoning drift that other evaluators miss.
-- **`ToolCallNecessity`** — per-call: *"Is this call strictly necessary, or
+- **`ToolCallNecessity`** asks per call: *"Is this call strictly necessary, or
   redundant given prior calls?"* Detects the "call tools just in case"
-  failure mode. An empty trace is a PASS (nothing to flag as redundant) — not
-  a skip — distinguishing "no expectation set" from "agent correctly did nothing."
-- **`TrajectoryEfficiency`** — 3-question QAG plus an error-recovery bonus:
+  failure mode. An empty trace is a PASS (nothing to flag as redundant), not
+  a skip, distinguishing "no expectation set" from "agent correctly did nothing."
+- **`TrajectoryEfficiency`** is a 3-question QAG plus an error-recovery bonus:
   if any tool result contains `error`, an extra judge call asks whether the
   agent recovered well, penalizing 0.2 if not.
-- **`AgentMemoryEval`** — multi-session memory check. Requires `case.context`
-  (prior session summary) and scores correct recall, no hallucination, no use
-  of stale info. Aligned with AMA-Bench (2025).
+- **`AgentMemoryEval`** is the multi-session memory check. It requires
+  `case.context` (prior session summary) and scores correct recall, no
+  hallucination, no use of stale info. Aligned with AMA-Bench (2025).
 
 ## Runnable example: LangGraph + ToolCallAccuracy + TrajectoryEfficiency
 

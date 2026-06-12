@@ -3,7 +3,7 @@ title: Bootstrap an eval suite from your product
 description: Cold-start your evals — `multivon-eval bootstrap` proposes a tuned suite from a product description + sample traces in a few minutes.
 ---
 
-The hardest part of LLM evaluation isn't writing the assertions — it's knowing **what to measure** for your specific product. `multivon-eval bootstrap` answers that question. Hand it a one-paragraph product description and a few real traces, and it emits a runnable `EvalSuite` with metrics tuned to your shape, thresholds calibrated from your data, and adversarial seed cases targeting the most likely failure mode.
+Writing assertions is the easy part of LLM evaluation. Knowing what to measure for your specific product is the hard part, and `multivon-eval bootstrap` answers that question. Hand it a one-paragraph product description and a few real traces, and it emits a runnable `EvalSuite` with metrics tuned to your shape, thresholds calibrated from your data, and adversarial seed cases targeting the most likely failure mode.
 
 ## The whole flow
 
@@ -25,21 +25,21 @@ You get five artifacts:
 | `DISCOVERY_REPORT.md`     | An eval design review you can forward to your team                  |
 | `prompt_baseline.json`    | Snapshot of every prompt call site in your repo (written at the `--repo` root, default `.`) — the input to [`multivon-eval staleness`](/guides/staleness) |
 
-Total cost: ~$0.12 per bootstrap on default settings (or **$0.00 with `--judge-provider ollama`**). Latency: a few minutes on default settings (measured ~4 min — almost entirely judge-API wait; progress lines print to stderr as each stage starts); ~5× wall-clock for the local-judge path.
+Total cost: ~$0.12 per bootstrap on default settings, or **$0.00 with `--judge-provider ollama`**. Latency: a few minutes on default settings — measured ~4 min, almost entirely judge-API wait, with progress lines printing to stderr as each stage starts. The local-judge path runs about 5× that wall-clock.
 
-As of 0.9.4 the emitted `eval_suite.py` is genuinely runnable end-to-end — `python eval_suite.py --runs 1` executes the full suite without further edits. Two things to know before that first run: it makes real judge calls (30 cases × your LLM evaluators ≈ 120 calls, a few cents on Haiku), and its `main()` exits 1 when the pass rate is under 50% — which is **expected** against the placeholder `stub_model` (the all-fail run is the signal to wire in your real model). (0.9.4 also fixed a stale `suite.run(cases=...)` kwarg and `report.print_summary()` call that previously broke the generated file; if you hit those on a 0.9.3-and-earlier install, upgrade.)
+As of 0.9.4 the emitted `eval_suite.py` is genuinely runnable end-to-end: `python eval_suite.py --runs 1` executes the full suite without further edits. Two things to know before that first run. It makes real judge calls (30 cases × your LLM evaluators ≈ 120 calls, a few cents on Haiku), and its `main()` exits 1 when the pass rate is under 50% — which is expected against the placeholder `stub_model`. The all-fail run is the signal to wire in your real model. 0.9.4 also fixed a stale `suite.run(cases=...)` kwarg and `report.print_summary()` call that previously broke the generated file; if you hit those on a 0.9.3-and-earlier install, upgrade.
 
 ## Scaled, gated generation (0.12.0)
 
-`--n-seed-cases` now goes to 500. Generation runs in batches of ≤30 (later
-batches are steered away from already-accepted inputs), and every case passes
-gates before acceptance: well-formed (structural), duplicate (NFC-normalized
-identity or token-Jaccard ≥ 0.85, across batches), and — with
-`--validate-cases --baseline-model-file model.py` — the hardness band from
+`--n-seed-cases` now goes to 500. Generation runs in batches of ≤30, with
+later batches steered away from already-accepted inputs, and every case
+passes gates before acceptance: well-formed (structural), duplicate
+(NFC-normalized identity or token-Jaccard ≥ 0.85, across batches), and, with
+`--validate-cases --baseline-model-file model.py`, the hardness band from
 `auto.validate_adversarial_cases` (judge-priced, so opt-in).
 
 **No silent caps.** The CLI summary and DISCOVERY_REPORT.md print the full
-accounting: `generated 500, accepted 431 — dropped 38 duplicates, 12
+accounting — `generated 500, accepted 431 — dropped 38 duplicates, 12
 malformed, 19 outside hardness band [0.5, 1.0]` — and a skipped hardness gate
 says so explicitly. Each accepted case's `metadata["generation"]` records its
 batch, the gates it passed, and its hardness score. `--budget-usd` (default
@@ -119,9 +119,9 @@ Every trace is locally scanned for high-confidence secrets and PII **before** an
 
 If PII was detected and redacted, the report's `## Trace evidence` section surfaces the counts (`email=12, ssn=2`) and the bootstrap pipeline auto-adds `PIIEvaluator` as a guardrail in the generated suite.
 
-## The discovery report — surprise winner
+## The discovery report
 
-Codex's review of the design doc flagged this: *"The most valuable output may be `DISCOVERY_REPORT.md`, not the generated eval code."* The report is built to be forwarded inside your team as an "eval design review" — what shape your product is, which metrics matter, what was rejected, and why. Many users use it as the artifact that gets a launch greenlit even if they edit the generated `eval_suite.py` heavily afterward.
+Codex's review of the design doc flagged this: *"The most valuable output may be `DISCOVERY_REPORT.md`, not the generated eval code."* The report is built to be forwarded inside your team as an eval design review: what shape your product is, which metrics matter, what was rejected, and why. Many users treat it as the artifact that gets a launch greenlit, even when they edit the generated `eval_suite.py` heavily afterward.
 
 ## Drift detection comes free — `--repo` (0.10.0)
 
@@ -134,10 +134,10 @@ at no extra cost or latency:
   committed snapshot that `multivon-eval staleness` later diffs against.
 - **Every generated case is stamped** with `metadata._provenance`:
   `authored_by="bootstrap"`, the repo SHA, and `targets=[]`. The empty
-  targets list is deliberate honesty — it means "authored against this repo
-  state", and nothing more. Bootstrap generates cases from your product
-  description and traces; it knows nothing about call sites, so case→site
-  bindings are never fabricated. Bind cases explicitly later with
+  targets list means "authored against this repo state", and nothing more.
+  Bootstrap generates cases from your product description and traces; it
+  knows nothing about call sites, so case→site bindings are never
+  fabricated. Bind cases explicitly later with
   `multivon-eval staleness stamp`.
 - The completion checklist gains one line confirming both:
 
@@ -152,9 +152,9 @@ repo reports which prompts changed since the suite was bootstrapped.
 
 ## What's NOT in the bootstrap (and why)
 
-- **No model-side wrapper.** The bootstrap emits a suite that calls **your** `model_fn`. You bring the wiring to your real model. No vendor lock-in.
-- **No "monitor production for me" loop.** The bootstrap is a setup-time tool. Once you have the suite, you run it with `python eval_suite.py` or wire it into CI via `--fail-threshold`.
-- **No template marketplace.** Picking your suite from a 20-template menu is the old approach. The bootstrap picks for you — and tells you why.
+- **No model-side wrapper.** The bootstrap emits a suite that calls *your* `model_fn`; you bring the wiring to your real model. No vendor lock-in.
+- There's no "monitor production for me" loop. The bootstrap is a setup-time tool: once you have the suite, you run it with `python eval_suite.py` or wire it into CI via `--fail-threshold`.
+- No template marketplace, either. Picking your suite from a 20-template menu is the old approach; the bootstrap picks for you and tells you why.
 - **No dashboard.** Local-first by design. Use `multivon-eval view report.json` if you want a browsable HTML report.
 
 ## When to use it (and when not)

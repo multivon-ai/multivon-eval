@@ -18,7 +18,7 @@ The skill auto-invokes on any of these:
 
 It also auto-invokes when Claude Code detects that the current repo imports from `anthropic`, `openai`, `google.genai`, `litellm`, `langchain`, or `llama_index` AND has no `eval/`, `evals/`, `tests/eval/`, or `evaluation/` directory.
 
-It does NOT auto-invoke if the repo already has a working eval suite. In that case it suggests [`eval-audit`](/skills/eval-audit) instead.
+It does NOT auto-invoke if the repo already has a working eval suite; in that case it suggests [`eval-audit`](/skills/eval-audit) instead.
 
 ## allowed-tools
 
@@ -94,14 +94,14 @@ python -m multivon_eval.benchmarks.run_calibration_v2 \
 
 The skill is a `SKILL.md` file under `multivon_eval/_skills/eval-bootstrap/` inside the installed package. Two ways to customize:
 
-1. **Edit the symlinked file.** `install-skills` writes a directory symlink by default — `~/.claude/skills/eval-bootstrap/SKILL.md` points at the package copy, and `pip install -U multivon-eval` overwrites your edits. To customize safely, copy the directory out of the symlink chain first:
+1. **Edit the symlinked file.** `install-skills` writes a directory symlink by default, so `~/.claude/skills/eval-bootstrap/SKILL.md` points at the package copy and `pip install -U multivon-eval` overwrites your edits. To customize safely, copy the directory out of the symlink chain first:
    ```bash
    rm ~/.claude/skills/eval-bootstrap
    cp -R $(python -c "import multivon_eval, pathlib; print(pathlib.Path(multivon_eval.__file__).parent)")/_skills/eval-bootstrap ~/.claude/skills/eval-bootstrap
    ```
 2. **Fork the entire skills set.** Vendor `_skills/` into your own repo, point the symlinks at your fork, and PR upstream changes back to [multivon-ai/multivon-eval](https://github.com/multivon-ai/multivon-eval) when they're broadly useful.
 
-The `SKILL.md` spec is documented in [Anthropic's Agent Skills reference](https://docs.claude.com/en/docs/agents-and-tools/agent-skills) — plain Markdown with YAML frontmatter, no DSL.
+The `SKILL.md` spec is documented in [Anthropic's Agent Skills reference](https://docs.claude.com/en/docs/agents-and-tools/agent-skills): plain Markdown with YAML frontmatter, no DSL.
 
 ## What it doesn't do
 

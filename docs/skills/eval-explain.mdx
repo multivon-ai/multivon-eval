@@ -4,14 +4,14 @@ description: Claude Code skill that explains in exactly 3 sentences why multivon
 icon: message-circle-question
 ---
 
-`eval-explain` closes the "black box recommender" DX gap. Bootstrap picks evaluators based on the inferred shape of your product and traces; this skill explains why a specific evaluator showed up. The answer is exactly three sentences plus an optional one-case illustration — short enough to read inline, dense enough to act on.
+`eval-explain` closes the "black box recommender" DX gap. Bootstrap picks evaluators based on the inferred shape of your product and traces; this skill explains why a specific evaluator showed up. The answer is exactly three sentences plus an optional one-case illustration: short enough to read inline, dense enough to act on.
 
 ## When it auto-invokes
 
 The skill auto-invokes in two situations:
 
-- **Right after [`eval-bootstrap`](/skills/eval-bootstrap) completes** — it surfaces the rationale for the top one or two evaluators that were picked, so you understand what you just got without scrolling `DISCOVERY_REPORT.md`.
-- **On user phrases** — any of:
+- **Right after [`eval-bootstrap`](/skills/eval-bootstrap) completes.** It surfaces the rationale for the top one or two evaluators that were picked, so you understand what you just got without scrolling `DISCOVERY_REPORT.md`.
+- **On user phrases**, any of:
   - "why did multivon recommend X"
   - "what does X evaluator do"
   - "is X the right eval for my use case"

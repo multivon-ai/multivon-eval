@@ -1,6 +1,6 @@
 ---
 title: "Prompt-drift staleness"
-description: "Detect which prompts changed since your eval cases were authored — a committed baseline, a read-only drift report, and opt-in case provenance that never overclaims."
+description: "Detect which prompts changed since your eval cases were authored: a committed baseline, a read-only drift report, and opt-in case provenance."
 icon: "clock-rotate-left"
 ---
 
@@ -11,32 +11,31 @@ that tells you exactly which prompts changed since your cases were authored,
 and an opt-in provenance layer binding cases to the prompts they exercise.
 
 Shipped in [0.10.0](https://github.com/multivon-ai/multivon-eval/blob/main/CHANGELOG.md#0100--2026-06-11).
-Built on the [attribution scanner](/guides/attribution) — attribution is the
-scanner; staleness is the drift report built on it.
+Built on the [attribution scanner](/guides/attribution): attribution is the
+scanner, staleness the drift report on top of it.
 
 <Note>
 The design rule that survived every round of the pre-implementation
 adversarial review: **the tool never overclaims what static analysis can
 know.** Every report opens with a determinacy headline and closes with a
-standing blind-spots footer. Those aren't disclaimers bolted on — they're
-enforced in the output code.
+standing blind-spots footer, both enforced in the output code.
 </Note>
 
 ## The five drift modes (and which this covers)
 
 Eval suites rot in five distinct ways:
 
-1. **Prompt drift** — a prompt changed since the cases testing it were authored.
-2. **Coverage gaps** — new prompts shipped with no cases covering them.
-3. **Dead cases** — cases point at prompts that no longer exist.
-4. **Shape drift** — the suite's structure (cases, evaluators) changed out from under a pinned run.
-5. **Threshold staleness** — calibrated thresholds aging out as models or data shift.
+1. **Prompt drift**: a prompt changed since the cases testing it were authored.
+2. **Coverage gaps**: new prompts shipped with no cases covering them.
+3. **Dead cases**: cases point at prompts that no longer exist.
+4. **Shape drift**: the suite's structure (cases, evaluators) changed out from under a pinned run.
+5. **Threshold staleness**: calibrated thresholds aging out as models or data shift.
 
 `staleness` covers **modes 1–3 only**. Shape drift and threshold staleness
 are `suite.lock` territory (`verify_suite_against_lock`), and the CLI never
 claims them. The two drift detectors stay orthogonal by construction:
 stamping provenance never perturbs `suite.lock`, because the lockfile's
-cases hash excludes metadata by design — pinned by a regression test.
+cases hash excludes metadata by design. A regression test pins that.
 
 ## The three commands
 
@@ -97,9 +96,10 @@ multivon-eval staleness baseline . --dry-run  # prints the diff, writes nothing
 ```
 
 Fresh scan → prints the diff vs any existing baseline → writes atomically
-(temp file + `os.replace`). It's named *baseline*, not `.lock`, deliberately:
-a blessed snapshot you consciously refresh, not a regenerated fingerprint that
-must verify. [Bootstrap](/guides/bootstrap) writes one automatically.
+(temp file + `os.replace`). The name *baseline* rather than `.lock` is
+deliberate: this is a blessed snapshot you consciously refresh, not a
+regenerated fingerprint that must verify. [Bootstrap](/guides/bootstrap)
+writes one automatically.
 
 ### `multivon-eval staleness stamp` — bind cases to sites
 
@@ -113,7 +113,7 @@ multivon-eval staleness stamp \
 
 Binds hand-written JSONL cases to the prompt call site they exercise. The
 `--site` spec (`FILE[::QUALNAME][.ROLE[#POS]]`) is resolved against a live
-scan — zero or multiple matches is an error listing candidates, never a
+scan. Zero or multiple matches is an error listing candidates, never a
 guess, and a duplicated prompt fingerprint requires an explicit qualname
 anchor. Select cases with `--index N` (repeatable), `--tag T`, or `--all`;
 `--dry-run` and `--force` (overwrite a malformed/newer existing stamp) round
@@ -123,7 +123,7 @@ it out.
 The rewrite is **raw-line-preserving**: each line goes `json.loads` → inject
 `metadata._provenance` → `json.dumps` of the same dict. It never round-trips
 through `load_jsonl` (which would drop `expected_tool_calls`). Idempotent
-restamps are byte-identical — no git churn. Restamps without an `--evidence`
+restamps are byte-identical, so no git churn. Restamps without an `--evidence`
 pointer after a prompt change are flagged in the report: self-attestation is
 visible, not silent.
 </Warning>
@@ -151,8 +151,8 @@ repo root:
 }
 ```
 
-Prompt text is deliberately not stored — `git show <sha>:<file>` recovers it;
-a stored copy would be a second prompt that itself drifts.
+Prompt text is deliberately not stored. `git show <sha>:<file>` recovers it,
+and a stored copy would be a second prompt that itself drifts.
 
 **`metadata["_provenance"]`** — per-case, inline in the existing free-form
 metadata dict under a library-reserved underscore key (no new `EvalCase`
@@ -178,30 +178,30 @@ field):
 }
 ```
 
-`targets: []` means "authored against repo state SHA X" — honest and
-unbound. `bound` is always `"manual"` in v1: auto-binding is rejected,
-because confidently-wrong links poison every downstream verdict. A
-`schema_version` from a newer release makes the case *unreadable* — counted,
-never fatal, exit code unaffected: a newer teammate's stamp must not break
+`targets: []` means "authored against repo state SHA X" and nothing more.
+`bound` is always `"manual"` in v1: auto-binding is rejected, because
+confidently-wrong links poison every downstream verdict. A
+`schema_version` from a newer release makes the case *unreadable*: counted,
+never fatal, exit code unaffected. A newer teammate's stamp must not break
 an older teammate's CI.
 
-## How matching works, in plain words
+## How matching works
 
 - **Content-first.** A prompt's identity is its fingerprint (a hash of its
-  text). Line numbers and git SHAs are display-only, never matching inputs —
-  a whitespace refactor of surrounding code or a rebase produces zero false
+  text). Line numbers and git SHAs are display-only, never matching inputs.
+  A whitespace refactor of surrounding code or a rebase produces zero false
   staleness, and a reverted prompt is automatically unchanged again.
 - **The dynamic gate fires first.** A prompt the scanner can't statically
-  read is UNKNOWN forever rather than fake-fresh — placeholder fingerprints
+  read is UNKNOWN forever rather than fake-fresh. Placeholder fingerprints
   prove only call shape, not content, so comparing them would report a
   totally rewritten constant as "fresh". A formerly-static site that became
   dynamic is UNKNOWN ("prompt moved out of static reach"), never CHANGED,
   never REMOVED.
-- **Structural rescue, then honesty.** If the fingerprint is gone, the
+- **Structural rescue.** If the fingerprint is gone, the
   matcher tries the structural anchor (file, qualname, sdk, role) → CHANGED;
   if only the loose (whitespace-collapsed) fingerprint still matches, it's
   labeled *formatting-only* — flagged, never suppressed. If nothing matches,
-  it's REMOVED — **always** with the three-way caveat: feature removed, OR
+  it's REMOVED, always with the three-way caveat: feature removed, OR
   renamed+edited in one commit, OR moved beyond static reach. REMOVED is a
   prompt to investigate, never an auto-delete signal. There is no fuzzy
   text-similarity matching: rename+edit in one commit is statically
@@ -238,13 +238,14 @@ an older teammate's CI.
   </Step>
 </Steps>
 
-CSV-loaded cases are **permanently unstamped** — `load_csv` reads no metadata.
-Documented limitation, not a roadmap item. Unstamped cases of any origin are
-first-class: counted and reported with a stamp hint, never guessed at.
+CSV-loaded cases are permanently unstamped, because `load_csv` reads no
+metadata. Documented limitation, not a roadmap item. Unstamped cases of any
+origin are first-class: counted and reported with a stamp hint, never
+guessed at.
 
 ## CI integration
 
-Default exit is 0 even with findings — CHANGED means "authored against an
+Default exit is 0 even with findings. CHANGED means "authored against an
 older prompt, re-run recommended", never "failing". Gate per-category when
 you're ready:
 
@@ -254,8 +255,8 @@ multivon-eval staleness . --fail-on changed,removed
 
 Exit contract: `0` clean or report-only, `1` a `--fail-on` category fired,
 `2` warn-only (no baseline, unreadable baseline, scanner-version mismatch).
-Gating on `added` (uncovered new prompts) punishes adoption — possible, not
-recommended.
+Gating on `added` (uncovered new prompts) punishes adoption; it's possible
+but not recommended.
 
 The one-line warn-only recipe for GitHub Actions:
 
@@ -267,7 +268,7 @@ The one-line warn-only recipe for GitHub Actions:
 with a `confidence` field — `exact`, `structural`, `moved`, or `ambiguous` —
 so CI consumers can filter surfaced ambiguity).
 
-## Honest scope — the blind spots
+## Blind spots
 
 The static scan:
 
@@ -276,33 +277,33 @@ The static scan:
 - does not see prompts in YAML/Jinja/templates/files or prompt hubs
 - does not see non-Python services
 
-This list prints at the bottom of **every** text and markdown report. Prompts
-the scanner cannot see can still be stamped with `source: "external"` — they
+This list prints at the bottom of every text and markdown report. Prompts
+the scanner cannot see can still be stamped with `source: "external"`; they
 report as UNVERIFIABLE, never orphaned. A file the scanner can *see* but not
 *parse* (syntax error, non-UTF8 encoding) reports as **UNSCANNABLE** since
-0.11.1 — "file exists but could not be parsed — verdict unknown, NOT
-removed" — with a warning naming each file, a `skipped_files` list in the
+0.11.1 ("file exists but could not be parsed — verdict unknown, NOT
+removed"), with a warning naming each file, a `skipped_files` list in the
 JSON report, and no `--fail-on removed` trip. Skipped files are a
 report-time concept, never written into baselines.
 
 ## Runtime recordings
 
 The determinacy gate (0.10.1) measured scanner v3 against five real repos:
-**20.9% of call sites are statically resolvable** — the rest build prompts
-dynamically and are statically unbridgeable *by construction*. The runtime
+**20.9% of call sites are statically resolvable**. The rest build prompts
+dynamically and are statically unbridgeable by construction. The runtime
 prompt recorder (shipped in
 [0.11.0](https://github.com/multivon-ai/multivon-eval/blob/main/CHANGELOG.md#0110--2026-06-11),
 designed in [multivon-eval#9](https://github.com/multivon-ai/multivon-eval/issues/9))
-is the honest path past that ceiling: during an eval run, an opt-in
-interceptor records the **rendered** prompt text per call site,
+is the way past that ceiling: during an eval run, an opt-in
+interceptor records the rendered prompt text per call site,
 fingerprinted with the same `fingerprint_text` the static scanner uses. A
 `**kwargs` unpack the scanner can only report as UNKNOWN is, at call time,
 real kwargs with real text.
 
 ### The three trust tiers
 
-The honesty discipline survives the new power — three labeled tiers, never
-collapsed into one another (the report footer states all three verbatim):
+Recordings get three labeled tiers, never collapsed into one another. The
+report footer states all three verbatim:
 
 1. **static** — the scan proves the prompt *text*.
 2. **runtime** — recordings prove only the renderings *observed*, not all
@@ -333,24 +334,24 @@ with record_prompts(repo_root="."):
 Mechanics, by design constraint:
 
 - **Opt-in only, zero overhead when off.** Importing multivon_eval performs
-  NO patching — pinned by a fresh-interpreter subprocess test. Recording
+  NO patching; a fresh-interpreter subprocess test pins this. Recording
   method-wraps exactly the three SDK surfaces the static scanner knows
   (anthropic `Messages.create`, openai `chat.completions.create`,
   `litellm.completion`/`acompletion`): save original, wrap, restore
   byte-identical on exit. Missing SDKs are skipped silently.
 - **Recordings stay local** in `prompt_recordings.jsonl`; no telemetry.
-  **Fingerprints only by default** — rendered text is stored only behind an
+  Fingerprints only by default — rendered text is stored only behind an
   explicit `--record-text`. Storage is append-safe: duplicate
   (anchor, role, fingerprint) keys merge counts and case_uids on write.
-- **Recording happens BEFORE the SDK call executes**, so prompts from calls
+- Recording happens BEFORE the SDK call executes, so prompts from calls
   that subsequently fail (timeout, auth error, rate limit) are still
-  captured — a failing run leaves evidence, not a gap.
+  captured. A failing run leaves evidence, not a gap.
 - **Case binding by observation.** A contextvar carries the active
   `case_uid`: `EvalSuite` binds it per case from `_provenance.case_uid`,
   and the pytest plugin binds the test nodeid per test. Recordings carry
-  the case_uids observed per (anchor, role, fingerprint) — the run *knows*
+  the case_uids observed per (anchor, role, fingerprint), so the run knows
   which sites fired for which case.
-- Capture scope v1 (honest): string `system=` kwargs and string `content`
+- Capture scope in v1: string `system=` kwargs and string `content`
   entries in `messages=` lists. Content-block lists (vision, tool results)
   and calls anchored outside the repo root are skipped, not guessed at.
 
@@ -370,9 +371,9 @@ with fingerprint SETS, stored under a separate `runtime_records` key.
 Merge-only: it never rescans and NEVER touches static records; a static
 rescan never discards the runtime tier; re-merging the same recordings file
 is idempotent. Runtime-sourced sites then render as a distinct **OBSERVED**
-tier in all three report formats — compared recordings-vs-recordings
-(runtime-only sites *cannot* be compared against a static scan, and the
-report says so), always in the k/N language. The determinacy headline gains
+tier in all three report formats, compared recordings-vs-recordings and
+always in the k/N language. Runtime-only sites cannot be compared against a
+static scan, and the report says so. The determinacy headline gains
 a third clause: "K sites observed at runtime."
 
 ### Stamping from recordings
@@ -386,8 +387,8 @@ multivon-eval staleness stamp --from-recordings --apply --cases seed_cases.jsonl
 (case_uid → anchor + fingerprint with observation counts); it writes only
 with explicit `--apply --cases F.jsonl`, landing targets as
 `source:"runtime"`, `bound:"observed"`. Observation removes the fabrication
-objection that blocked auto-binding in the 0.10.0 adversarial review — the
-human confirmation stays. Runtime-bound targets are verified against
+objection that blocked auto-binding in the 0.10.0 adversarial review, while
+the human confirmation stays. Runtime-bound targets are verified against
 recordings, never against the static scan (where they report
 `unverifiable [runtime]`, by rule), and never enter the static coverage
 denominator.

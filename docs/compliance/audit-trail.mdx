@@ -28,10 +28,10 @@ Each NDJSON line is one record. Fields:
 }
 ```
 
-- `record_id` — 12-character hex (truncated from `uuid4().hex`). Sufficient for cross-referencing within a single suite's log; use it together with `timestamp` and `suite_name` for global uniqueness. Not a UUID — calling it a UUID would be inaccurate.
+- `record_id` — 12-character hex (truncated from `uuid4().hex`). Sufficient for cross-referencing within a single suite's log; use it together with `timestamp` and `suite_name` for global uniqueness. Not a UUID, and calling it one would be inaccurate.
 - `timestamp` — UTC ISO-8601 captured at record append time.
 - `chain_version` — Currently `1`. Bumped only on a breaking change to the canonical serialization.
-- `prev_hash` — SHA-256 of the previous record's payload (excluding the previous record's `record_hash` field). For the first record in a chain, it is 64 zeros — the genesis sentinel.
+- `prev_hash` — SHA-256 of the previous record's payload (excluding the previous record's `record_hash` field). For the first record in a chain, it is 64 zeros (the genesis sentinel).
 - `record_type` — `"summary"` for aggregate-per-run records, `"case"` for decision-level records (Art. 12 satisfies).
 - `record_hash` — SHA-256 of *this* record's payload (excluding the `record_hash` field itself).
 
@@ -103,7 +103,7 @@ Output format:
 
 - **TAMPERED** — record's stored hash doesn't match recomputed hash. The record itself was modified.
 - **CHAIN BROKEN** — the `prev_hash` doesn't match what the previous record's recomputed hash should be. The record itself is intact, but the chain link to the past is wrong (a record was likely deleted or reordered).
-- **OK (legacy)** — record predates `chain_version=1` (no `chain_version` field). Verified standalone — chain link is not checked because the legacy format didn't include `prev_hash`. Surfaced explicitly so the auditor knows the chain coverage is partial.
+- **OK (legacy)** — record predates `chain_version=1` (no `chain_version` field). Verified standalone; the chain link is not checked because the legacy format didn't include `prev_hash`. Surfaced explicitly so the auditor knows the chain coverage is partial.
 
 Source: [`compliance.py:730–787`](https://github.com/multivon-ai/multivon-eval/blob/main/multivon_eval/compliance.py#L730-L787).
 
@@ -168,7 +168,7 @@ reporter.record(report, mode="summary")   # default, one record per run
 reporter.record(report, mode="case")      # decision-level, one record per case
 ```
 
-Per-case mode produces longer logs and writes one record per AI-driven decision — the granularity Art. 12 of the EU AI Act asks for in its "automatic recording of events" obligation. Whether this constitutes Art. 12 conformance for your deployment depends on system risk classification, retention, access control, and whether logging is on during inference — operational decisions outside the eval pipeline. Per-case records carry the full case input, model output, every evaluator's score with its mapped controls, and the same per-record `provenance` block.
+Per-case mode produces longer logs and writes one record per AI-driven decision — the granularity Art. 12 of the EU AI Act asks for in its "automatic recording of events" obligation. Whether this constitutes Art. 12 conformance for your deployment depends on system risk classification, retention, access control, and whether logging is on during inference. Those are operational decisions outside the eval pipeline. Per-case records carry the full case input, model output, every evaluator's score with its mapped controls, and the same per-record `provenance` block.
 
 Source: [`compliance.py:540–559`](https://github.com/multivon-ai/multivon-eval/blob/main/multivon_eval/compliance.py#L540-L559).
 

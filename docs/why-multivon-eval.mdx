@@ -1,9 +1,9 @@
 ---
 title: Why multivon-eval
-description: Head-to-head numbers vs DeepEval, RAGAS, and Promptfoo — with reproducible benchmarks you can rerun.
+description: Head-to-head numbers vs DeepEval, RAGAS, and Promptfoo, with reproducible benchmarks you can rerun.
 ---
 
-The eval-framework category has converged on a small set of primitives. The honest question for a buyer is not *"are checkmarks better here?"* but *"if I run the same task with my judge, do the numbers come out better?"*
+The eval-framework category has converged on a small set of primitives, so feature checkmarks won't separate the options. The question worth asking is: if I run the same task with my judge, do the numbers come out better?
 
 Below is what we can show from the public OSS repo. Every number links to a JSON file you can rerun.
 
@@ -36,7 +36,7 @@ A calibrated evaluator that holds its precision (0.957) when moved to a differen
 
 ## Three-framework agreement — κ=0.03
 
-We ran multivon-eval, DeepEval, and RAGAS on the same 100 HaluEval-QA cases. Pairwise Cohen's κ across all three pairings: **κ=0.03 — essentially independent**. The frameworks are not measuring the same thing on the same task, despite the marketing copy. Pick the framework whose calibration trail and held-out generalization you can audit — the one that earns its precision number on data it didn't tune against.
+We ran multivon-eval, DeepEval, and RAGAS on the same 100 HaluEval-QA cases. Pairwise Cohen's κ across all three pairings: **κ=0.03**, essentially independent. Despite the marketing copy, the frameworks are not measuring the same thing on the same task. Pick the one whose calibration trail and held-out generalization you can audit.
 
 ## The 0.9.4→0.9.7 self-correction sequence
 
@@ -47,7 +47,7 @@ A framework that publishes numbers has to publish corrections. The four-release 
 - **0.9.7** caught that 0.9.5's held-out test was reporting threshold `0.7` in stderr but the calibrated value for Haiku on Hallucination is `0.55`. Same dataset, same model — different F1 (0.852 vs 0.830). The threshold-vs-default gotcha is now an explicit reproducibility note in [`benchmarks/README.md`](https://github.com/multivon-ai/multivon-eval/blob/main/benchmarks/README.md).
 - **0.9.8** propagated the corrected numbers and the κ=0.03 finding to the README.
 
-Same-day correction with a public trail is the standard. If a number on these pages diverges from what you measure, [open an issue](https://github.com/multivon-ai/multivon-eval/issues) — we'll fix it.
+Same-day correction with a public trail is the standard we try to hold.
 
 ## Multi-judge agreement — HaluEval QA, N=50, temp=0
 
@@ -89,19 +89,19 @@ Speedup: **2,271×**. CI re-runs (same git SHA + same dataset) converge to zero 
 
 ## Where competitors lead
 
-We're not better at everything. If your priority is —
+We're not better at everything.
 
-- **The widest evaluator catalog**: DeepEval has more pre-built metrics for niche tasks (e.g. summarization-specific G-Eval variants).
-- **A vendor-managed cloud UI**: DeepEval (Confident AI) and Promptfoo Cloud both ship hosted dashboards. We're SDK-first; the HTML viewer is local-only.
-- **Pure prompt-comparison testing**: Promptfoo is purpose-built for "which prompt template wins on these N cases" — it's the right tool for that single job.
+- If you want the widest evaluator catalog, DeepEval has more pre-built metrics for niche tasks (e.g. summarization-specific G-Eval variants).
+- If you want a vendor-managed cloud UI: DeepEval (Confident AI) and Promptfoo Cloud both ship hosted dashboards. We're SDK-first, and the HTML viewer is local-only.
+- For pure prompt-comparison testing — "which prompt template wins on these N cases" — Promptfoo is purpose-built for that single job.
 
 ## What multivon-eval is built for
 
-- **Trust the score**: QAG + calibrated thresholds + multi-run flakiness detection means a single number from `pass_rate` survives scrutiny.
-- **CI/CD on every PR**: `multivon-eval init --ci github` ships the workflow. Distinct exit codes for quality vs infra failures.
-- **Regulated AI**: hash-chained NDJSON audit logs with Article-level EU AI Act / NIST AI RMF / HIPAA mappings. `audit-package` produces an auditor-attachable zip — [download a real sample (5.5 KB)](https://github.com/multivon-ai/multivon-eval/raw/main/docs/sample-audit-package.zip).
-- **Agent-native**: tool-call accuracy, trajectory efficiency, step faithfulness — framework-agnostic via `AgentTracer`.
-- **First-class multi-judge support**: ship with `anthropic`, `openai`, `google`, and `litellm` providers, plus any OpenAI-compatible endpoint (Ollama, vLLM, LM Studio, Azure, Bedrock via LiteLLM). Threshold packs calibrated per (judge × evaluator) so you can swap providers without re-tuning.
+- **Trusting the score.** QAG plus calibrated thresholds plus multi-run flakiness detection means a single number from `pass_rate` survives scrutiny.
+- **CI/CD on every PR.** `multivon-eval init --ci github` ships the workflow, with distinct exit codes for quality vs infra failures.
+- **Regulated AI.** Hash-chained NDJSON audit logs with Article-level EU AI Act / NIST AI RMF / HIPAA mappings. `audit-package` produces an auditor-attachable zip; [download a real sample (5.5 KB)](https://github.com/multivon-ai/multivon-eval/raw/main/docs/sample-audit-package.zip).
+- **Agents.** Tool-call accuracy, trajectory efficiency, and step faithfulness, framework-agnostic via `AgentTracer`.
+- **Multi-judge setups.** Ships with `anthropic`, `openai`, `google`, and `litellm` providers, plus any OpenAI-compatible endpoint (Ollama, vLLM, LM Studio, Azure, Bedrock via LiteLLM). Threshold packs are calibrated per (judge × evaluator), so you can swap providers without re-tuning.
 
 ## Reproduce everything
 

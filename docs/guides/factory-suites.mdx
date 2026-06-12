@@ -115,7 +115,7 @@ report = suite.run(my_extractor)
 
 **Parameters:**
 - `name` — suite name (default `"Document Intelligence Eval"`)
-- `schema` — optional Pydantic model class or JSON Schema dict. If provided, `SchemaEvaluator` is added as the first evaluator — structure is checked before content.
+- `schema` — optional Pydantic model class or JSON Schema dict. If provided, `SchemaEvaluator` is added as the first evaluator, so structure is checked before content.
 
 **When to use:** Data extraction pipelines, document parsers, any system that produces structured JSON output. The `schema` parameter is the key differentiator: it separates parse failures from semantic failures.
 

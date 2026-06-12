@@ -1,6 +1,6 @@
 ---
 title: Compliance & Privacy
-description: PII detection, schema validation, and tamper-evident audit trails — all local, no API calls.
+description: PII detection, schema validation, and tamper-evident audit trails. All local, no API calls.
 ---
 
 For regulated industries (healthcare, finance, legal, government), your eval traces can't leave your environment. multivon-eval's compliance tools run entirely locally: no cloud, no LLM calls for PII detection.
@@ -9,7 +9,7 @@ For regulated industries (healthcare, finance, legal, government), your eval tra
 
 ## PII Detection
 
-`PIIEvaluator` scans LLM outputs for personally identifiable information using regex patterns. Zero API calls — suitable for air-gapped environments.
+`PIIEvaluator` scans LLM outputs for personally identifiable information using regex patterns. Zero API calls, so it works in air-gapped environments.
 
 ### Basic usage
 
@@ -90,7 +90,7 @@ PIIEvaluator(redact=True)
 
 ## Structured Output Validation
 
-`SchemaEvaluator` validates that LLM outputs conform to a defined structure. Works with Pydantic models and JSON Schema dicts. Reports per-field failures — not just valid/invalid.
+`SchemaEvaluator` validates that LLM outputs conform to a defined structure. Works with Pydantic models and JSON Schema dicts, and reports per-field failures rather than a bare valid/invalid.
 
 [StructEval (2025)](https://arxiv.org/abs/2502.09281) found GPT-4 fails complex structured extraction ~12% of the time. This evaluator catches those failures in your specific pipeline.
 

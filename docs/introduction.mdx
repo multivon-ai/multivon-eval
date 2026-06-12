@@ -5,9 +5,9 @@ description: AI evaluation for teams that need to prove their model is safe to s
 
 ## The problem
 
-Every team building with AI hits the same wall: **how do you know if your model is getting better or worse?** Numeric scores drift, judges hallucinate, and regressions reach users before anyone notices.
+The question every team building with AI eventually hits: did this change make the model better or worse? Numeric scores drift, judges hallucinate, and regressions reach users before anyone notices.
 
-multivon-eval gives you eval scoring you can trust *and* defend — calibrated against human labels, statistically rigorous, and audit-ready when you need to ship into regulated environments.
+multivon-eval gives you eval scoring you can trust and defend. Scores are calibrated against human labels, every report carries confidence intervals, and the audit trail holds up when you ship into regulated environments.
 
 ```python
 # pip install multivon-eval
@@ -22,12 +22,12 @@ report = suite.run(my_model_fn, save_json="report.json")
 print(f"Pass rate {report.pass_rate:.0%}  ({report.evaluated} evaluated, {report.errors} errored)")
 ```
 
-That's everything — install, import, run. The default judge is `claude-haiku-4-5` (F1 0.804 [0.71–0.88] on HaluEval QA in-distribution; F1 0.830 [0.70–0.92] held-out on HaluEval-Sum; $0.00127 per case). Swap in any judge via `JudgeConfig`, or run fully offline with a local Ollama: `JudgeConfig(provider="ollama", model="qwen2.5:14b")`.
+Install, import, run. The default judge is `claude-haiku-4-5` (F1 0.804 [0.71–0.88] on HaluEval QA in-distribution; F1 0.830 [0.70–0.92] held-out on HaluEval-Sum; $0.00127 per case). Swap in any judge via `JudgeConfig`, or run fully offline with a local Ollama: `JudgeConfig(provider="ollama", model="qwen2.5:14b")`.
 
 Want a runnable eval suite from a one-paragraph product description? `multivon-eval bootstrap`. Want it wired into Claude Code as auto-invoking skills? `multivon-eval install-skills`.
 
 <Tip>
-  **Why trust the numbers?** Every shipped benchmark cites Wilson + bootstrap 95% CIs; thresholds are calibrated per (judge × evaluator) with provenance; the 0.9.4→0.9.7 sequence is a self-correction trail that shows what real eval discipline looks like. See [Why multivon-eval](/why-multivon-eval).
+  **Why trust the numbers?** Every shipped benchmark cites Wilson + bootstrap 95% CIs, thresholds are calibrated per (judge × evaluator) with provenance, and the 0.9.4→0.9.7 release sequence is a public self-correction trail. See [Why multivon-eval](/why-multivon-eval).
 </Tip>
 
 ## What it does
@@ -49,25 +49,25 @@ Want a runnable eval suite from a one-paragraph product description? `multivon-e
 
 ## Key features
 
-**QAG scoring** — Instead of asking a judge "rate this 1-10", we generate binary yes/no questions about the output and score by fraction answered correctly. Binary questions eliminate scale ambiguity, are easier for LLMs to answer consistently, and make every score fully auditable — you can see exactly which questions passed or failed.
+**QAG scoring.** Instead of asking a judge "rate this 1-10", we generate binary yes/no questions about the output and score by fraction answered correctly. Binary questions eliminate scale ambiguity and are easier for LLMs to answer consistently. Every score is auditable down to which questions passed or failed.
 
-**Plain-English checks** — `suite.add_check("Response should mention the return policy")` is all you need to write your first eval. The SDK generates yes/no questions from your criterion automatically. No need to pick an evaluator class or craft QAG questions manually.
+**Plain-English checks.** `suite.add_check("Response should mention the return policy")` is all you need to write your first eval. The SDK generates yes/no questions from your criterion automatically — no evaluator class to pick, no QAG questions to craft.
 
-**No cold start** — Point `generate_from_file()` at your docs and get eval cases in seconds. No labeled dataset required to get started.
+No cold start, either: point `generate_from_file()` at your docs and get eval cases in seconds, no labeled dataset required.
 
-**Reliability & flakiness detection** — Run each case N times with `suite.run(runs=5)`. Flaky cases (inconsistent pass/fail) are flagged automatically. Experiment comparison shows statistical significance so you know whether a regression is real or sampling noise. NAACL 2025 research confirms single-run eval scores are unreliable — variance alone can reverse model rankings.
+**Reliability and flakiness detection.** Run each case N times with `suite.run(runs=5)` and flaky cases (inconsistent pass/fail) are flagged automatically. Experiment comparison shows statistical significance, so you know whether a regression is real or sampling noise. NAACL 2025 research found single-run eval scores unreliable enough that variance alone can reverse model rankings.
 
-**Experiment tracking** — Record every run to `~/.multivon/experiments/`. Compare two runs side-by-side and get a pass rate delta with p-values. Catch regressions before they ship.
+For tracking over time, every run can be recorded to `~/.multivon/experiments/`; compare two runs side-by-side and get a pass rate delta with p-values.
 
-**Framework integrations** — Capture agent traces from LangChain, LangSmith, or any custom agent. Import existing LangSmith runs as eval cases without re-running the agent.
+**Framework integrations.** Capture agent traces from LangChain, LangSmith, or any custom agent. Import existing LangSmith runs as eval cases without re-running the agent.
 
-**Shareable HTML reports** — `report.save_html("report.html")` produces a self-contained HTML file with per-case breakdowns, evaluator scores, and flakiness indicators. No server required.
+**Shareable HTML reports.** `report.save_html("report.html")` produces a self-contained HTML file with per-case breakdowns, evaluator scores, and flakiness indicators. No server required.
 
-**CI/CD first** — One line exits with code 1 if your pass rate drops below a threshold. Evals that don't run in CI catch nothing.
+**CI/CD first.** One line exits with code 1 if your pass rate drops below a threshold. Evals that don't run in CI catch nothing.
 
-**Prompt-drift staleness & provenance** — `multivon-eval staleness` diffs a committed baseline of every prompt call site in your repo against a live scan and tells you exactly which prompts changed since your cases were authored — CHANGED, REMOVED, ADDED, UNKNOWN, never overclaiming what static analysis can know. An opt-in runtime recorder (`pytest --record-prompts`) captures the prompts your code actually rendered, with verdicts in honest "matched k of N observed renderings" language. See [Prompt-drift staleness](/guides/staleness).
+**Prompt-drift staleness and provenance.** `multivon-eval staleness` diffs a committed baseline of every prompt call site in your repo against a live scan and tells you which prompts changed since your cases were authored: CHANGED, REMOVED, ADDED, or UNKNOWN, never overclaiming what static analysis can know. An opt-in runtime recorder (`pytest --record-prompts`) captures the prompts your code actually rendered, with verdicts phrased as "matched k of N observed renderings". See [Prompt-drift staleness](/guides/staleness).
 
-**Persona simulation** — `multivon-eval simulate` drives adaptive multi-turn conversations against your live system: a persona LLM with a profile, goal, and behavior traits generates each user turn in response to what your model actually said. Transcripts are scored by the conversation evaluators plus a goal-completion judge, with a hard budget ceiling and every output labeled as synthetic. See [Simulate](/guides/simulate).
+**Persona simulation.** `multivon-eval simulate` drives adaptive multi-turn conversations against your live system. A persona LLM with a profile, goal, and behavior traits generates each user turn in response to what your model actually said; transcripts are scored by the conversation evaluators plus a goal-completion judge, with a hard budget ceiling and every output labeled as synthetic. See [Simulate](/guides/simulate).
 
 ## Install
 

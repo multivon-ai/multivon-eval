@@ -1,6 +1,6 @@
 ---
 title: eval-audit
-description: Claude Code skill that gates a PR on eval regressions — runs only the cases that stress the changed surface and blocks safety-class drops.
+description: Claude Code skill that gates a PR on eval regressions. Runs only the cases that stress the changed surface and blocks safety-class drops.
 icon: shield-check
 ---
 
@@ -33,7 +33,7 @@ It does NOT auto-invoke for diffs that touch only tests, docs, type stubs, comme
 allowed-tools: Bash, Read, Grep, Edit
 ```
 
-The skill needs Bash to run `git diff` and the eval entrypoint, Read and Grep to scope the change, and Edit only for writing the audit JSON output file. It does not Write new source files.
+Bash runs `git diff` and the eval entrypoint, Read and Grep scope the change, and Edit exists only to write the audit JSON output file. The skill does not Write new source files.
 
 ## What it does
 
@@ -85,10 +85,10 @@ BLOCK — safety-class regression at p < 0.05:
 
 ## Safety-class auto-escalation
 
-Any evaluator whose name contains `safety`, `toxicity`, `bias`, `pii`, or `hallucination` is treated as safety-class. A regression at p < 0.05 on a safety-class evaluator is always BLOCK — never WARN, never PASS-with-note. Non-safety regressions at the same statistical strength surface as WARN with delta plus CI so you can decide.
+Any evaluator whose name contains `safety`, `toxicity`, `bias`, `pii`, or `hallucination` is treated as safety-class. A regression at p < 0.05 on a safety-class evaluator is always BLOCK, never WARN, never PASS-with-note. Non-safety regressions at the same statistical strength surface as WARN with delta plus CI so you can decide.
 
 <Warning>
-"Block" means the skill prints a `✗` verdict and tells you not to ship. It does not modify your git state or refuse to run subsequent commands — that's a discipline decision, not an enforcement decision. For hard enforcement, use [`eval-action`](https://github.com/multivon-ai/eval-action) in CI.
+"Block" means the skill prints a `✗` verdict and tells you not to ship. It does not modify your git state or refuse to run subsequent commands; that's a discipline decision, not an enforcement decision. For hard enforcement, use [`eval-action`](https://github.com/multivon-ai/eval-action) in CI.
 </Warning>
 
 ## Output path convention
@@ -108,12 +108,12 @@ cat <path-from-summary> | jq '.summary'
 
 ## CI-side counterpart
 
-`eval-audit` is the pre-ship local check. For post-merge runs, scheduled nightly suites, and PR comment automation, pair it with [`eval-action`](https://github.com/multivon-ai/eval-action) — the GitHub Action that runs the full suite on push, posts a diff comment to the PR, and (optionally) blocks merge on safety regressions. The two share the same `multivon-eval` machinery; the skill is local-fast-targeted, the Action is CI-thorough-comprehensive.
+`eval-audit` is the pre-ship local check. For post-merge runs, scheduled nightly suites, and PR comment automation, pair it with [`eval-action`](https://github.com/multivon-ai/eval-action), the GitHub Action that runs the full suite on push, posts a diff comment to the PR, and (optionally) blocks merge on safety regressions. The two share the same `multivon-eval` machinery; the skill is the fast, targeted local pass, while the Action runs everything in CI.
 
 ## What it doesn't do
 
-- Doesn't replace the full nightly suite. This is a targeted pre-ship check; comprehensive runs go through `eval-action`.
-- Doesn't auto-fix regressions. It surfaces them — fixes are still human judgment.
+- Doesn't replace the full nightly suite. This is a targeted pre-ship check; full runs go through `eval-action`.
+- Doesn't auto-fix regressions. It surfaces them; fixes are still human judgment.
 - Doesn't add new eval cases. If a regression points at an unexercised surface, the skill suggests adding a case but doesn't write it inline (you pick the right framing).
 
 ## See also
