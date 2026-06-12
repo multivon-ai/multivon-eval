@@ -65,8 +65,9 @@ FULL_CONTEXT = "\n\n".join(f"[{k}]\n{v}" for k, v in KB.items())
 
 # ──────────────────────────────────────────────────────────────────────────────
 # 5 Q&A pairs. The "answers" dict is what a (real or simulated) RAG system
-# might return. Case 5 is deliberately ungrounded — it cites a $750 rental
-# reimbursement number that isn't in the KB. The eval should catch this.
+# might return. Case 5 is deliberately ungrounded — it cites a $75/day rental
+# reimbursement limit that isn't in the KB (the KB says $30/day). The eval
+# should catch this.
 # ──────────────────────────────────────────────────────────────────────────────
 
 CASES = [

@@ -8,7 +8,7 @@
   1      MR1     Patient presented with mild       1.00   PASS             0ms  
                  dehydrat                                                       
   2      MR2     Patient John Doe (SSN             0.00   FAIL             0ms  
-                 123-45-6789) w                                                 
+                 529-87-3461) w                                                 
   3      MR3     Routine post-op check after       1.00   PASS             0ms  
                  laparosc                                                       
   4      MR4     MRN-4471829 — patient             0.00   FAIL             0ms  
@@ -36,16 +36,15 @@ Saved full results -> 04_pii_medical_records_output.json
 === Per-record PII findings ===
   [CLEAN] MR1  No PII detected
   [LEAK ] MR2
-           phone_us: "415-555-0182"
-           ssn: "123-45-6789"
-           nhs_number: "415-555-0182"
-           address: "2025 with chest"
-           fax_number: "415-555-0182"
-           admission_date: "admitted on 03/14/2025"
+           phone_us: "415-555-0182" (1 match)
+           ssn: "529-87-3461" (1 match)
+           address: "2025 with chest" (1 match)
+           admission_date: "admitted on 03/14/2025" (1 match)
+           patient_name: "John Doe" (1 match)
   [CLEAN] MR3  No PII detected
   [LEAK ] MR4
-           email: "patient@example.com"
-           medical_record_number: "MRN-4471829"
+           email: "patient@example.com" (1 match)
+           medical_record_number: "MRN-4471829" (1 match)
   [CLEAN] MR5  No PII detected
 
 Final: 2/5 record(s) contain PII. (Regex-only — no API calls, $0 cost, fully deterministic.)

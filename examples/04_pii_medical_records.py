@@ -31,8 +31,11 @@ RECORDS = [
     {
         "id": "MR2",
         "label": "leaks_ssn_phone",
+        # NB: a structurally valid (but fictional) SSN. PIIEvaluator's strict
+        # mode drops never-issued test numbers like 123-45-6789 as false
+        # positives, so the classic placeholder would NOT be flagged.
         "text": (
-            "Patient John Doe (SSN 123-45-6789) was admitted on 03/14/2025 with "
+            "Patient John Doe (SSN 529-87-3461) was admitted on 03/14/2025 with "
             "chest pain. Spouse contact: 415-555-0182. Discharged after observation; "
             "follow-up scheduled with cardiology."
         ),

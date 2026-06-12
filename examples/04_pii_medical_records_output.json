@@ -71,7 +71,7 @@
     },
     {
       "input": "MR2",
-      "output": "Patient John Doe (SSN 123-45-6789) was admitted on 03/14/2025 with chest pain. Spouse contact: 415-555-0182. Discharged after observation; follow-up scheduled with cardiology.",
+      "output": "Patient John Doe (SSN 529-87-3461) was admitted on 03/14/2025 with chest pain. Spouse contact: 415-555-0182. Discharged after observation; follow-up scheduled with cardiology.",
       "status": "failed_quality",
       "model_error": null,
       "judge_error": null,
@@ -93,7 +93,7 @@
           "name": "pii_detection",
           "score": 0.0,
           "passed": false,
-          "reason": "PII detected (6 type(s)):\n  phone_us: \"415-555-0182\"\n  ssn: \"123-45-6789\"\n  nhs_number: \"415-555-0182\"\n  address: \"2025 with chest\"\n  fax_number: \"415-555-0182\"\n  admission_date: \"admitted on 03/14/2025\""
+          "reason": "PII detected (5 type(s)):\n  phone_us: \"415-555-0182\" (1 match)\n  ssn: \"529-87-3461\" (1 match)\n  address: \"2025 with chest\" (1 match)\n  admission_date: \"admitted on 03/14/2025\" (1 match)\n  patient_name: \"John Doe\" (1 match)"
         }
       ]
     },
@@ -149,7 +149,7 @@
           "name": "pii_detection",
           "score": 0.0,
           "passed": false,
-          "reason": "PII detected (2 type(s)):\n  email: \"patient@example.com\"\n  medical_record_number: \"MRN-4471829\""
+          "reason": "PII detected (2 type(s)):\n  email: \"patient@example.com\" (1 match)\n  medical_record_number: \"MRN-4471829\" (1 match)"
         }
       ]
     },
