@@ -27,6 +27,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
+# Hoisted out of f-string expressions: nesting a quoted string inside an
+# f-string's {} braces requires PEP 701 (Python 3.12+); on 3.10/3.11 it is
+# a SyntaxError. Module constants keep the f-strings expression-only.
+_DIM_DASH = "<span class='dim'>—</span>"
+
 # ── Validator ──────────────────────────────────────────────────────────────
 # from_dict never raises on foreign JSON (the repo root holds 60+
 # SECURITY_*.json that parse into empty reports — some even carry a
@@ -293,11 +298,13 @@ def render_index(
             f'location.href=\'/diff?a=\'+this.value+\'&b={e.idx}\'">'
             f'<option value="">diff vs…</option>{options}</select>'
         )
+        suite_cell = _html.escape(e.suite) or _DIM_DASH
+        model_cell = _html.escape(e.model) or _DIM_DASH
         rows.append(
             "<tr>"
             f'<td>{run_cell}</td>'
-            f'<td>{_html.escape(e.suite) or "<span class=\'dim\'>—</span>"}</td>'
-            f'<td>{_html.escape(e.model) or "<span class=\'dim\'>—</span>"}</td>'
+            f'<td>{suite_cell}</td>'
+            f'<td>{model_cell}</td>'
             f'<td class="dim">{_rel_time(e.mtime, now)}</td>'
             f'<td class="r num">{e.n_cases}</td>'
             f'<td class="num">{pr}{_ci_bar(e)}</td>'

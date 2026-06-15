@@ -6,6 +6,12 @@ All notable changes to `multivon-eval`. The format follows [Keep a Changelog](ht
 
 (reserved for in-flight work — empty)
 
+## [0.15.1] — 2026-06-16
+
+### Fixed
+
+- `view --dir`'s index renderer used f-strings with quotes/backslashes inside the `{}` expression — valid on Python 3.12+ (PEP 701) but a `SyntaxError` on 3.10/3.11, so `import multivon_eval.dirview` (and therefore the `view` command) broke on the lower half of the supported range. The package's own minimum is 3.10. Caught by a fresh-install verification pass: it slipped through local testing on 3.14 and turned the CI matrix red on 3.10/3.11. The nested markup is now a module constant, keeping the f-strings expression-only. The rest of the package was already clean on 3.11 (verified across all modules).
+
 ## [0.15.0] — 2026-06-16
 
 `multivon-eval view --dir` ([#15](https://github.com/multivon-ai/multivon-eval/issues/15)) — designed by a deliberation panel that rejected the framing ("studio") and landed on extending the existing `view` command instead. A local report browser for a folder of runs, read-only and stateless, on the same stdlib http.server harness `view` already uses — zero new dependencies, fully offline.
