@@ -1,0 +1,52 @@
+---
+title: "Report browser (view --dir)"
+description: "Browse a folder of eval reports locally — a sortable index, any report rendered verbatim, and a diff of two runs with stacked judge reasons. Read-only, no new dependencies."
+---
+
+Once you've run a suite a few times, the reports pile up: one JSON per run,
+in a directory, with no easy way to see them together. `multivon-eval view`
+already renders a single report as HTML. Point it at a directory instead
+and you get an index, click-through, and a diff.
+
+Shipped in [0.15.0](https://github.com/multivon-ai/multivon-eval/blob/main/CHANGELOG.md#0150--2026-06-16).
+It runs on the same stdlib HTTP server `view` already uses — read-only,
+local, no new dependencies, fully offline.
+
+```bash
+multivon-eval view --dir runs/           # browse a folder of reports
+multivon-eval view runs/                 # same thing — a directory enters directory mode
+multivon-eval view --dir runs/ --recursive   # walk subdirectories too (off by default)
+```
+
+## INDEX
+
+The landing page is a sortable table of every eval-report JSON in the
+directory: suite, model, when, n, pass rate with a Wilson CI bar, error and
+flaky badges, and cost. A structural validator decides what counts as a
+report — a file needs the real `{summary.pass_rate, cases[]}` shape to make
+the table. Anything that doesn't collapses into one "k files skipped" line
+rather than being parsed as an empty report. Runs with an error rate at or
+above 10% are flagged.
+
+## OPEN
+
+Click any row to open that report at `/r/<idx>`, served by the same
+`EvalReport.to_html()` that renders a single file, with a breadcrumb back
+to the index. There's no second renderer to drift out of sync.
+
+## DIFF
+
+Pick two runs and `/diff?a=&b=` wraps `report_a.compare(report_b)`:
+pass-rate and avg-score deltas, McNemar p with a significance label, and
+four buckets — Regressed, Fixed, Still failing, Unchanged. Regressed rows
+stack both runs' judge reasons (matched by case input) as prose, so you
+read exactly why a verdict flipped instead of guessing.
+
+## Single-file view is unchanged
+
+```bash
+multivon-eval view results.json
+```
+
+A single JSON path still renders one report exactly as before. Only a
+directory (or `--dir`) switches into browser mode.

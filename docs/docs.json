@@ -94,6 +94,8 @@
               "guides/compliance",
               "guides/datasets",
               "guides/synthetic-data",
+              "guides/input-quality",
+              "reference/view",
               "guides/ci-cd",
               "guides/agent-trace",
               "guides/integrations",

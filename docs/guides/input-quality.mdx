@@ -1,0 +1,81 @@
+---
+title: "Input-quality gate"
+description: "A free, deterministic preflight over your traces or source docs before any generation spend — trace count, field completeness, near-duplicates, PII density."
+icon: "filter"
+---
+
+Garbage in is a quiet failure. A trace dump that's too thin, mostly
+duplicates, or missing the fields calibration needs will still produce a
+suite that looks confident. You don't find out until the numbers don't
+mean anything. The input-quality gate makes that loud before you spend a
+cent on generation.
+
+Shipped in [0.14.0](https://github.com/multivon-ai/multivon-eval/blob/main/CHANGELOG.md#0140--2026-06-16).
+It reuses machinery the rest of the framework already trusts, so it adds no
+new dependencies and makes no LLM call.
+
+## What it checks
+
+`assess_input()` and `multivon-eval assess` run four signals over your
+input:
+
+- **Trace count** — enough data to calibrate against. Below the shared
+  `discover.CALIBRATION_MIN_TRACES` threshold, calibration falls back to
+  uncalibrated defaults, and the gate says so out loud.
+- **Per-field completeness** — what fraction of traces carry the fields a
+  suite needs. Zero-output traces are a common silent one; they make
+  calibration early-return uncalibrated thresholds, and the gate now
+  surfaces that instead of letting it pass quietly.
+- **Near-duplicate ratio** — token-Jaccard overlap, reservoir-capped so a
+  large dump can't hang the check. A pile of near-identical traces inflates
+  apparent coverage without adding any.
+- **PII / secret density** — how much sensitive content is present, using
+  the same detectors the redaction path uses.
+
+There is deliberately no 0-100 score. A single scalar is exactly the vanity
+metric the gate exists to prevent — it would invite tuning the number
+instead of fixing the input.
+
+## WARN by default
+
+The gate warns; it does not block.
+
+- **PROCEED** is silent. When the input is fine, you see nothing.
+- **WARN** prints a determinacy headline whose denominator counts every
+  defined signal (`2 of 4 signals flagged`), one line per flag, and a
+  blind-spots footer naming what it did not check.
+
+<Note>
+There is no hard REFUSE in this version, on purpose: a WARN can't break a
+CI. The standalone `assess` command exits 1 on a WARN so a script can
+detect it, but the inline preflight never changes the host command's exit
+code.
+</Note>
+
+## As a standalone check
+
+```bash
+multivon-eval assess traces.jsonl                  # default: --for bootstrap
+multivon-eval assess docs/faq.md --for generate    # a source document
+multivon-eval assess cases.jsonl --for cases       # an eval-cases JSONL
+```
+
+```python
+from multivon_eval import assess_input
+
+result = assess_input("traces.jsonl", kind="bootstrap")
+```
+
+## As a preflight
+
+The gate runs automatically inside `bootstrap` and `generate`, on the
+traces they've already loaded, before the first paid call. You don't have
+to wire anything up.
+
+```bash
+multivon-eval generate --from docs/faq.md --n 20            # gate runs first
+multivon-eval generate --from docs/faq.md --n 20 --skip-input-gate
+```
+
+`--skip-input-gate` turns it off, but it still prints one line on stderr
+when it does. Suppressing the gate is never truly silent.

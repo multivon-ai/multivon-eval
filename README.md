@@ -23,7 +23,7 @@ multivon-eval runs structured evals over model outputs: string checks, LLM-judge
 
 **Index:**
 [Quickstart](#quickstart--30-seconds-no-api-key) ·
-[What's new 0.10–0.12](#whats-new-in-010012) ·
+[What's new 0.10–0.15](#whats-new-in-010015) ·
 [Ecosystem](#the-multivon-ecosystem) ·
 [Why multivon-eval](#why-multivon-eval) ·
 [Install](#install) ·
@@ -65,7 +65,7 @@ The `quickstart` template sticks to deterministic evaluators (`NotEmpty`, `Conta
 
 LLM-judge evaluators auto-activate when `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or a local server (Ollama on `:11434`, LM Studio on `:1234`, or `OPENAI_BASE_URL`) is detected — but every template runs without one in some form.
 
-## What's new in 0.10–0.12
+## What's new in 0.10–0.15
 
 - **Prompt-drift staleness + case provenance (0.10.0).** Your code changes; your eval cases quietly rot. `multivon-eval staleness` diffs a committed `prompt_baseline.json` against a live scan of every prompt call site and names which prompts changed since your cases were written: `CHANGED` (before/after fingerprints, plus the cases bound to that prompt), `REMOVED`, `ADDED`, and `UNKNOWN` for dynamic prompts it refuses to guess at. `staleness stamp` binds cases to call sites. `--fail-on changed,removed` gates CI. Every report opens with a determinacy headline ("N of M call sites statically resolvable") and ends with a blind-spots footer listing what static analysis cannot see.
 
@@ -76,6 +76,12 @@ LLM-judge evaluators auto-activate when `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, o
 - **Robustness hardening (0.11.1).** We threw malformed inputs, symlink tricks, and unicode edge cases at the staleness/scanner/bootstrap surface. Every failure found was either a crash or, worse, a false report. So: a syntax-broken file now surfaces as `UNSCANNABLE` instead of falsely `REMOVED`, fingerprints are NFC-normalized (`SCANNER_VERSION` 3 → 4), `match`-statement rebinding disqualifies module constants from static resolution, and CLI errors exit 2 with a usable message instead of a traceback. The rule behind all of them: an honest UNKNOWN beats a confident wrong answer.
 
 - **Persona simulator + scaled case generation (0.12.0, [#10](https://github.com/multivon-ai/multivon-eval/issues/10)/[#11](https://github.com/multivon-ai/multivon-eval/issues/11)).** Static multi-turn test scripts break the moment your model answers differently. `multivon-eval simulate` drives the conversation live instead: a persona LLM with a profile, a goal, and a temper talks to your `model_fn`, adapting each turn, and the transcript gets scored by the conversation evaluators plus a goal judge. Every output is labeled "simulated personas — measures behavior under synthetic users, not real traffic", and there's a hard `--budget` ceiling. Separately, `bootstrap --n-seed-cases` now scales to 500 cases behind duplicate and hardness gates, and the report accounts for every reject: "generated 500, accepted 431 — dropped 38 duplicates, 12 malformed".
+
+- **Generation toolkit (0.13.0, [#13](https://github.com/multivon-ai/multivon-eval/issues/13)).** Five ways to make eval data, two of them free. `mutate_cases` applies deterministic robustness mutations (typo and whitespace noise, unicode confusables, punctuation strip, a conservative negation flip) and records whether each mutant should hold the old label or flip it. `cases_from_template` expands a parametric grid over named axes, full product or greedy pairwise. `generate_contrast_pairs` writes a minimally-edited unfaithful twin per case and only keeps it if a judge confirms the verdict actually flipped. Span-grounded doc-QA records the source offsets behind every generated question and can mix in refusal-bait questions whose right answer is "I don't know". And `simulate --export-cases` turns persona transcripts into conversation cases. Every generator stamps provenance, runs through the dedupe gates, and reports its rejects. The `generate` CLI picks up `--mutate`, `--template`/`--axes`/`--sample`, and `--contrast`/`--no-verify`.
+
+- **Input-quality gate (0.14.0, [#14](https://github.com/multivon-ai/multivon-eval/issues/14)).** Garbage in is a quiet failure: a thin or duplicative trace dump still produces a confident-looking suite. `assess_input()` and `multivon-eval assess` run a free, deterministic preflight over four signals — trace count, per-field completeness, near-duplicate ratio, and PII/secret density — and reuse machinery the rest of the framework already trusts, so there are no new dependencies and no LLM call. There is deliberately no 0-100 score, which is the vanity metric the gate exists to prevent. It warns rather than blocks: a clean input passes silently, a flagged one prints a determinacy headline ("2 of 4 signals flagged"), one line per flag, and a footer naming what it did not check. A WARN can't break your CI. The gate runs as a preflight inside `bootstrap` and `generate` before the first paid call; `--skip-input-gate` turns it off but still leaves one line on stderr, so suppression is never silent.
+
+- **`view --dir` report browser (0.15.0, [#15](https://github.com/multivon-ai/multivon-eval/issues/15)).** Point `multivon-eval view --dir runs/` at a folder of report JSONs and get a sortable index of every run — suite, model, when, n, pass rate with a Wilson CI bar, error and flaky badges, cost. Click through to any report rendered exactly as `view` already renders a single file, or diff two runs: pass-rate and avg-score deltas, McNemar p with a significance label, and the regressed cases stacking both runs' judge reasons so you can read why a verdict flipped. It's read-only and runs on the same stdlib server `view` already uses — no new dependencies, fully offline. Single-file `view <report.json>` still works unchanged.
 
 <details>
 <summary><strong>What's new in 0.9.x (older)</strong></summary>
@@ -456,8 +462,11 @@ multivon-eval init -t <template> -d <dir>     # scaffold a starter eval suite (t
 multivon-eval run eval.py                     # execute an eval file
 multivon-eval report results.json             # print a saved JSON report
 multivon-eval view results.json [--open]      # render the JSON as an HTML dashboard
+multivon-eval view --dir runs/                # browse a folder of reports — sortable index, open any, diff two
 multivon-eval compare a.json b.json           # diff two reports, McNemar + BH-corrected per-evaluator deltas
 multivon-eval generate --from docs/ --n 20    # synthetic case generation from a file/dir
+multivon-eval generate --mutate cases.jsonl   # deterministic robustness mutations (also --template/--axes, --contrast)
+multivon-eval assess traces.jsonl             # free preflight: trace count, completeness, near-dups, PII — before you spend
 multivon-eval bootstrap --product PRODUCT.md --traces TRACES.jsonl   # cold-start a tuned suite
 multivon-eval doctor [--json]                 # preflight: API keys, local judges, versions, dirs
 multivon-eval install-skills [--dry-run] [--force]    # symlink the three Claude Code skills
