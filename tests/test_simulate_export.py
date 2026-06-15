@@ -6,7 +6,14 @@ from __future__ import annotations
 
 import json
 from argparse import Namespace
+from importlib import import_module
 from unittest.mock import patch
+
+# NB: `multivon_eval.simulate` the ATTRIBUTE is the exported function (see
+# __init__), which shadows the submodule — so `import ... as` / dotted patch
+# targets resolve to the function. import_module returns the real module
+# from sys.modules, immune to the shadow.
+_sim_mod = import_module("multivon_eval.simulate")
 
 from multivon_eval.case import EvalCase
 from multivon_eval.dataset import load_jsonl
@@ -114,9 +121,9 @@ class TestCliExportCases:
             _result(name="empty", goal="Different goal entirely, truly.",
                     transcript=[], stop_reason="driver_error"),
         ]
-        with patch("multivon_eval.simulate.simulate", return_value=results), \
-             patch("multivon_eval.simulate.score_simulations",
-                   return_value=self._summary()):
+        with patch.object(_sim_mod, "simulate", return_value=results), \
+             patch.object(_sim_mod, "score_simulations",
+                          return_value=self._summary()):
             rcode = cmd_simulate(self._ns(tmp_path, str(export)))
         assert rcode == 0
         out = capsys.readouterr().out
@@ -133,10 +140,10 @@ class TestCliExportCases:
         from multivon_eval.cli import cmd_simulate
 
         self._setup_files(tmp_path)
-        with patch("multivon_eval.simulate.simulate",
-                   return_value=[_result()]), \
-             patch("multivon_eval.simulate.score_simulations",
-                   return_value=self._summary()):
+        with patch.object(_sim_mod, "simulate",
+                          return_value=[_result()]), \
+             patch.object(_sim_mod, "score_simulations",
+                          return_value=self._summary()):
             rcode = cmd_simulate(self._ns(tmp_path, None))
         assert rcode == 0
         assert "exported cases" not in capsys.readouterr().out
