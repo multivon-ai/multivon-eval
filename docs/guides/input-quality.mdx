@@ -40,7 +40,7 @@ instead of fixing the input.
 
 The gate warns; it does not block.
 
-- **PROCEED** is silent. When the input is fine, you see nothing.
+- **PROCEED** is silent as a preflight: when the input is fine, a `bootstrap`/`generate` run prints nothing extra. (The standalone `multivon-eval assess` command still prints a one-line confirmation, since you asked it a direct question.)
 - **WARN** prints a determinacy headline whose denominator counts every
   defined signal (`2 of 4 signals flagged`), one line per flag, and a
   blind-spots footer naming what it did not check.

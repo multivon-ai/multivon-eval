@@ -31,7 +31,7 @@ mutants, report = mutate_cases(cases, seed=7, per_case=2)
 ```
 
 ```bash
-multivon-eval generate --mutate cases.jsonl --per-case 2 --seed 7 --out mutants.jsonl
+multivon-eval generate --mutate cases.jsonl --per-case 2 --seed 7 --output mutants.jsonl
 ```
 
 Deterministic per seed. Zero LLM calls.
@@ -67,6 +67,9 @@ their source case, so downstream comparisons are genuinely paired.
 from multivon_eval import generate_contrast_pairs
 
 pairs, report = generate_contrast_pairs(cases, verify=True, budget_usd=1.0)
+# Needs cases that carry both `context` and `expected_output` — a twin is
+# a minimally-edited UNFAITHFUL answer against the same context. Cases
+# without context are skipped (and counted in the report).
 ```
 
 ## Simulation transcripts as datasets
