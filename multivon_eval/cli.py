@@ -144,6 +144,29 @@ def cmd_view(args):
         raise KeyboardInterrupt
     signal.signal(signal.SIGTERM, _term_handler)
 
+    # Directory mode: `view --dir <d>` or a positional path that is a
+    # directory routes to the directory-level server (index / open / diff).
+    # Single-file behavior below is unchanged.
+    dir_arg = getattr(args, "dir", None)
+    target = dir_arg or args.file
+    target_path = Path(target) if target else None
+    if dir_arg or (target_path is not None and target_path.is_dir()):
+        from .dirview import serve_directory
+        if target_path is None or not target_path.is_dir():
+            print(f"Not a directory: {target_path}", file=sys.stderr)
+            return 1
+        return serve_directory(
+            target_path,
+            recursive=getattr(args, "recursive", False),
+            port=args.port or 0,
+            no_browser=args.no_browser,
+        )
+
+    if not args.file:
+        print("multivon-eval view: provide a report file or --dir <directory>",
+              file=sys.stderr)
+        return 1
+
     report_path = Path(args.file)
     if not report_path.exists():
         print(f"Report not found: {report_path}", file=sys.stderr)
@@ -836,7 +859,20 @@ def main():
         "view",
         help="Open a saved JSON report as HTML in a local web server",
     )
-    view_p.add_argument("file", help="JSON results file to render")
+    view_p.add_argument(
+        "file", nargs="?",
+        help="JSON results file to render, OR a directory of reports "
+             "(directory mode: sortable index + per-report view + diff)",
+    )
+    view_p.add_argument(
+        "--dir", metavar="DIR",
+        help="Directory of report JSONs to browse (index / open / diff). "
+             "Equivalent to passing a directory as the positional path.",
+    )
+    view_p.add_argument(
+        "--recursive", action="store_true",
+        help="(directory mode) walk subdirectories for reports (default: off)",
+    )
     view_p.add_argument(
         "--port", type=int, default=0,
         help="Port to listen on (default: OS picks an open port)",

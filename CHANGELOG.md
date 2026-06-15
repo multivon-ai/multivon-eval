@@ -6,6 +6,17 @@ All notable changes to `multivon-eval`. The format follows [Keep a Changelog](ht
 
 (reserved for in-flight work — empty)
 
+## [0.15.0] — 2026-06-16
+
+`multivon-eval view --dir` ([#15](https://github.com/multivon-ai/multivon-eval/issues/15)) — designed by a deliberation panel that rejected the framing ("studio") and landed on extending the existing `view` command instead. A local report browser for a folder of runs, read-only and stateless, on the same stdlib http.server harness `view` already uses — zero new dependencies, fully offline.
+
+### Added
+
+- **INDEX** (`view --dir runs/`) — a sortable table of every eval-report JSON in a directory: suite, model, when, n, pass rate with a Wilson CI bar, error/flaky badges, cost. A positive structural validator decides what's a report (requires the real `{summary.pass_rate, cases[]}` shape) — junk JSON collapses into one "k files skipped" line rather than being parsed as an empty report. error-rate >= 10% is flagged. `--recursive` opt-in (off by default).
+- **OPEN** (`/r/<idx>`) — the existing `EvalReport.to_html()` served verbatim with a breadcrumb; no renderer fork.
+- **DIFF** (`/diff?a=&b=`) — wraps `report_a.compare(report_b)`: pass-rate / avg-score deltas, McNemar p with a significance label, and four buckets (Regressed open + colored, Fixed, Still failing, Unchanged). Regressed rows stack both runs' judge reasons (looked up by case_input) as prose, so you see exactly why a verdict flipped.
+- Single-file `view <report.json>` is unchanged; `view <dir>` and `view --dir <dir>` both enter directory mode.
+
 ## [0.14.0] — 2026-06-16
 
 The input-quality gate ([#14](https://github.com/multivon-ai/multivon-eval/issues/14)) — designed by a multi-LLM deliberation panel (5 proposers, 3 critics, a synthesizer; the panel killed an over-engineered 12-signal version and every weak-NLP proxy). "Honest UNKNOWN over confident wrong" applied to the input side: make garbage-in loud and auditable before any generation spend, instead of silently producing a confident-looking suite from inputs that can't support one.
