@@ -23,7 +23,7 @@ Experiment tracking (compare runs across versions):
     exp.compare(old_run_id, run_id)
 """
 
-__version__ = "0.13.0"
+__version__ = "0.14.0"
 
 from .suite import EvalSuite
 from .case import EvalCase, AgentStep, ToolCall
@@ -44,6 +44,7 @@ from .generate import (
 # Deterministic generation toolkit (0.13.0): mutators + template grids ($0)
 from .mutate import MUTATIONS, mutate_cases, cases_from_template
 from .case_gates import GenerationReport
+from .input_gate import assess_input, InputQualityReport, SignalFinding
 from .experiments import (
     Experiment, list_experiments, wilson_interval, bootstrap_interval,
     runs_needed, min_detectable_effect, cohens_h, benjamini_hochberg,
@@ -186,6 +187,7 @@ __all__ = [
     # Generation toolkit (0.13.0): mutators, template grids, contrast pairs
     "generate_contrast_pairs", "mutate_cases", "cases_from_template",
     "MUTATIONS", "GenerationReport",
+    "assess_input", "InputQualityReport", "SignalFinding",
     # Experiments + statistics
     "Experiment", "list_experiments", "wilson_interval", "bootstrap_interval",
     "runs_needed", "min_detectable_effect", "cohens_h", "benjamini_hochberg",

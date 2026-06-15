@@ -330,6 +330,28 @@ def cmd_generate(args):
 
     unanswerable = getattr(args, "unanswerable_fraction", 0.0) or 0.0
     n = args.n if args.n is not None else 10
+
+    # Input-quality preflight (issue #14) — wired at the CLI level for the
+    # --from/--text paths (wiring into generate_from_text itself is awkward
+    # because it is also a library entry point with many callers). Free,
+    # WARN-only, silent on PROCEED, never changes the exit code.
+    if not getattr(args, "skip_input_gate", False):
+        from .input_gate import assess_input
+        gate_doc = None
+        if args.source:
+            try:
+                gate_doc = Path(args.source).read_text(encoding="utf-8")
+            except OSError:
+                gate_doc = None
+        elif args.text:
+            gate_doc = args.text
+        if gate_doc is not None:
+            rendered = assess_input(kind="generate", document=gate_doc).render_text()
+            if rendered:
+                print(rendered, file=sys.stderr, flush=True)
+    elif args.source or args.text:
+        print("input-quality gate skipped", file=sys.stderr)
+
     try:
         if args.source:
             print(f"Generating {n} {args.task} cases from {args.source}...")
@@ -897,6 +919,10 @@ def main():
     gen_p.add_argument("--budget-usd", type=float, default=1.0,
                        help="--contrast: HARD judge-spend ceiling; partial "
                             "results preserved when hit (default: 1.00)")
+    gen_p.add_argument("--skip-input-gate", action="store_true",
+                       help="Skip the free input-quality preflight (issue #14) "
+                            "on --from/--text. Still prints one stderr line; "
+                            "never changes the exit code.")
 
     # audit-package — one-shot compliance evidence zip
     audit_p = sub.add_parser(
@@ -997,6 +1023,10 @@ def main():
                         help="Skip adversarial seed-case generation (saves ~$0.02)")
     boot_p.add_argument("--skip-calibration", action="store_true",
                         help="Skip threshold calibration (use proposed thresholds as-is)")
+    boot_p.add_argument("--skip-input-gate", action="store_true",
+                        help="Skip the free input-quality preflight (issue #14). "
+                             "Suppression is never silent: one stderr line still "
+                             "prints. The gate never changes the exit code.")
     boot_p.add_argument("--validate", action="store_true",
                         help="N-shot judge-noise filter the generated seed cases against "
                              "a stub-refusal baseline (uses validate_adversarial_cases). "
@@ -1009,6 +1039,20 @@ def main():
                              "Bootstrap writes prompt_baseline.json there and "
                              "stamps generated cases with repo-state provenance "
                              "(targets=[] — bindings are never fabricated).")
+
+    # assess — standalone input-quality preflight (issue #14)
+    assess_p = sub.add_parser(
+        "assess",
+        help="Free input-quality preflight: assess traces/doc/cases before "
+             "generation spend (exits 0 PROCEED, 1 WARN)",
+    )
+    assess_p.add_argument("path", help="Input file: traces JSONL, source "
+                          "document, or cases JSONL (per --for)")
+    assess_p.add_argument("--for", dest="for_kind", default="bootstrap",
+                          choices=["bootstrap", "generate", "cases"],
+                          help="What the input is for: bootstrap (traces), "
+                               "generate (source document), cases (eval cases "
+                               "JSONL). Default: bootstrap.")
 
     # simulate — persona-driven adaptive multi-turn simulation (issue #10)
     sim_p = sub.add_parser(
@@ -1267,6 +1311,8 @@ def _dispatch(args, parser) -> None:
         sys.exit(cmd_doctor(args) or 0)
     elif args.command == "bootstrap":
         sys.exit(cmd_bootstrap(args) or 0)
+    elif args.command == "assess":
+        sys.exit(cmd_assess(args))
     elif args.command == "simulate":
         sys.exit(cmd_simulate(args) or 0)
     elif args.command == "install-skills":
@@ -1277,6 +1323,48 @@ def _dispatch(args, parser) -> None:
         sys.exit(cmd_staleness(args) or 0)
     else:
         parser.print_help()
+
+
+def cmd_assess(args) -> int:
+    """Standalone input-quality preflight (issue #14).
+
+    Loads the input by reusing the existing loaders (load_traces for
+    bootstrap, raw text for generate, load_jsonl for cases), runs
+    assess_input, prints render_text(), and exits 0 on PROCEED / 1 on WARN.
+    """
+    from .input_gate import assess_input
+
+    path = Path(args.path)
+    if not path.exists():
+        print(f"error: file not found: {path}", file=sys.stderr)
+        return 2
+
+    kind = args.for_kind
+    try:
+        if kind == "bootstrap":
+            from .discover import load_traces
+            report = assess_input(
+                kind="bootstrap", traces=load_traces(path, verbose=False),
+            )
+        elif kind == "generate":
+            report = assess_input(
+                kind="generate", document=path.read_text(encoding="utf-8"),
+            )
+        else:  # cases
+            from .dataset import load_jsonl
+            report = assess_input(kind="cases", cases=load_jsonl(str(path)))
+    except (ValueError, OSError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    rendered = report.render_text()
+    if rendered:
+        print(rendered)
+    else:
+        print(f"input quality: PROCEED — all {report.measurable_total} "
+              f"signals clear (not checked: "
+              f"{', '.join(report.blind_spots)})")
+    return 0 if report.verdict == "PROCEED" else 1
 
 
 def cmd_bootstrap(args) -> int:
@@ -1315,6 +1403,9 @@ def cmd_bootstrap(args) -> int:
     validate_cases = getattr(args, "validate_cases", False)
     baseline_model_file = getattr(args, "baseline_model_file", None)
     budget_usd = getattr(args, "budget_usd", 2.0)
+    skip_input_gate = getattr(args, "skip_input_gate", False)
+    if skip_input_gate:
+        print("input-quality gate skipped", file=sys.stderr)
     if validate_cases and not baseline_model_file:
         print("error: --validate-cases needs --baseline-model-file "
               "(a Python file exposing model_fn) — the hardness gate "
@@ -1337,6 +1428,7 @@ def cmd_bootstrap(args) -> int:
                 if baseline_model_file else None
             ),
             budget_usd=budget_usd,
+            run_input_gate=not skip_input_gate,
         )
     except (ValueError, OSError) as exc:
         # Malformed traces JSONL (load_traces reports file:line), unreadable

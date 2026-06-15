@@ -6,6 +6,21 @@ All notable changes to `multivon-eval`. The format follows [Keep a Changelog](ht
 
 (reserved for in-flight work — empty)
 
+## [0.14.0] — 2026-06-16
+
+The input-quality gate ([#14](https://github.com/multivon-ai/multivon-eval/issues/14)) — designed by a multi-LLM deliberation panel (5 proposers, 3 critics, a synthesizer; the panel killed an over-engineered 12-signal version and every weak-NLP proxy). "Honest UNKNOWN over confident wrong" applied to the input side: make garbage-in loud and auditable before any generation spend, instead of silently producing a confident-looking suite from inputs that can't support one.
+
+### Added
+
+- **`assess_input(source, kind)` + `multivon-eval assess`** — a free, deterministic preflight with four signals, every one reusing already-trusted machinery (zero new dependencies): trace count, per-field completeness, near-duplicate ratio (token-Jaccard, reservoir-capped so big dumps can't hang), and PII/secret density. No scalar 0-100 score — the vanity metric the gate exists to prevent.
+- **WARN-by-default, never a silent pass and never a silent block.** PROCEED is silent (invisible when input is fine); WARN prints a determinacy headline whose denominator counts every defined signal (`2 of 4 signals flagged`), one line per flag, and a blind-spots footer naming what was not checked. There is no hard REFUSE in this version: a WARN can't break a CI. The standalone `assess` exits 1 on WARN so scripts can detect it; the inline preflight never changes bootstrap's exit code.
+- Runs as a preflight inside `bootstrap` (on the traces it already loaded, before the first paid call) and the `generate` CLI path. `--skip-input-gate` disables it but still prints one stderr line, so suppression is never truly silent.
+- The field-completeness signal surfaces a previously-silent bug: zero-output traces make calibration early-return uncalibrated thresholds — the gate now says so out loud.
+
+### Changed
+
+- The `n<20` calibration threshold is now a single shared constant (`discover.CALIBRATION_MIN_TRACES`) imported by both the calibration warning and the gate, so the two can't drift.
+
 ## [0.13.0] — 2026-06-13
 
 The generation toolkit ([#13](https://github.com/multivon-ai/multivon-eval/issues/13)): five ways to generate eval data, two of them free. Every generator stamps provenance, routes through the dedupe gates, and reports its rejects.

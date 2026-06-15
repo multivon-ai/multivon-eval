@@ -120,6 +120,11 @@ _ALLOWED_EVALUATORS = frozenset({
 # Per-evaluator default threshold when the LLM gives a bogus one.
 _DEFAULT_THRESHOLD = 0.7
 
+# Minimum trace count below which p25-based calibration has wide CIs and
+# thresholds can swing on noise. The calibration warning AND the input-quality
+# gate (input_gate.py) both read this single constant so they can't drift.
+CALIBRATION_MIN_TRACES = 20
+
 # The only constructor argument the emitted eval_suite.py supplies
 # (``Name(threshold=...)``). Any evaluator whose __init__ has OTHER
 # required (no-default) parameters — Contains needs ``substrings``,
@@ -704,7 +709,7 @@ def calibrate_thresholds(
     LLM-judge evaluators use a smaller sample (cost). Deterministic ones
     use the full sample.
 
-    Warns when n_traces < 20: p25 over a small sample has wide CIs and the
+    Warns when n_traces < CALIBRATION_MIN_TRACES: p25 over a small sample has wide CIs and the
     resulting thresholds can swing wildly between bootstraps on the same
     product. Field data showed a Faithfulness threshold dropping from
     the default 0.85 down to 0.50 from p25 of just 8 traces — almost
@@ -714,10 +719,11 @@ def calibrate_thresholds(
     if not traces:
         return evaluators
 
-    if len(traces) < 20:
+    if len(traces) < CALIBRATION_MIN_TRACES:
         import sys
         sys.stderr.write(
-            f"\n  ⚠ calibration warning: n_traces={len(traces)} is below 20\n"
+            f"\n  ⚠ calibration warning: n_traces={len(traces)} is below "
+            f"{CALIBRATION_MIN_TRACES}\n"
             f"    p25-based thresholds have wide CIs at this sample size.\n"
             f"    The bootstrap will still emit calibrated thresholds, but\n"
             f"    don't treat them as authoritative until you've validated\n"
@@ -1048,6 +1054,7 @@ def bootstrap(
     validate_n_shots: int = 3,
     hardness_band: tuple[float, float] = (0.5, 1.0),
     budget_usd: float = _DEFAULT_SEED_BUDGET_USD,
+    run_input_gate: bool = True,
 ) -> BootstrapResult:
     """End-to-end bootstrap pipeline.
 
@@ -1097,6 +1104,21 @@ def bootstrap(
         print(f"[bootstrap] {msg}", file=sys.stderr, flush=True)
 
     raw_traces = load_traces(traces_path)
+
+    # Input-quality preflight (issue #14) — free, WARN-only, BEFORE the
+    # first paid call. Runs on the already-loaded raw traces + product text;
+    # silent on PROCEED, never changes bootstrap's exit behavior.
+    if run_input_gate:
+        from .input_gate import assess_input
+
+        report = assess_input(
+            kind="bootstrap", traces=raw_traces, document=description,
+            pii_policy=pii_policy,
+        )
+        rendered = report.render_text()
+        if rendered:
+            print(rendered, file=sys.stderr, flush=True)
+
     summary, sanitized_traces = summarize_traces(raw_traces, pii_policy=pii_policy)
     shape = infer_product_shape(summary)
 
