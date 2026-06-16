@@ -46,8 +46,9 @@ The gate warns; it does not block.
   blind-spots footer naming what it did not check.
 
 <Note>
-There is no hard REFUSE in this version, on purpose: a WARN can't break a
-CI. The standalone `assess` command exits 1 on a WARN so a script can
+There is no hard REFUSE, by design: a WARN can't break a CI, and the gate
+informs the decision rather than owning it. The standalone `assess`
+command exits 1 on a WARN so a script can
 detect it, but the inline preflight never changes the host command's exit
 code.
 </Note>
