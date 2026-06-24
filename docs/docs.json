@@ -47,16 +47,6 @@
             "pages": ["introduction", "quickstart", "why-multivon-eval"]
           },
           {
-            "group": "Compliance",
-            "pages": [
-              "compliance/overview",
-              "compliance/eu-ai-act",
-              "compliance/dpdp",
-              "compliance/audit-trail",
-              "compliance/bundle"
-            ]
-          },
-          {
             "group": "Evaluators",
             "pages": [
               "evaluators/deterministic",
@@ -80,22 +70,20 @@
           {
             "group": "Guides",
             "pages": [
+              "guides/generate",
               "guides/bootstrap",
               "guides/simulate",
               "guides/install-skills",
               "guides/intelligent-eval",
               "guides/statistical-rigor",
               "guides/reliability",
-              "reference/eval-report",
               "guides/examples",
-              "guides/generate",
+              "guides/score-logged-outputs",
               "guides/experiments",
               "guides/factory-suites",
               "guides/compliance",
               "guides/datasets",
-              "guides/synthetic-data",
               "guides/input-quality",
-              "reference/view",
               "guides/ci-cd",
               "guides/agent-trace",
               "guides/integrations",
@@ -103,6 +91,23 @@
               "guides/staleness",
               "guides/production-targets",
               "guides/custom-evaluators"
+            ]
+          },
+          {
+            "group": "Reference",
+            "pages": [
+              "reference/eval-report",
+              "reference/view"
+            ]
+          },
+          {
+            "group": "Compliance",
+            "pages": [
+              "compliance/overview",
+              "compliance/eu-ai-act",
+              "compliance/dpdp",
+              "compliance/audit-trail",
+              "compliance/bundle"
             ]
           }
         ]

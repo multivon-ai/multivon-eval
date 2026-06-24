@@ -1,0 +1,67 @@
+---
+title: Score logged outputs
+description: You already have your model's answers from production or an offline run — just score them. No re-running the model required.
+---
+
+The most common RAG setup isn't "generate fresh answers and grade them" — it's
+"I already have a pile of logged answers, I just want to score them." You don't
+need a special field for that. `suite.run(model_fn)` calls `model_fn(case.input)`
+for each case, so a `model_fn` that looks up the logged answer keyed on the input
+is the supported path. Replay your log; score it.
+
+## The pattern
+
+Build a map from each case's `input` to the answer you already logged, then hand
+`suite.run` a lambda that reads from it:
+
+```python
+answers = {case.input: logged_output_for_that_case}  # your replay map
+report = suite.run(lambda prompt: answers[prompt])
+```
+
+That's it. The lambda is your `model_fn`; it returns the recorded output instead
+of calling a live model. Every evaluator runs exactly as it would on a fresh
+generation.
+
+## End to end
+
+```python
+from multivon_eval import EvalSuite, EvalCase, Faithfulness
+
+# Cases you want to score, with the context each answer was grounded in.
+cases = [
+    EvalCase(
+        input="What's the refund window?",
+        context="Refunds are available within 30 days of purchase.",
+    ),
+    EvalCase(
+        input="Do you ship internationally?",
+        context="We ship to the US and Canada only.",
+    ),
+]
+
+# The answers you already logged in production, keyed by the prompt.
+logged = {
+    "What's the refund window?": "You can request a refund within 30 days.",
+    "Do you ship internationally?": "We ship to the US and Canada.",
+}
+
+suite = EvalSuite("Replay scoring")
+suite.add_cases(cases)
+suite.add_evaluators(Faithfulness())
+
+report = suite.run(lambda prompt: logged[prompt])
+print(f"Pass rate {report.pass_rate:.0%}")
+```
+
+## Notes
+
+- **The case `input` is the key.** Make sure each `EvalCase.input` matches the
+  prompt you logged the answer under, exactly. A `KeyError` from the lambda means
+  a case has no replay entry.
+- **Carry the `context`.** Grounded evaluators like `Faithfulness` and
+  `Hallucination` score the logged answer against the case's `context`, so include
+  the context each answer was produced against.
+- **No live calls.** Because the lambda never touches a model, replay scoring runs
+  at evaluator speed and costs only the LLM-judge calls (deterministic evaluators
+  are free).

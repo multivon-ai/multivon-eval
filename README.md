@@ -48,7 +48,7 @@ multivon-eval init -t quickstart -d my-eval   # scaffold your own (offline)
 cd my-eval && python eval.py
 ```
 
-The `quickstart` template sticks to deterministic evaluators (`NotEmpty`, `Contains`, `WordCount`), so the first run needs no API key at all.
+The `quickstart` template sticks to deterministic evaluators (`NotEmpty`, `Contains`, `WordCount`), so the first run needs no API key at all. The "no API key" promise is scoped to that template: the `python -m multivon_eval` demo will emit LLM-judge scores too if it detects a key or a local server (Ollama on `:11434`, LM Studio on `:1234`, or `OPENAI_BASE_URL`), so a running local model can show judge output under this banner. The template stays deterministic-only regardless.
 
 ### Pick your path
 
@@ -82,6 +82,8 @@ LLM-judge evaluators auto-activate when `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, o
 - **Input-quality gate (0.14.0, [#14](https://github.com/multivon-ai/multivon-eval/issues/14)).** Garbage in is a quiet failure: a thin or duplicative trace dump still produces a confident-looking suite. `assess_input()` and `multivon-eval assess` run a free, deterministic preflight over four signals — trace count, per-field completeness, near-duplicate ratio, and PII/secret density — and reuse machinery the rest of the framework already trusts, so there are no new dependencies and no LLM call. There is deliberately no 0-100 score, which is the vanity metric the gate exists to prevent. It warns rather than blocks: a clean input passes silently, a flagged one prints a determinacy headline ("2 of 4 signals flagged"), one line per flag, and a footer naming what it did not check. A WARN can't break your CI. The gate runs as a preflight inside `bootstrap` and `generate` before the first paid call; `--skip-input-gate` turns it off but still leaves one line on stderr, so suppression is never silent.
 
 - **`view --dir` report browser (0.15.0, [#15](https://github.com/multivon-ai/multivon-eval/issues/15)).** Point `multivon-eval view --dir runs/` at a folder of report JSONs and get a sortable index of every run — suite, model, when, n, pass rate with a Wilson CI bar, error and flaky badges, cost. Click through to any report rendered exactly as `view` already renders a single file, or diff two runs: pass-rate and avg-score deltas, McNemar p with a significance label, and the regressed cases stacking both runs' judge reasons so you can read why a verdict flipped. It's read-only and runs on the same stdlib server `view` already uses — no new dependencies, fully offline. Single-file `view <report.json>` still works unchanged.
+
+- **`view --dir` fix for Python 3.10/3.11 (0.15.1).** The index renderer used f-strings with quotes and backslashes inside the `{}` expression, which is valid on 3.12+ but a `SyntaxError` on 3.10/3.11 — so `view` broke on the lower half of the supported range (the package minimum is 3.10). A fresh-install check on the CI matrix caught it; the nested markup is now a module constant and `view --dir` works across every supported version.
 
 <details>
 <summary><strong>What's new in 0.9.x (older)</strong></summary>

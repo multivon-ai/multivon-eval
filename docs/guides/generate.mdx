@@ -1,23 +1,26 @@
 ---
-title: Generate QA cases from docs
-description: Turn your documentation, knowledge base, or any text into ready-to-run question-answer eval cases — no labeled data required.
+title: Generate eval cases
+description: Turn docs, knowledge bases, or transcripts into ready-to-run eval cases — QA generation, mutations, template grids, contrast pairs, and simulation transcripts. Several are free.
 ---
 
-The hardest part of getting started with evals is having nothing to evaluate against. `generate_from_file()` removes that: point it at your documentation, knowledge base, or any text and get ready-to-run eval cases in seconds.
+The hardest part of getting started with evals is having nothing to evaluate
+against. multivon-eval generates cases for you: point it at your documentation
+and get question-answer pairs in seconds, or expand an existing set with
+mutations, template grids, and contrast pairs. Two of the generators run with no
+LLM at all.
 
-<Note>
-This page covers generating QA cases from source text. For the full
-generation toolkit — mutations, template grids, contrast pairs, and
-simulation transcripts — see [Synthetic dataset
-generation](/guides/synthetic-data).
-</Note>
+Every generator stamps provenance (`authored_by="generator:<kind>"`, seed
+recorded), routes through the dedupe gates, and returns an accounting report:
+`generated N, accepted M — dropped k duplicates, j malformed`.
 
-## Quickstart
+## Generate QA cases from docs
+
+`generate_from_file()` reads a text file and produces question-answer cases
+grounded in it:
 
 ```python
 from multivon_eval import generate_from_file, EvalSuite, Faithfulness, Relevance
 
-# Generate QA pairs from your docs
 cases = generate_from_file("docs/faq.md", n=20)
 
 suite = EvalSuite("FAQ Eval")
@@ -26,70 +29,145 @@ suite.add_evaluators(Faithfulness(), Relevance())
 report = suite.run(my_model)
 ```
 
-## From raw text
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `path` | string | required | Path to the source file (`.txt`, `.md`, `.rst`, `.py`, etc.; read as UTF-8). |
+| `n` | int | `10` | Number of cases to generate. |
+| `task` | string | `"qa"` | One of `"qa"`, `"summarization"`, `"hallucination"`. |
+| `record_spans` | bool | `True` | (task=`qa`) Record each case's grounding span — `metadata["source_span"]` with start/end offsets and a chunk hash — so a Faithfulness verdict traces to the evidence it came from. Spans that can't be located are recorded as `None` and counted, not guessed. |
+| `unanswerable_fraction` | float | `0.0` | (task=`qa`) Fraction of cases deliberately not answerable from the text. Their expected behavior is refusal (`expected_output=None`), the cheapest hallucination bait there is. |
+| `return_report` | bool | `False` | Also return the `GenerationReport` with gate accounting. Default keeps the `list[EvalCase]` return shape. |
+
+### From raw text
+
+`generate_from_text()` takes the source string directly (same params as
+`generate_from_file` plus `context_window`):
 
 ```python
 from multivon_eval import generate_from_text
 
-text = """
-Our return policy allows customers to return any item within 30 days
-of purchase for a full refund. Items must be in original condition.
-Shipping costs are non-refundable...
-"""
-
-cases = generate_from_text(text, n=10, task="qa")
+cases = generate_from_text(open("docs/faq.md").read(), n=20, task="qa")
 ```
 
-## Task types
+`context_window` (int, default `3000`) caps the characters of source included per
+generation prompt; long inputs are split into overlapping chunks.
 
-### `qa` (default)
-Generates question-answer pairs with context excerpts. Best for RAG pipelines, chatbots, and knowledge base evaluation.
+### Task types
 
-```python
-cases = generate_from_file("docs/handbook.md", n=20, task="qa")
-# Each case: input=question, expected_output=answer, context=excerpt
-```
+- **`qa`** (default) — question/answer pairs with context excerpts. Each case has
+  `input` (the question), `expected_output` (the answer), and `context` (the
+  excerpt). Best for RAG, chatbots, and knowledge-base evaluation.
+- **`summarization`** — document chunks with faithful reference summaries. `input`
+  is the chunk, `expected_output` is the summary.
+- **`hallucination`** — faithful-answer cases (`expected_output="faithful"`).
+  Pair with the `Hallucination` evaluator to verify your model doesn't fabricate.
 
-### `summarization`
-Generates document chunks with faithful reference summaries. Use for evaluating summarization models.
+### Hallucination benchmark pairs
 
-```python
-cases = generate_from_file("docs/whitepaper.txt", n=10, task="summarization")
-# Each case: input="Summarize the following text.", context=chunk, expected_output=summary
-```
-
-### `hallucination`
-Generates QA pairs where the expected answer is "faithful". Pair with the `Hallucination` evaluator to verify your model doesn't fabricate.
-
-```python
-cases = generate_from_file("docs/product-specs.md", n=15, task="hallucination")
-suite.add_evaluators(Hallucination())
-```
-
-## Build your own benchmark dataset
-
-`generate_hallucination_pairs()` returns both faithful and hallucinated answer variants — useful for building your own labeled benchmark:
+`generate_hallucination_pairs()` returns both faithful and hallucinated answer
+variants — useful for building your own labeled benchmark (HaluEval-style):
 
 ```python
 from multivon_eval import generate_hallucination_pairs
 
 pairs = generate_hallucination_pairs(my_docs, n=20)
-# Returns: [{question, context, faithful_answer, hallucinated_answer}, ...]
+# [{"question", "context", "faithful_answer", "hallucinated_answer"}, ...]
 ```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `text` | string | required | Source text to ground questions in. |
+| `n` | int | `10` | Number of pairs to generate. |
+
+## Mutations (free)
+
+CheckList-style robustness suites from cases you already have. Each mutant records
+its transformation and what you should expect: `invariant` (the model's answer
+shouldn't materially change) or `flip` (the old label no longer applies — the
+expectation is cleared, never silently kept).
+
+```python
+from multivon_eval import mutate_cases
+
+mutants, report = mutate_cases(cases, seed=7, per_case=2)
+# mutations: typo_noise, whitespace_noise, case_noise,
+#            unicode_confusable, punctuation_strip, negation_flip (flip)
+```
+
+```bash
+multivon-eval generate --mutate cases.jsonl --per-case 2 --seed 7 --output mutants.jsonl
+```
+
+Deterministic per seed. Zero LLM calls.
+
+## Template grids (free)
+
+Parametric coverage over axes you define. `sample="all"` is the full product
+(capped at 2000); `sample="pairwise"` is a greedy covering array that hits every
+value pair at least once.
+
+```python
+from multivon_eval import cases_from_template
+
+cases, report = cases_from_template(
+    "Refund question about {item} bought {when}",
+    axes={"item": ["a laptop", "shoes", "an ebook"],
+          "when": ["yesterday", "40 days ago"]},
+    sample="pairwise",
+)
+```
+
+Rows without `expected_output` are valid — judge evaluators score outputs without
+a reference answer. No label is ever invented.
+
+## Contrast pairs
+
+For each passing case, an LLM proposes a minimally-edited unfaithful twin, and a
+judge verifies the flip is real before the twin is accepted. Rejected twins are
+counted in the report, not kept. Twins share a `pair_id` with their source case,
+so downstream comparisons are genuinely paired.
+
+```python
+from multivon_eval import generate_contrast_pairs
+
+pairs, report = generate_contrast_pairs(cases, verify=True, budget_usd=1.0)
+# Needs cases that carry both `context` and `expected_output` — a twin is a
+# minimally-edited UNFAITHFUL answer against the same context. Cases without
+# context are skipped (and counted in the report).
+```
+
+## Simulation transcripts as datasets
+
+`multivon-eval simulate ... --export-cases cases.jsonl` turns persona conversation
+transcripts into conversation-shaped `EvalCase`s (empty transcripts are skipped
+and counted). See the [simulate guide](/guides/simulate).
 
 ## CLI
 
 ```bash
-# Generate and print to stdout
-multivon-eval generate --from docs/faq.md --n 20 --task qa
+# QA generation from a file or dir
+multivon-eval generate --from docs/faq.md --n 20 --task qa --output cases.jsonl
 
-# Generate and save to JSONL
-multivon-eval generate --from docs/faq.md --n 20 --output cases.jsonl
+# Mutations, template grids, contrast pairs
+multivon-eval generate --mutate cases.jsonl --per-case 2 --seed 7
 ```
+
+| Flag | Description |
+|------|-------------|
+| `--from <path>` | Source file. |
+| `--text <text>` | Raw text source (alternative to `--from`). |
+| `--n <int>` | Number of cases. Defaults to `10`. |
+| `--task` | One of `qa`, `summarization`, `hallucination`. Defaults to `qa`. |
+| `--output`, `-o` | Save to JSONL. If omitted, prints a preview to stdout. |
+| `--mutate` | Deterministic robustness mutations (also `--per-case`, `--seed`). |
+| `--template` / `--axes` / `--sample` | Template-grid expansion. |
+| `--contrast` / `--no-verify` | Contrast-pair generation. |
 
 ## Tips
 
 - **Start small** — generate 10-20 cases first, review them, then scale up.
-- **Use your actual docs** — cases generated from your real content catch real problems.
-- **Mix with manual cases** — generated cases cover breadth; manual cases cover the edge cases you already know about.
-- **Task choice matters** — use `qa` for RAG evaluation, `summarization` for summarization pipelines, `hallucination` when you want to stress-test faithfulness.
+- **Use your actual docs** — cases from your real content catch real problems.
+- **Mix with manual cases** — generated cases cover breadth; manual cases cover
+  the edge cases you already know about.
+- **Task choice matters** — `qa` for RAG, `summarization` for summarization
+  pipelines, `hallucination` to stress-test faithfulness.
