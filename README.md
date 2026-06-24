@@ -13,11 +13,17 @@
 
 ### Why we exist
 
-We measured the three popular eval frameworks (multivon-eval, DeepEval, RAGAS) on the same dataset with the same labels. They agree on a binary hallucination judgment 56% of the time. Cohen's **κ = 0.03**, which is statistically indistinguishable from chance. If your CI gate flips depending on which framework you happened to adopt, the "regression" is framework noise, not model quality. Raw data and code: [eval-framework-benchmark](https://github.com/multivon-ai/eval-framework-benchmark).
+**The eval tools don't agree with each other.** We ran the three popular ones (multivon-eval, DeepEval, RAGAS) over the same data with the same labels. On a simple yes/no hallucination call, they agree only 56% of the time. Cohen's **κ = 0.03** — no better than a coin flip. So when your CI gate flips after you switch frameworks, that's the tool arguing with itself, not your model getting worse. Raw data and code: [eval-framework-benchmark](https://github.com/multivon-ai/eval-framework-benchmark).
 
-On the cross-distribution held-out test we hold ourselves to — Hallucination evaluator calibrated on HaluEval-QA, tested without re-tuning on HaluEval-Sum (n=60) — multivon-eval scores **F1 0.830 [0.70–0.92]**. The lower bound of our CI (0.71) clears DeepEval's upper bound (0.68) on the in-distribution comparison (F1 0.804 [0.71–0.88] vs 0.586 [0.48–0.68]). The full methodology + raw counts are in [`benchmarks/README.md`](benchmarks/README.md) Benchmark 4.
+**We test ourselves the hard way.** We calibrate the Hallucination evaluator on one dataset (HaluEval-QA), then score it on a different one (HaluEval-Sum, n=60) without re-tuning. It gets **F1 0.830 [0.70–0.92]**. On the in-distribution comparison, our worst case (CI lower bound 0.71) still beats DeepEval's best case (upper bound 0.68): F1 0.804 [0.71–0.88] vs 0.586 [0.48–0.68]. Full method and raw counts: [`benchmarks/README.md`](benchmarks/README.md) Benchmark 4.
 
-The release sequence 0.9.4 → 0.9.5 → 0.9.6 → 0.9.7 is our own audit trail. A review round caught a "held-out" claim in 0.9.4 that was actually in-distribution; 0.9.5 corrected it and added a genuinely held-out test. 0.9.6 fixed three runtime blockers in the bootstrap template. 0.9.7 caught a threshold mismatch that had inflated the held-out F1 from 0.830 to 0.852. Four releases in a day, all of them still on PyPI. We hold the framework to the same discipline it asks of your models.
+**When the measurement catches us, we publish it.** Three times, newest first:
+
+- We added a pixels-only mode to our PDF benchmark, and the leaderboard nearly flipped. Every PDF leader dropped (GPT-5 94.7% → 67.6%, Haiku 91.2% → 58.2%) and every laggard rose (Opus 79.4% → 85.9%). The benchmark had been measuring each provider's text-extraction pipeline as much as the model.
+- That same pixels mode then caught a bug in *our own* benchmark on its first run: two trap families rendered a visible tofu box (■) instead of the invisible character we claimed they used. We redesigned them, footnoted the affected rows, and added a glyph-level gate so it can't ship again.
+- We set a 50% bar for our prompt-drift detector, measured real traffic, and hit **20.9%**. We published the failed gate and shipped the honest design (a runtime recorder in its own trust tier) instead of the claim we couldn't back.
+
+Earlier, the release run 0.9.4 → 0.9.5 → 0.9.6 → 0.9.7 was the same discipline at smaller scale: a review caught a "held-out" claim that wasn't, plus a threshold mismatch that had inflated the held-out F1 from 0.830 to 0.852, plus three runtime blockers — four releases in a day, all still on PyPI. We hold the framework to the same standard it asks of your models.
 
 multivon-eval runs structured evals over model outputs: string checks, LLM-judge scoring, agent traces, multi-turn conversations. Python API, terminal and HTML reports, CI hooks.
 
