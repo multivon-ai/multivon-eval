@@ -13,7 +13,7 @@
 
 ### Why we exist
 
-**The eval tools don't agree with each other.** We ran the three popular ones (multivon-eval, DeepEval, RAGAS) over the same data with the same labels. On a simple yes/no hallucination call, they agree only 56% of the time. Cohen's **κ = 0.03** — no better than a coin flip. So when your CI gate flips after you switch frameworks, that's the tool arguing with itself, not your model getting worse. Raw data and code: [eval-framework-benchmark](https://github.com/multivon-ai/eval-framework-benchmark).
+**The eval tools don't agree with each other.** We ran the three popular ones (multivon-eval, DeepEval, RAGAS) over the same data with the same labels. On a simple yes/no hallucination call, they disagree on 56% of cases. Cohen's **κ = 0.03** — agreement no better than a coin flip. So when your CI gate flips after you switch frameworks, that's the tool arguing with itself, not your model getting worse. Raw data and code: [eval-framework-benchmark](https://github.com/multivon-ai/eval-framework-benchmark).
 
 **We test ourselves the hard way.** We calibrate the Hallucination evaluator on one dataset (HaluEval-QA), then score it on a different one (HaluEval-Sum, n=60) without re-tuning. It gets **F1 0.830 [0.70–0.92]**. On the in-distribution comparison, our worst case (CI lower bound 0.71) still beats DeepEval's best case (upper bound 0.68): F1 0.804 [0.71–0.88] vs 0.586 [0.48–0.68]. Full method and raw counts: [`benchmarks/README.md`](benchmarks/README.md) Benchmark 4.
 
