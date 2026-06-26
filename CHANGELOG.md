@@ -6,6 +6,19 @@ All notable changes to `multivon-eval`. The format follows [Keep a Changelog](ht
 
 (reserved for in-flight work — empty)
 
+## [0.15.2] — 2026-06-26
+
+### Changed
+
+- **Docs / README only — no code changes.** This release exists to carry the
+  current README to the PyPI project page, which only re-renders on publish.
+  Rewrote the README "Why we exist" in plainer language and re-anchored it on
+  the strongest recent honesty artifacts (the cross-modality pixels inversion,
+  the published 20.9% determinacy-gate miss, the tofu-box self-catch) while
+  keeping the older receipts. Fixed an inverted statistic: the eval frameworks
+  **disagree** on 56% of cases (Cohen's κ = 0.03) — the line previously read
+  "agree". The package code is identical to 0.15.1.
+
 ## [0.15.1] — 2026-06-16
 
 ### Fixed
