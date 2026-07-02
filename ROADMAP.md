@@ -63,6 +63,7 @@ Track of what's shipped + what's coming. Updated when a feature lands or moves b
 - [ ] Tiered eval cost optimizer — start with heuristic, escalate to local model, escalate to frontier only when needed
 - [ ] Agent simulation / adversarial user testing
 - [ ] Multi-LLM consultation as v0.9 upgrade to the bootstrap CLI (Claude + GPT + Gemini for metric proposal)
+- [ ] Trust & safety evaluator family — extend the existing `Toxicity` / `Bias` judges into full coverage of the trustworthiness dimensions popularized by benchmarks like [TrustLLM](https://github.com/HowieHwong/TrustLLM) (ICML 2024): robustness (input-perturbation + prompt-injection resistance), harmful-content / jailbreak refusal, and machine ethics. Truthfulness (Faithfulness/Hallucination) and privacy (`PIIEvaluator`) are already shipped; this closes the remaining dimensions so a team can gate a model on trustworthiness the same way they gate on faithfulness today.
 
 ## How to influence the roadmap
 
