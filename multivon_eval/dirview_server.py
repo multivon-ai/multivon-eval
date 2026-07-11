@@ -136,7 +136,7 @@ def serve_directory(base_dir: Path, *, recursive: bool, port: int, no_browser: b
         url = f"http://127.0.0.1:{actual_port}/"
         print(f"  multivon-eval view  →  {url}")
         print(f"  Source: {base_dir}{' (recursive)' if recursive else ''}")
-        print(f"  Press Ctrl-C to stop.\n")
+        print("  Press Ctrl-C to stop.\n")
 
         if no_browser:
             print("  --no-browser was set; not opening browser automatically.")

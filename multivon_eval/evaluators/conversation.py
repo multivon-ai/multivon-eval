@@ -7,7 +7,7 @@ over the full dialogue, not just a single response.
 from __future__ import annotations
 
 from .base import Evaluator
-from .llm_judge import _judge_call, _parse_yes_no, _qag_eval
+from .llm_judge import _qag_eval
 from ..case import EvalCase
 from ..judge import JudgeConfig, resolve_judge
 from ..result import EvalResult
@@ -59,9 +59,8 @@ class KnowledgeRetention(Evaluator):
         if not case.conversation:
             return self._skipped("Requires case.conversation — add a multi-turn dialog to enable this evaluator.")
 
-        # Extract facts from user turns earlier in conversation
-        user_turns = [m["content"] for m in case.conversation if m["role"] == "user"]
-        if not user_turns:
+        # There must be at least one user turn to retain facts from.
+        if not any(m["role"] == "user" for m in case.conversation):
             return self._result(1.0, "No user turns to retain facts from")
 
         ctx = (

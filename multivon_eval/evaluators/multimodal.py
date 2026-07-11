@@ -253,8 +253,7 @@ class VQAFaithfulness(Evaluator):
     """Image-grounded faithfulness: does the response describe what is
     actually visible in the image?
 
-    Experimental — first shipped 2026-05-16 as part of the Document Agent
-    Acceptance Protocol seed work. The QAG prompt asks the vision judge
+    Experimental. The QAG prompt asks the vision judge
     to confirm/deny three claims grounded in the image, then scores as
     the fraction confirmed. Default threshold falls through the standard
     calibration-fallback policy.
@@ -362,8 +361,7 @@ class DocumentGrounding(Evaluator):
     multi-image input — the protocol-specific questions (page citation
     accuracy, table extraction fidelity, exception handling) will land in
     a follow-up release once design partners surface the precise failure
-    modes that matter. Track progress in
-    `multivon-strategy/plans/strategy-2026-05-16.md`.
+    modes that matter.
     """
 
     name = "document_grounding"

@@ -24,7 +24,7 @@ Coverage matrix (per-jurisdiction) lives in the PIIEvaluator docstring below.
 from __future__ import annotations
 import json
 import re
-from typing import Any, Iterable
+from typing import Any
 
 from .base import Evaluator
 from ..case import EvalCase
@@ -159,13 +159,13 @@ def _gstin_valid(gstin: str) -> bool:
 # for a regex match, the match is treated as a false positive and dropped
 # from the "found" set when strict=True (default).
 _VALIDATORS = {
-    "credit_card":  lambda s: _luhn_valid(s),
-    "aadhaar":      lambda s: _verhoeff_valid(s),
-    "iban":         lambda s: _mod97_iban_valid(s),
-    "nhs_number":   lambda s: _mod11_nhs_valid(s),
-    "ssn":          lambda s: _ssn_structurally_valid(s),
-    "pan":          lambda s: _pan_india_valid(s),
-    "gstin":        lambda s: _gstin_valid(s),
+    "credit_card":  _luhn_valid,
+    "aadhaar":      _verhoeff_valid,
+    "iban":         _mod97_iban_valid,
+    "nhs_number":   _mod11_nhs_valid,
+    "ssn":          _ssn_structurally_valid,
+    "pan":          _pan_india_valid,
+    "gstin":        _gstin_valid,
 }
 
 
@@ -188,8 +188,7 @@ _PII_PATTERNS: dict[str, str] = {
     # International phone with explicit + prefix.
     # 6-14 digits after the country code, each optionally preceded by ONE
     # separator — real international numbers are written in spaced groups
-    # ("+44 7911 123456"); the old single-separator form missed them
-    # entirely (release-readiness re-verification, 2026-06-13).
+    # ("+44 7911 123456").
     "phone_intl":    r"\+\d{1,3}[-.\s]?\d(?:[-.\s]?\d){5,13}\b",
     # SSN — 3-2-4 grouping. Structural validator (_ssn_structurally_valid)
     # drops 000/666 areas and all-same-digit decoys.
@@ -222,8 +221,8 @@ _PII_PATTERNS: dict[str, str] = {
 # only caught when use_ner=True. The base table covers email, phone, fax,
 # SSN, dates, URLs, IPs, plus the healthcare-specific ones here.
 _HIPAA_EXTRA: dict[str, str] = {
-    # (8) Medical record numbers. Real MRNs vary widely (4–15 digits).
-    # The original "6-10" lower bound missed common 5-digit hospital MRNs.
+    # (8) Medical record numbers. Real MRNs vary widely (4–15 digits),
+    # including common 5-digit hospital MRNs.
     "medical_record_number": r"\b(?:MRN|Medical\s+Record\s+(?:No\.?|Number)|Patient\s+(?:ID|No\.?))[-:\s#]*\d{4,15}\b",
     # (9) Health plan beneficiary numbers.
     "health_plan_number":    r"\b(?:HPN|HPBN|Member\s?ID|Group\s+No\.?|Policy\s+No\.?)[-:\s#]*[A-Z0-9]{5,18}\b",
@@ -508,7 +507,7 @@ class PIIEvaluator(Evaluator):
                 flags = 0 if pname in _CASE_SENSITIVE else re.IGNORECASE
                 self._compiled[pname] = re.compile(pattern, flags)
             except re.error:
-                # Bad user-supplied regex — log silently, don't crash the run.
+                # Ignore invalid user-supplied patterns rather than crash the run.
                 pass
 
     def evaluate(self, case: EvalCase, output: str) -> EvalResult:
@@ -584,12 +583,9 @@ class SchemaEvaluator(Evaluator):
         self.strict = strict
 
         # Detect Pydantic model
-        try:
-            if hasattr(schema, "model_validate") or hasattr(schema, "parse_raw"):
-                self._pydantic_model = schema
-                return
-        except Exception:
-            pass
+        if hasattr(schema, "model_validate") or hasattr(schema, "parse_raw"):
+            self._pydantic_model = schema
+            return
 
         # Detect JSON Schema dict
         if isinstance(schema, dict):

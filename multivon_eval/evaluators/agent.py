@@ -7,7 +7,6 @@ framework-agnostic evaluation of tool use, planning, and task completion.
 """
 from __future__ import annotations
 import json
-import re
 
 from .base import Evaluator
 from .llm_judge import _judge_call, _call as _judge_call_with, _parse_yes_no, _qag_eval
@@ -43,7 +42,7 @@ class ToolCallAccuracy(Evaluator):
     - Were they called in the correct order (if ``require_order``)?
     - Were any unexpected tools called?
 
-    Scoring (codex D16 cycle 5 finding):
+    Scoring:
 
       - ``penalize_unexpected=False`` (default, backward-compat): score
         is the fraction of expected tools called; unexpected tools are
@@ -121,17 +120,14 @@ class ToolCallAccuracy(Evaluator):
             missing = list(expected_set - called_set)
             unexpected = list(called_set - expected_set)
 
-        # Strict mode: penalize every unexpected tool by recomputing
-        # score = matched / (expected ∪ unexpected). Lets negative
-        # cases like "agent must NOT call refund_order" actually fail.
+        # Strict mode: recompute score = matched / (expected ∪ unexpected).
         if self.penalize_unexpected and unexpected:
             denom = len(set(expected) | set(actual_calls))
-            if denom > 0:
-                # Count matches the same way each branch does above.
-                if self.require_order:
-                    score = matches / denom
-                else:
-                    score = len(matched) / denom
+            # Count matches the same way each branch does above.
+            if self.require_order:
+                score = matches / denom
+            else:
+                score = len(matched) / denom
 
         reasons = [f"Called: {actual_calls}", f"Expected: {expected}"]
         if missing:

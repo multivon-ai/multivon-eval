@@ -196,8 +196,7 @@ _DEFAULT_PREFERENCE = ("v2", "v1")
 
 def _resolve_default_version() -> str:
     """Pick the calibration version label honoring the env-var override."""
-    import os as _os
-    forced = _os.environ.get("MULTIVON_CALIBRATION_VERSION", "").strip()
+    forced = os.environ.get("MULTIVON_CALIBRATION_VERSION", "").strip()
     if forced:
         return forced
     for cand in _DEFAULT_PREFERENCE:
@@ -234,7 +233,7 @@ def load_calibration(reload: bool = False, *, version: str | None = None) -> Cal
     """
     # Explicit kwarg always wins, even an empty string — pinning to a
     # known-invalid label should fail loudly, not silently fall back to
-    # the env / default. Codex review caught this.
+    # the env / default.
     if version is None:
         label = _resolve_default_version()
     elif not version:
@@ -351,7 +350,6 @@ def calibration_versions() -> list[str]:
     Useful for CI gates that want to assert ``"v2" in calibration_versions()``
     before relying on threshold pinning at that version.
     """
-    from importlib import resources
     pkg = resources.files("multivon_eval._calibration_data")
     labels: list[str] = []
     for entry in pkg.iterdir():

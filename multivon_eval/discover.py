@@ -9,7 +9,7 @@ Public entry points:
   - :func:`infer_product_shape` — heuristic over traces, surfaced so
     downstream tools can hook in without re-running the whole pipeline
 
-The differentiator (per the v0.1 design): metric *selection* is grounded
+The differentiator: metric *selection* is grounded
 in the user's product shape + the user's actual traces, not a generic
 template. The single Claude Haiku call sees a structured summary of the
 trace shape + the product description and proposes a metric set
@@ -279,7 +279,7 @@ def load_traces(
             ("output", _OUTPUT_ALIASES),
             ("context", _CONTEXT_ALIASES),
         ):
-            if canonical not in obj or not obj.get(canonical):
+            if not obj.get(canonical):
                 for alt in aliases:
                     if alt == canonical:
                         continue
@@ -288,7 +288,7 @@ def load_traces(
                         renamed[canonical] += 1
                         break
 
-        if "input" not in obj or not obj["input"]:
+        if not obj.get("input"):
             skipped_no_input += 1
             continue
         rows.append(obj)
@@ -720,7 +720,6 @@ def calibrate_thresholds(
         return evaluators
 
     if len(traces) < CALIBRATION_MIN_TRACES:
-        import sys
         sys.stderr.write(
             f"\n  ⚠ calibration warning: n_traces={len(traces)} is below "
             f"{CALIBRATION_MIN_TRACES}\n"
@@ -1105,7 +1104,7 @@ def bootstrap(
 
     raw_traces = load_traces(traces_path)
 
-    # Input-quality preflight (issue #14) — free, WARN-only, BEFORE the
+    # Input-quality preflight — free, WARN-only, BEFORE the
     # first paid call. Runs on the already-loaded raw traces + product text;
     # silent on PROCEED, never changes bootstrap's exit behavior.
     if run_input_gate:

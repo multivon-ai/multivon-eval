@@ -288,8 +288,7 @@ def _status_pill(cr: "CaseResult") -> str:
 
     Precedence: errors/skipped first; flaky only modifies pass/fail
     (a flaky outcome on top of a judge outage is misleading — the
-    underlying signal is the outage). Codex round-2 caught the
-    earlier ordering hiding infra errors behind a FLAKY badge.
+    underlying signal is the outage).
 
     Each pill carries a tooltip AND an ``aria-label`` so the
     explanation reaches keyboard/touch/screen-reader users who
@@ -487,10 +486,6 @@ def to_html(report: "EvalReport") -> str:
         )
 
     # ── Per-case table ────────────────────────────────────────
-    case_header_extra = ""
-    if multi_run:
-        case_header_extra = '<th class="r">Pass Rate</th><th>Stability</th>'
-
     case_rows = ""
     for i, cr in enumerate(report.case_results):
         sc = _score_class(cr.score)

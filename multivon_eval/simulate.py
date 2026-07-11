@@ -224,9 +224,6 @@ def _simulate_one(
                 # one-turn "I can't do that" ending the probe would
                 # systematically undertest the system. They run to
                 # goal/max_turns; refusals are recorded, not terminal.
-                # (Found dogfooding: a persistent jailbreak persona was
-                # stopped at turn 1 by a partial refusal — "I can't create
-                # discounts, BUT sign up for...".)
                 if any("adversarial" in t.lower() for t in persona.traits):
                     metadata.setdefault("refusals_observed", 0)
                     metadata["refusals_observed"] += 1
@@ -458,9 +455,7 @@ def score_simulations(
                 if res.metadata.get("skipped"):
                     # Evaluator skipped the case (shape mismatch) — its
                     # pass-through score must not masquerade as a real 1.00.
-                    reason = res.reason
-                    if reason.startswith("[skipped] "):
-                        reason = reason[len("[skipped] "):]
+                    reason = res.reason.removeprefix("[skipped] ")
                     scores[name] = None
                     reasons[name] = f"skipped: {reason}"
                 else:

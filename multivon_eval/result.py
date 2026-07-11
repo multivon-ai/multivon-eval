@@ -85,10 +85,9 @@ class EvalGateFailure(Exception, SystemExit):
         noise) — Python's default unhandled-exception handler treats it
         as a SystemExit and prints just the message to stderr.
 
-    Field-reproduced (App 4 of the SDK deepdive): users running
-    ``report.assert_budget()`` inside their own ``except Exception`` blocks
-    couldn't catch the violation under the SystemExit-only base class
-    that shipped through 0.8.2.
+    Users running ``report.assert_budget()`` inside their own ``except
+    Exception`` blocks couldn't catch the violation under the
+    SystemExit-only base class that shipped through 0.8.2.
 
     pass_rate and threshold are set for pass-rate gate failures and may be
     None for other gate types (e.g., budget violations).
@@ -264,13 +263,12 @@ class PairwiseReport:
 
     def p_value(self) -> float:
         """Sign test p-value (H0: wins_a == wins_b, ties excluded)."""
-        import math as _math
         n = self.wins_a + self.wins_b
         if n == 0:
             return 1.0
         stat = (abs(self.wins_a - self.wins_b) - 1) ** 2 / n
         from .experiments import _norm_cdf
-        return 2 * (1 - _norm_cdf(_math.sqrt(stat)))
+        return 2 * (1 - _norm_cdf(math.sqrt(stat)))
 
     def __str__(self) -> str:
         p = self.p_value()
@@ -734,15 +732,12 @@ class EvalReport:
         """
         from xml.etree.ElementTree import Element, SubElement, tostring
 
-        def _classify_row(cr: "CaseResult", r: "EvalResult | None") -> str:
+        def _classify_row(cr: "CaseResult") -> str:
             """Return the JUnit verb for one (case, evaluator) row.
 
             One of: 'passed', 'failed', 'errored', 'skipped'. Status
             (the case-level outcome) dominates over the per-evaluator
-            passed flag — codex round-1 caught that an aggregate
-            FAILED_QUALITY case can have a passing per-evaluator row
-            from a multi-run majority vote; the JUnit consumer must
-            still see the case as a failure.
+            passed flag.
             """
             if cr.status == EvalStatus.SKIPPED:
                 return "skipped"
@@ -753,8 +748,8 @@ class EvalReport:
                 # reflects the MAJORITY vote across runs. The case as a whole
                 # can still be FAILED_QUALITY (pass_count < runs) even if the
                 # majority on every evaluator was "passed". The CI consumer
-                # must still see a failure somewhere — codex round-1 caught
-                # the silent-pass bug. Emit failure on every row in this case.
+                # must still see a failure somewhere — emit failure on every
+                # row in this case.
                 return "failed"
             return "passed"
 
@@ -763,7 +758,7 @@ class EvalReport:
             # An error case with no evaluator results still emits one row so
             # the CI sees the case at all.
             for r in (cr.results or [None]):
-                rows.append((cr, r, _classify_row(cr, r)))
+                rows.append((cr, r, _classify_row(cr)))
 
         total_tests = len(rows)
         n_failures = sum(1 for _, _, v in rows if v == "failed")

@@ -172,8 +172,8 @@ def _run_demo() -> None:
     if has_llm:
         src = base_url if base_url else f"{provider}"
         print(f"  LLM judge : {model_name}  [{src}]")
-        print(f"  Tier 1    : NotEmpty, WordCount  (deterministic)")
-        print(f"  Tier 2    : Relevance, add_check  (LLM-as-judge)")
+        print("  Tier 1    : NotEmpty, WordCount  (deterministic)")
+        print("  Tier 2    : Relevance, add_check  (LLM-as-judge)")
     elif judge_down_reason:
         src = base_url if base_url else provider
         lowered = judge_down_reason.lower()

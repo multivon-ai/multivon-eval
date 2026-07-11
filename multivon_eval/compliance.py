@@ -65,7 +65,7 @@ def _package_git_info() -> dict | None:
 
     The ``dirty`` flag matters for audit: a HEAD SHA without it can point
     to code that doesn't match what actually ran (e.g., uncommitted
-    local changes). Codex review caught this.
+    local changes).
     """
     if not shutil.which("git"):
         return None
@@ -88,7 +88,6 @@ def _package_git_info() -> dict | None:
             ["git", "-C", str(pkg_dir), "status", "--porcelain"],
             capture_output=True, text=True, timeout=2,
         )
-        # Non-empty output → uncommitted or untracked changes present.
         if status.returncode == 0 and status.stdout.strip():
             dirty = True
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
@@ -119,7 +118,6 @@ if TYPE_CHECKING:
     from .suite import EvalSuite
 
 
-# Mode flag for ComplianceReporter.record().
 RecordMode = Literal["summary", "case"]
 
 
@@ -179,47 +177,58 @@ _EU_AI_ACT_PROCESS_CONTROLS: dict[str, Control] = {
     "art_15_45":    Control("Art. 15(4-5)",  "Cybersecurity and resilience",               "eu-ai-act"),
 }
 
+# Evaluator names grouped by control family. The EU AI Act and NIST AI RMF
+# mappings below classify the same evaluators the same way under their
+# respective accuracy/performance and robustness controls, so the name
+# lists are defined once here.
+_ACCURACY_EVALUATORS: tuple[str, ...] = (
+    "faithfulness",
+    "hallucination",
+    "relevance",
+    "answer_accuracy",
+    "context_precision",
+    "context_recall",
+    "summarization",
+    "coherence",
+    "bertscore",
+    "bleu",
+    "rouge_l",
+    "step_faithfulness",
+    "plan_quality",
+    "task_completion",
+    "tool_call_accuracy",
+    "tool_argument_accuracy",
+    "tool_call_necessity",
+    "trajectory_efficiency",
+    "conversation_relevance",
+    "conversation_completeness",
+    "knowledge_retention",
+    "g_eval",
+    "custom_rubric",
+)
+_ROBUSTNESS_EVALUATORS: tuple[str, ...] = (
+    "not_empty",
+    "exact_match",
+    "contains",
+    "regex_match",
+    "starts_with",
+    "json_schema",
+    "schema_compliance",
+    "word_count",
+    "latency",
+    "max_latency",
+    "self_consistency",
+    "turn_consistency",
+    "agent_memory",
+)
+
 # Maps evaluator.name → Control ids that the evaluator exercises.
 # Cross-referenced against the catalog above.
 _EU_AI_ACT_BY_EVALUATOR: dict[str, list[str]] = {
     # Accuracy (Art. 15(1))
-    "faithfulness":            ["art_15_1"],
-    "hallucination":           ["art_15_1"],
-    "relevance":               ["art_15_1"],
-    "answer_accuracy":         ["art_15_1"],
-    "context_precision":       ["art_15_1"],
-    "context_recall":          ["art_15_1"],
-    "summarization":           ["art_15_1"],
-    "coherence":               ["art_15_1"],
-    "bertscore":               ["art_15_1"],
-    "bleu":                    ["art_15_1"],
-    "rouge_l":                 ["art_15_1"],
-    "step_faithfulness":       ["art_15_1"],
-    "plan_quality":            ["art_15_1"],
-    "task_completion":         ["art_15_1"],
-    "tool_call_accuracy":      ["art_15_1"],
-    "tool_argument_accuracy":  ["art_15_1"],
-    "tool_call_necessity":     ["art_15_1"],
-    "trajectory_efficiency":   ["art_15_1"],
-    "conversation_relevance":  ["art_15_1"],
-    "conversation_completeness": ["art_15_1"],
-    "knowledge_retention":     ["art_15_1"],
-    "g_eval":                  ["art_15_1"],
-    "custom_rubric":           ["art_15_1"],
+    **{name: ["art_15_1"] for name in _ACCURACY_EVALUATORS},
     # Robustness (Art. 15(2))
-    "not_empty":               ["art_15_2"],
-    "exact_match":             ["art_15_2"],
-    "contains":                ["art_15_2"],
-    "regex_match":             ["art_15_2"],
-    "starts_with":             ["art_15_2"],
-    "json_schema":             ["art_15_2"],
-    "schema_compliance":       ["art_15_2"],
-    "word_count":              ["art_15_2"],
-    "latency":                 ["art_15_2"],
-    "max_latency":             ["art_15_2"],
-    "self_consistency":        ["art_15_2"],
-    "turn_consistency":        ["art_15_2"],
-    "agent_memory":            ["art_15_2"],
+    **{name: ["art_15_2"] for name in _ROBUSTNESS_EVALUATORS},
     # Bias & data governance (Art. 10)
     "bias":                    ["art_10_2_fg"],
     "pii_detection":           ["art_10_5"],
@@ -246,43 +255,9 @@ _NIST_PROCESS_CONTROLS: dict[str, Control] = {
 
 _NIST_BY_EVALUATOR: dict[str, list[str]] = {
     # Performance
-    "faithfulness":            ["measure_2_3"],
-    "hallucination":           ["measure_2_3"],
-    "relevance":               ["measure_2_3"],
-    "answer_accuracy":         ["measure_2_3"],
-    "context_precision":       ["measure_2_3"],
-    "context_recall":          ["measure_2_3"],
-    "summarization":           ["measure_2_3"],
-    "coherence":               ["measure_2_3"],
-    "bertscore":               ["measure_2_3"],
-    "bleu":                    ["measure_2_3"],
-    "rouge_l":                 ["measure_2_3"],
-    "step_faithfulness":       ["measure_2_3"],
-    "plan_quality":            ["measure_2_3"],
-    "task_completion":         ["measure_2_3"],
-    "tool_call_accuracy":      ["measure_2_3"],
-    "tool_argument_accuracy":  ["measure_2_3"],
-    "tool_call_necessity":     ["measure_2_3"],
-    "trajectory_efficiency":   ["measure_2_3"],
-    "conversation_relevance":  ["measure_2_3"],
-    "conversation_completeness": ["measure_2_3"],
-    "knowledge_retention":     ["measure_2_3"],
-    "g_eval":                  ["measure_2_3"],
-    "custom_rubric":           ["measure_2_3"],
+    **{name: ["measure_2_3"] for name in _ACCURACY_EVALUATORS},
     # Robustness
-    "not_empty":               ["measure_2_5"],
-    "exact_match":             ["measure_2_5"],
-    "contains":                ["measure_2_5"],
-    "regex_match":             ["measure_2_5"],
-    "starts_with":             ["measure_2_5"],
-    "json_schema":             ["measure_2_5"],
-    "schema_compliance":       ["measure_2_5"],
-    "word_count":              ["measure_2_5"],
-    "latency":                 ["measure_2_5"],
-    "max_latency":             ["measure_2_5"],
-    "self_consistency":        ["measure_2_5"],
-    "turn_consistency":        ["measure_2_5"],
-    "agent_memory":            ["measure_2_5"],
+    **{name: ["measure_2_5"] for name in _ROBUSTNESS_EVALUATORS},
     # Safety
     "toxicity":                ["measure_2_6"],
     # Privacy & fairness
@@ -583,7 +558,7 @@ class ComplianceReporter:
         """Build the per-record provenance manifest.
 
         Captures the exact runtime + suite + evaluator state that drove
-        this eval run. Marcus's compliance ask: enough metadata that an
+        this eval run. Design goal: enough metadata that an
         auditor can reproduce the decisions offline, plus identify when
         any one of (judge, prompt, threshold, dataset, library version)
         changed between runs.

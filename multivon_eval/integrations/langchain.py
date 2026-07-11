@@ -4,7 +4,7 @@ LangChainTracer — callback-based tracer for LangChain agents and LCEL chains.
 Requires: pip install langchain-core
 """
 from __future__ import annotations
-from typing import Any, Callable
+from typing import Any
 
 from .base import CallbackTracer
 from ..case import AgentStep, ToolCall

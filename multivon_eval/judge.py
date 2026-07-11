@@ -181,7 +181,7 @@ def _is_retryable(exc: Exception) -> bool:
 # Generic names like ``BadRequestError`` or ``APIError`` are deliberately
 # excluded — they routinely fire for prompt-too-long, invalid model
 # id, or unsupported params, and drowning those real bugs in setup
-# advice is worse than no hint at all. Codex D15 round-1 finding.
+# advice is worse than no hint at all.
 _AUTH_HINT_EXC_NAMES = {
     "AuthenticationError",     # OpenAI / Anthropic — clear auth fail
     "PermissionDeniedError",   # Anthropic — clear permission fail
@@ -374,12 +374,11 @@ def _ollama_as_openai(config: JudgeConfig) -> JudgeConfig:
     explicit ``base_url`` on the config. ``_openai_client_kwargs`` injects
     the placeholder API key local servers need.
     """
-    import os as _os
     from dataclasses import replace as _replace
 
     base = config.base_url
     if not base:
-        host = _os.environ.get("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
+        host = os.environ.get("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
         if not host.startswith(("http://", "https://")):
             host = "http://" + host
         base = host + "/v1"
@@ -473,34 +472,39 @@ def make_judge_call(prompt: str, config: JudgeConfig) -> str:
     if not config.cache:
         return _make_judge_call_uncached(prompt, config)
 
-    # Imported lazily so installs that never enable the cache pay nothing.
-    cache = None
-    try:
-        from .cache import get_cache
-        cache = get_cache()
-        cached = cache.get(prompt, config)
-        if cached is not None:
-            return cached
-    except CacheError as exc:
-        _warn_cache_degraded("read", exc)
-        cache = None
-    except Exception as exc:  # never let an unknown cache bug break an eval
-        _warn_cache_degraded("read", exc)
-        cache = None
+    cache, cached = _cache_get_safe(prompt, config)
+    if cached is not None:
+        return cached
 
     result = _make_judge_call_uncached(prompt, config)
     if cache is not None:
-        try:
-            cache.put(prompt, config, result)
-        except CacheError as exc:
-            _warn_cache_degraded("write", exc)
-        except Exception as exc:
-            _warn_cache_degraded("write", exc)
+        _cache_put_safe(cache, prompt, config, result)
     return result
 
 
-# Imported here to avoid a circular import at top of the module.
-from .exceptions import CacheError  # noqa: E402
+def _cache_get_safe(prompt: str, config: JudgeConfig) -> "tuple[Any | None, str | None]":
+    """Advisory cache read: returns ``(cache, cached_result)``.
+
+    The cache module is imported lazily so installs that never enable the
+    cache pay nothing. Any failure (corrupt DB, unwritable path, sqlite
+    lock, unknown cache bug) degrades to ``(None, None)`` so the eval
+    still completes with a live judge call.
+    """
+    try:
+        from .cache import get_cache
+        cache = get_cache()
+        return cache, cache.get(prompt, config)
+    except Exception as exc:  # never let an unknown cache bug break an eval
+        _warn_cache_degraded("read", exc)
+        return None, None
+
+
+def _cache_put_safe(cache: "Any", prompt: str, config: JudgeConfig, result: str) -> None:
+    """Advisory cache write: warn-and-continue on any failure."""
+    try:
+        cache.put(prompt, config, result)
+    except Exception as exc:
+        _warn_cache_degraded("write", exc)
 
 
 _CACHE_DEGRADATION_WARNED = False
@@ -697,26 +701,11 @@ async def make_judge_call_async(prompt: str, config: JudgeConfig) -> str:
     if not config.cache:
         return await _make_judge_call_async_uncached(prompt, config)
 
-    cache = None
-    try:
-        from .cache import get_cache
-        cache = get_cache()
-        cached = cache.get(prompt, config)
-        if cached is not None:
-            return cached
-    except CacheError as exc:
-        _warn_cache_degraded("read", exc)
-        cache = None
-    except Exception as exc:
-        _warn_cache_degraded("read", exc)
-        cache = None
+    cache, cached = _cache_get_safe(prompt, config)
+    if cached is not None:
+        return cached
 
     result = await _make_judge_call_async_uncached(prompt, config)
     if cache is not None:
-        try:
-            cache.put(prompt, config, result)
-        except CacheError as exc:
-            _warn_cache_degraded("write", exc)
-        except Exception as exc:
-            _warn_cache_degraded("write", exc)
+        _cache_put_safe(cache, prompt, config, result)
     return result

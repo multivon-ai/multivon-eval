@@ -33,7 +33,7 @@ def cmd_init(args):
     # Refuse to clobber a non-empty existing directory unless --force.
     if target.exists() and any(target.iterdir()) and not args.force:
         print(f"Target directory is not empty: {target}", file=sys.stderr)
-        print(f"Re-run with --force to overwrite.", file=sys.stderr)
+        print("Re-run with --force to overwrite.", file=sys.stderr)
         return 1
     target.mkdir(parents=True, exist_ok=True)
 
@@ -53,8 +53,7 @@ def cmd_init(args):
     for p in sorted(written):
         print(f"    {p.relative_to(target)}")
 
-    # Print the 3-command flow the README will also have.
-    print(f"\n  Next:")
+    print("\n  Next:")
     print(f"    cd {rel}")
     print(f"    pip install -r requirements.txt")
     if args.template != "quickstart":
@@ -64,7 +63,6 @@ def cmd_init(args):
 
 
 def cmd_run(args):
-    import os
     import runpy
     if args.html:
         os.environ["MULTIVON_HTML_OUTPUT"] = args.html
@@ -106,15 +104,15 @@ def cmd_report(args):
             t.add_row(name, f"[{color}]{score:.3f}[/]")
         console.print(t)
 
-    if args.html:
+    if args.html or args.junit:
         from .result import EvalReport
         report = EvalReport.from_dict(data)
+
+    if args.html:
         report.save_html(args.html)
         console.print(f"\n  HTML report saved → [dim]{args.html}[/]")
 
     if args.junit:
-        from .result import EvalReport
-        report = EvalReport.from_dict(data)
         report.save_junit_xml(args.junit)
         console.print(f"  JUnit XML saved → [dim]{args.junit}[/]  "
                       f"(GitHub Actions / GitLab CI will render this as a test panel)")
@@ -128,7 +126,6 @@ def cmd_view(args):
     Stays alive until Ctrl-C. The temp dir is cleaned up on every exit
     path (success, Ctrl-C, port collision).
     """
-    from pathlib import Path
     import http.server
     import signal
     import socketserver
@@ -146,19 +143,18 @@ def cmd_view(args):
 
     # Directory mode: `view --dir <d>` or a positional path that is a
     # directory routes to the directory-level server (index / open / diff).
-    # Single-file behavior below is unchanged.
     dir_arg = getattr(args, "dir", None)
     target = dir_arg or args.file
     target_path = Path(target) if target else None
     if dir_arg or (target_path is not None and target_path.is_dir()):
         from .dirview import serve_directory
-        if target_path is None or not target_path.is_dir():
+        if not target_path.is_dir():
             print(f"Not a directory: {target_path}", file=sys.stderr)
             return 1
         return serve_directory(
             target_path,
             recursive=getattr(args, "recursive", False),
-            port=args.port or 0,
+            port=args.port,
             no_browser=args.no_browser,
         )
 
@@ -186,7 +182,7 @@ def cmd_view(args):
         tmp_dir = Path(tmp_str)
         (tmp_dir / "index.html").write_text(html, encoding="utf-8")
 
-        port = args.port or 0
+        port = args.port
 
         class _Handler(http.server.SimpleHTTPRequestHandler):
             def __init__(self, *posargs, **kw):
@@ -215,7 +211,7 @@ def cmd_view(args):
             url = f"http://127.0.0.1:{actual_port}/"
             print(f"  multivon-eval view  →  {url}")
             print(f"  Source: {report_path}")
-            print(f"  Press Ctrl-C to stop.\n")
+            print("  Press Ctrl-C to stop.\n")
 
             if args.no_browser:
                 print("  --no-browser was set; not opening browser automatically.")
@@ -282,7 +278,7 @@ def cmd_generate(args):
     from dotenv import load_dotenv
     load_dotenv()
 
-    # New generation modes (issue #13). getattr keeps older Namespace
+    # Generation modes (issue #13). getattr keeps older Namespace
     # callers (tests) working without the new attributes.
     mutate_from = getattr(args, "mutate", None)
     template = getattr(args, "template", None)
@@ -402,7 +398,7 @@ def cmd_generate(args):
             "expected_output": c.expected_output or "",
             "context": c.context or "",
         }
-        # Doc-QA cases now carry source_span / expected_behavior metadata —
+        # Doc-QA cases carry source_span / expected_behavior metadata —
         # keep it (older call paths / mocks without metadata still work).
         metadata = getattr(c, "metadata", None)
         if metadata:
@@ -435,10 +431,6 @@ def cmd_install_skills(args) -> int:
     multivon-eval` picks up SKILL.md edits without re-running this
     command); falls back to a recursive copy on Windows / refused symlink
     perms.
-
-    Flags:
-        --dry-run   Print what would happen, touch nothing.
-        --force     Replace existing entries at the target paths.
     """
     import shutil
     import multivon_eval
@@ -526,7 +518,6 @@ def cmd_attribution(args) -> int:
             return 2
         records = attr.scan(args.path)
         if args.format == "json":
-            import json
             payload = [
                 {
                     "call_site_id": r.call_site_id,
@@ -565,7 +556,6 @@ def cmd_attribution(args) -> int:
         if args.format == "markdown":
             print(attr.render_markdown(diffs))
         elif args.format == "json":
-            import json
             payload = [
                 {
                     "call_site_id": d.call_site_id,
@@ -604,7 +594,6 @@ def cmd_staleness(args) -> int:
     1 = a --fail-on category fired, 2 = warn-only conditions (no baseline,
     unreadable baseline, scanner-version mismatch) or usage errors.
     """
-    from pathlib import Path
     from . import staleness as st
 
     if args.staleness_cmd == "baseline":
@@ -1314,13 +1303,13 @@ def main():
 
 def _dispatch(args, parser) -> None:
     if args.command == "init":
-        sys.exit(cmd_init(args) or 0)
+        sys.exit(cmd_init(args))
     elif args.command == "run":
         cmd_run(args)
     elif args.command == "report":
         cmd_report(args)
     elif args.command == "view":
-        sys.exit(cmd_view(args) or 0)
+        sys.exit(cmd_view(args))
     elif args.command == "experiments":
         cmd_experiments(args)
     elif args.command == "generate":
@@ -1342,21 +1331,21 @@ def _dispatch(args, parser) -> None:
             *(["--fail-on-regression"] if args.fail_on_regression else []),
         ]))
     elif args.command == "discover":
-        sys.exit(cmd_discover(args) or 0)
+        sys.exit(cmd_discover(args))
     elif args.command == "doctor":
-        sys.exit(cmd_doctor(args) or 0)
+        sys.exit(cmd_doctor(args))
     elif args.command == "bootstrap":
-        sys.exit(cmd_bootstrap(args) or 0)
+        sys.exit(cmd_bootstrap(args))
     elif args.command == "assess":
         sys.exit(cmd_assess(args))
     elif args.command == "simulate":
-        sys.exit(cmd_simulate(args) or 0)
+        sys.exit(cmd_simulate(args))
     elif args.command == "install-skills":
-        sys.exit(cmd_install_skills(args) or 0)
+        sys.exit(cmd_install_skills(args))
     elif args.command == "attribution":
-        sys.exit(cmd_attribution(args) or 0)
+        sys.exit(cmd_attribution(args))
     elif args.command == "staleness":
-        sys.exit(cmd_staleness(args) or 0)
+        sys.exit(cmd_staleness(args))
     else:
         parser.print_help()
 
@@ -1405,7 +1394,6 @@ def cmd_assess(args) -> int:
 
 def cmd_bootstrap(args) -> int:
     """Cold-start eval bootstrap: product + traces → tuned EvalSuite + report."""
-    from pathlib import Path
     from .discover import bootstrap
     from .judge import JudgeConfig
 
@@ -1500,9 +1488,8 @@ def cmd_bootstrap(args) -> int:
 
     baseline_path = result.artifacts.get("prompt_baseline")
     if baseline_path is not None and Path(baseline_path).exists():
-        import json as _json
         try:
-            _payload = _json.loads(Path(baseline_path).read_text(encoding="utf-8"))
+            _payload = json.loads(Path(baseline_path).read_text(encoding="utf-8"))
             _n_sites = len(_payload.get("records") or [])
             _sha = (_payload.get("git") or {}).get("sha") or "no git"
             print(f"  ✓ baseline + provenance stamped: {_n_sites} call site(s) @ {_sha}")
@@ -1516,8 +1503,6 @@ def cmd_bootstrap(args) -> int:
     # primary evaluator and get dropped. Bumps cost by ~$0.03 typically.
     if args.validate and result.seed_cases:
         from .auto import validate_adversarial_cases
-        from pathlib import Path
-        import json as _json
 
         def _stub_refusal(_input: str) -> str:
             return "I don't have specific information about that."
@@ -1536,7 +1521,7 @@ def cmd_bootstrap(args) -> int:
         seed_path = Path(result.artifacts["seed_cases"])
         with seed_path.open("w") as f:
             for c in kept:
-                f.write(_json.dumps({
+                f.write(json.dumps({
                     "input": c.input,
                     "expected_output": c.expected_output,
                     "context": c.context,
@@ -1547,7 +1532,7 @@ def cmd_bootstrap(args) -> int:
         hardness_path = seed_path.parent / "hardness_report.jsonl"
         with hardness_path.open("w") as f:
             for r in reports:
-                f.write(_json.dumps({
+                f.write(json.dumps({
                     "input": r.case.input[:200],
                     "evaluator": r.evaluator_name,
                     "failure_rate": r.failure_rate,
@@ -1570,15 +1555,13 @@ def cmd_bootstrap(args) -> int:
 def _load_model_fn(path: str):
     """Load ``model_fn`` from a Python file via an importlib spec.
 
-    Same file-loading shape eval-action uses for suites: spec from file
-    location, exec the module, pull the documented attribute. Raises
-    ``ValueError`` with a clean message on every failure mode (the CLI
-    maps it to exit 2 — never a bare traceback).
+    Spec from file location, exec the module, pull the documented
+    attribute. Raises ``ValueError`` with a clean message on every
+    failure mode (the CLI maps it to exit 2 — never a bare traceback).
     """
     import importlib.util
-    from pathlib import Path as _Path
 
-    p = _Path(path)
+    p = Path(path)
     if not p.exists():
         raise ValueError(f"--model-cmd file not found: {p}")
     spec = importlib.util.spec_from_file_location(f"_multivon_model_{p.stem}", p)
@@ -1604,8 +1587,6 @@ def cmd_simulate(args) -> int:
     Exit codes: 0 after any completed run (no gating yet); 2 on usage /
     input errors (missing model_fn, bad personas file, proposal failure).
     """
-    import json as _json
-    from pathlib import Path as _Path
     from .judge import JudgeConfig
     from .simulate import (
         SIMULATED_DISCLAIMER, personas_from_jsonl, propose_personas,
@@ -1629,7 +1610,7 @@ def cmd_simulate(args) -> int:
         if args.personas:
             personas = personas_from_jsonl(args.personas)
         else:
-            desc_path = _Path(args.propose_from)
+            desc_path = Path(args.propose_from)
             if not desc_path.exists():
                 print(f"error: --propose-from file not found: {desc_path}",
                       file=sys.stderr)
@@ -1653,11 +1634,11 @@ def cmd_simulate(args) -> int:
     )
     summary = score_simulations(results, judge=judge)
 
-    out_path = _Path(args.out)
+    out_path = Path(args.out)
     with out_path.open("w", encoding="utf-8") as f:
         for r in results:
             per = summary["per_persona"].get(r.persona.name, {})
-            f.write(_json.dumps({
+            f.write(json.dumps({
                 "persona": {
                     "name": r.persona.name,
                     "profile": r.persona.profile,
@@ -1679,9 +1660,9 @@ def cmd_simulate(args) -> int:
         from .discover import _case_to_jsonl
         from .simulate import results_to_cases
         cases, export_report = results_to_cases(results)
-        with _Path(export_path).open("w", encoding="utf-8") as f:
+        with Path(export_path).open("w", encoding="utf-8") as f:
             for c in cases:
-                f.write(_json.dumps(_case_to_jsonl(c), ensure_ascii=False,
+                f.write(json.dumps(_case_to_jsonl(c), ensure_ascii=False,
                                     default=str) + "\n")
         print(f"  exported cases: {export_path} — {export_report.summary_line()}")
 
@@ -1726,9 +1707,6 @@ def cmd_doctor(args) -> int:
 
     Exit codes: 0 = all green, 1 = at least one ERROR, 2 = WARN only.
     """
-    import os
-    import sys
-    import json
     import platform
     from . import __version__
 

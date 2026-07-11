@@ -1,8 +1,8 @@
 """Per-case retry on transient judge / timeout errors.
 
-Sarah persona (ML platform engineer running 10k cases on weekend cron)
-needs the eval suite to self-heal through transient judge outages — a
-single 429 from OpenAI shouldn't require Monday-morning triage. The
+Long unattended runs need to self-heal through transient judge
+outages — a single 429 from OpenAI shouldn't require Monday-morning
+triage. The
 existing :class:`EvalStatus.JUDGE_ERROR` / :class:`EvalStatus.TIMEOUT`
 classification lets us route exactly those cases to a retry policy
 without disturbing real quality failures or evaluator bugs.
@@ -54,8 +54,8 @@ from .result import EvalStatus
 # EvalStatus.TIMEOUT (the enum exists for future wiring of per-case
 # timeout budgets). Callers who do classify their own timeouts to that
 # status can opt in via ``JudgeRetry(retry_on=("judge_error", "timeout"))``.
-# Codex round-1 caught the dead config — better to ship a precise
-# default than promise a behavior nothing actually triggers.
+# Better to ship a precise default than promise a behavior nothing
+# actually triggers.
 _DEFAULT_RETRY_ON: tuple[str, ...] = (
     EvalStatus.JUDGE_ERROR.value,
 )
@@ -134,9 +134,8 @@ class JudgeRetry:
         plus jitter, clamped to ``[0, max_backoff]``.
 
         Important: jitter is applied BEFORE the ``max_backoff`` clamp so
-        a high-jitter draw can't push the actual sleep above the cap.
-        Codex round-1 caught this — cap 60s + jitter 0.1 used to produce
-        66s sleeps.
+        a high-jitter draw can't push the actual sleep above the cap
+        (otherwise cap 60s + jitter 0.1 could produce 66s sleeps).
         """
         if attempt_index <= 1:
             return 0.0

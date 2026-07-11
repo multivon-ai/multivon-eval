@@ -1,25 +1,10 @@
-"""Intelligent-eval prototypes.
+"""Intelligent-eval helpers.
 
-Two functions, designed to make the SDK feel less like a kit-of-parts
-and more like a system that proposes its own evaluation strategy.
-
-- ``auto_evaluators(case)`` — given an EvalCase, infer the recommended
-  evaluator set from the case shape. Pure heuristic, no LLM call,
-  microseconds. The output is a list of (evaluator-class, rationale)
-  tuples ready to add to a suite. Composable with the manual API: a
-  user can take the recommendation, drop one, add a custom one.
-
-- ``generate_adversarial_cases(seed_text, target_failure_mode, n)`` —
-  extension of ``generate_from_text`` that produces cases specifically
-  designed to elicit a named failure mode. Useful when you want to
-  stress-test a *specific* weakness (jailbreaks, ungrounded claims,
-  off-topic responses, format violations, tool misuse, numeric edges).
-  Real LLM call via the configured JudgeConfig.
-
-Both are prototypes — not in the public API yet. Goal: make the SDK
-feel agentic without faking it. Every recommendation is grounded in
-the actual case shape; every generated case is checkable via the same
-evaluators that score the real model.
+Ships ``auto_evaluators`` (heuristic evaluator recommendation from case
+shape, no LLM call), ``generate_adversarial_cases`` (LLM-generated cases
+targeting a named failure mode), ``validate_adversarial_cases``
+(hardness-band filtering against a baseline model), and the
+``FAILURE_MODES`` registry.
 """
 from __future__ import annotations
 
@@ -719,8 +704,7 @@ def validate_adversarial_cases(
     filter to a target hardness band.
 
     Addresses the "are these cases actually adversarial, or just synthetic
-    noise?" risk. GPT-5 + Gemini + Claude all flagged this as the #1
-    signal-to-noise concern in their critique of generate_adversarial_cases.
+    noise?" risk.
 
     For each case, the function runs the baseline + evaluator ``n_shots``
     times. Aggregating across shots is what makes the hardness_band
@@ -867,8 +851,8 @@ def _call_judge_raw(judge_cfg: JudgeConfig, prompt: str) -> str:
     """Synchronously call the judge with a raw prompt, return the text.
 
     Routed through whatever provider adapter the JudgeConfig points at.
-    Tries to use the adapters' chat-style API; falls back cleanly if
-    the adapter isn't installed.
+    Uses the adapters' chat-style API; raises ImportError with an install
+    hint if no adapter is installed.
     """
     if judge_cfg.provider == "anthropic":
         try:

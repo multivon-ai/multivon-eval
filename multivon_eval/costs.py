@@ -27,7 +27,6 @@ from __future__ import annotations
 
 import contextvars
 import threading
-from collections import defaultdict
 from dataclasses import dataclass, field
 
 from ._cost_models import ModelPricing, estimate_cost_usd, register_pricing  # noqa: F401

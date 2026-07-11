@@ -54,9 +54,8 @@ class CaseDiff:
         SKIPPED on either side is treated as ``unchanged`` for the
         direction, because the case was deliberately not evaluated on
         at least one side — we don't have signal about whether the
-        model behavior changed. Codex round-1 finding (otherwise
-        skipped→pass would be reported as an improvement, which is
-        misleading).
+        model behavior changed (otherwise skipped→pass would be
+        reported as an improvement, which is misleading).
         """
         if self.baseline_status == EvalStatus.SKIPPED or self.proposal_status == EvalStatus.SKIPPED:
             return _UNCHANGED
@@ -169,28 +168,25 @@ class ReportDiff:
     def to_text(self, *, regressions_only: bool = False) -> str:
         """Render a terse terminal diff. ASCII-only — pipes to logs cleanly."""
         lines: list[str] = []
-        sign = lambda x: ("+" if x >= 0 else "") + f"{x:.3f}"
-        sign_i = lambda x: ("+" if x >= 0 else "") + str(x)
-        sign_pp = lambda x: ("+" if x >= 0 else "") + f"{x*100:.1f}pp"
         lines.append(f"Comparing:")
         lines.append(f"  baseline: {self.baseline_name}")
         lines.append(f"  proposal: {self.proposal_name}")
         lines.append("")
         lines.append(
             f"Pass rate:    {self.baseline_pass_rate:.3f} -> "
-            f"{self.proposal_pass_rate:.3f}  ({sign_pp(self.pass_rate_delta)})"
+            f"{self.proposal_pass_rate:.3f}  ({_sign_pp(self.pass_rate_delta)})"
         )
         lines.append(
             f"Avg score:    {self.baseline_avg_score:.3f} -> "
-            f"{self.proposal_avg_score:.3f}  ({sign(self.avg_score_delta)})"
+            f"{self.proposal_avg_score:.3f}  ({_sign(self.avg_score_delta)})"
         )
         lines.append(
             f"Errors:       {self.baseline_errors} -> {self.proposal_errors}  "
-            f"({sign_i(self.errors_delta)})"
+            f"({_sign_i(self.errors_delta)})"
         )
         lines.append(
             f"Flaky:        {self.baseline_flaky} -> {self.proposal_flaky}  "
-            f"({sign_i(self.flaky_delta)})"
+            f"({_sign_i(self.flaky_delta)})"
         )
         if self.added or self.removed:
             lines.append("")
@@ -236,10 +232,6 @@ class ReportDiff:
 
     def to_markdown(self) -> str:
         """Render a GitHub-flavored Markdown summary suitable for PR comments."""
-        sign_pp = lambda x: ("+" if x >= 0 else "") + f"{x*100:.1f}pp"
-        sign = lambda x: ("+" if x >= 0 else "") + f"{x:.3f}"
-        sign_i = lambda x: ("+" if x >= 0 else "") + str(x)
-
         lines: list[str] = []
         lines.append("## Eval comparison")
         lines.append("")
@@ -247,19 +239,19 @@ class ReportDiff:
         lines.append("| --- | ---: | ---: | ---: |")
         lines.append(
             f"| Pass rate | {self.baseline_pass_rate:.3f} | "
-            f"{self.proposal_pass_rate:.3f} | {sign_pp(self.pass_rate_delta)} |"
+            f"{self.proposal_pass_rate:.3f} | {_sign_pp(self.pass_rate_delta)} |"
         )
         lines.append(
             f"| Avg score | {self.baseline_avg_score:.3f} | "
-            f"{self.proposal_avg_score:.3f} | {sign(self.avg_score_delta)} |"
+            f"{self.proposal_avg_score:.3f} | {_sign(self.avg_score_delta)} |"
         )
         lines.append(
             f"| Errors | {self.baseline_errors} | {self.proposal_errors} | "
-            f"{sign_i(self.errors_delta)} |"
+            f"{_sign_i(self.errors_delta)} |"
         )
         lines.append(
             f"| Flaky | {self.baseline_flaky} | {self.proposal_flaky} | "
-            f"{sign_i(self.flaky_delta)} |"
+            f"{_sign_i(self.flaky_delta)} |"
         )
 
         if self.regressions:
@@ -297,6 +289,18 @@ def _short(text: str, n: int = 64) -> str:
     return text if len(text) <= n else text[: n - 1] + "..."
 
 
+def _sign(x: float) -> str:
+    return ("+" if x >= 0 else "") + f"{x:.3f}"
+
+
+def _sign_i(x: int) -> str:
+    return ("+" if x >= 0 else "") + str(x)
+
+
+def _sign_pp(x: float) -> str:
+    return ("+" if x >= 0 else "") + f"{x*100:.1f}pp"
+
+
 def _pair_by_input(
     baseline_cases: list[CaseResult], proposal_cases: list[CaseResult],
 ) -> tuple[list[tuple[CaseResult, CaseResult]], list[CaseResult], list[CaseResult]]:
@@ -310,8 +314,7 @@ def _pair_by_input(
 
     Tracks consumption by POSITIONAL INDEX (not ``id()``) so a list
     that happens to contain the same ``CaseResult`` object twice (e.g.
-    ``cases = [cr] * 3``) still pairs all three occurrences. Codex
-    round-1 finding.
+    ``cases = [cr] * 3``) still pairs all three occurrences.
     """
     by_input_b: dict[str, list[int]] = defaultdict(list)
     for idx, cr in enumerate(baseline_cases):
@@ -370,7 +373,7 @@ def compare_reports(baseline: EvalReport, proposal: EvalReport) -> ReportDiff:
     # on either side is a deliberate "not evaluated," not a failure.
     # Counting them as False would falsely inflate the discordant-pair
     # count toward "regression" or "improvement" depending on the
-    # other side. Codex round-1 finding.
+    # other side.
     mcnemar_pairs = [
         d for d in paired_diffs
         if d.baseline_status != EvalStatus.SKIPPED

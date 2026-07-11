@@ -33,7 +33,6 @@ larger compliance pipelines can call it programmatically.
 from __future__ import annotations
 
 import hashlib
-import io
 import json
 import sys
 import zipfile
@@ -258,8 +257,7 @@ def _coverage_report_for(framework: Framework, suite_name: str) -> str:
     """Render a coverage report for the framework, listing controls.
 
     We don't have access to the actual suite at package time (only the
-    log). So we list the framework's full control catalog with annotations
-    parsed from the log records.
+    log). So we list the framework's full control catalog.
     """
     catalog = _CATALOGS.get(framework, {})
     measurable = catalog.get("measurable", {})
@@ -276,7 +274,7 @@ def _coverage_report_for(framework: Framework, suite_name: str) -> str:
     if not measurable:
         lines.append("_No measurable controls registered for this framework in multivon-eval._")
     else:
-        for cid, ctrl in measurable.items():
+        for ctrl in measurable.values():
             lines.append(f"- **{ctrl.id}** — {ctrl.description}")
     lines.append("")
     lines.append("## Process controls (require organizational measures, not satisfiable by evaluators)")
@@ -284,7 +282,7 @@ def _coverage_report_for(framework: Framework, suite_name: str) -> str:
     if not process:
         lines.append("_No process controls registered._")
     else:
-        for cid, ctrl in process.items():
+        for ctrl in process.values():
             lines.append(f"- **{ctrl.id}** — {ctrl.description}")
     return "\n".join(lines)
 
@@ -374,7 +372,7 @@ def build_audit_package(
     manifest_blob = json.dumps(manifest, indent=2, sort_keys=False).encode("utf-8")
     files["manifest.json"] = manifest_blob
 
-    # ── write the zip atomically ──────────────────────────────────────
+    # ── write the zip ─────────────────────────────────────────────────
     with zipfile.ZipFile(out_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         for name, blob in sorted(files.items()):
             zf.writestr(prefix + name, blob)

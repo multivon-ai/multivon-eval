@@ -74,7 +74,7 @@ def _extract(data: Any, path: str) -> str:
             current = current.get(part, "")
         else:
             return str(current)
-    return str(current) if not isinstance(current, str) else current
+    return str(current)
 
 
 # ── DeployedAPITarget ─────────────────────────────────────────────────────────
@@ -522,7 +522,7 @@ def simulate_users(
 
     results = []
     for i, persona in enumerate(all_personas, 1):
-        input_msg = persona.get("opening_message", f"Hello, I need help.")
+        input_msg = persona.get("opening_message", "Hello, I need help.")
         try:
             output = target(input_msg)
         except Exception as e:

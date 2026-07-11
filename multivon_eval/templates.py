@@ -44,8 +44,7 @@ eval-reports/
 
 # Common GitHub Actions CI workflow — drops into .github/workflows/eval.yml.
 # Runs on every PR + on main. Tiered: smoke (no API) on every push; full
-# (with secrets) only on main + nightly cron. Mirrors the structure GPT-5
-# called out as Sarah's blocker.
+# (with secrets) only on main + nightly cron.
 def _ci_workflow(template_name: str) -> str:
     return f"""\
 name: eval
@@ -1389,11 +1388,7 @@ TEMPLATES: dict[str, dict[str, str]] = {
 
 def list_templates() -> list[str]:
     """Return the available template names in display order."""
-    return [
-        "quickstart", "rag",
-        "agent", "agent-langgraph", "agent-openai-sdk",
-        "conversation", "regulated",
-    ]
+    return list(TEMPLATES)
 
 
 def render(template: str, *, with_ci: str | None = None) -> dict[str, str]:

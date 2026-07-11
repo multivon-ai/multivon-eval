@@ -1,10 +1,9 @@
 """
 suite.lock — content-addressed fingerprint of an EvalSuite at run time.
 
-The problem this solves: every persona in the 2026-05-14 deliberation
-(11 of 12) flagged that a silent prompt change inside an evaluator
-silently invalidates every historical comparison. A reviewer cannot
-tell whether "Faithfulness dropped 3pp" is a regression or a prompt
+The problem this solves: a silent prompt change inside an evaluator
+invalidates every historical comparison. A reviewer cannot tell
+whether "Faithfulness dropped 3pp" is a regression or a prompt
 update.
 
 Solution: fingerprint the suite. Every component contributes a
@@ -13,7 +12,7 @@ manifest. A lock written today can be compared against a lock written
 six months from now, and if any meaningful field has changed, the
 comparison fails loudly with a structured diff.
 
-What's fingerprinted (per the cross-model synthesis):
+What's fingerprinted:
 
 * ``library_version`` — multivon_eval.__version__
 * ``evaluators[]`` — for each:
@@ -97,8 +96,7 @@ class SuiteLock:
     # built. Recorded at the suite level so it lands in the audit log
     # even when no evaluator had a matching calibration entry — the
     # per-evaluator ``calibration.version`` is None in that case but the
-    # suite-level pin is still the relevant fact for replay. Codex
-    # round-2 finding (D12).
+    # suite-level pin is still the relevant fact for replay.
     calibration_version: str | None = None
     extra: dict[str, Any] = field(default_factory=dict)
 

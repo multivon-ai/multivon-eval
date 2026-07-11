@@ -7,7 +7,7 @@ LangGraph emits LangChain callback events with graph-specific metadata:
 disambiguate subgraphs. We use these to attribute LLM calls and tool
 calls to the correct semantic agent turn.
 
-The right granularity (codex D16 cycle 1 critique): **one AgentStep per
+The right granularity: **one AgentStep per
 LLM/agent turn**, not per graph node. A ReAct graph has a separate
 "tools" node, but semantically the tool calls belong to the preceding
 LLM turn — that's the unit of agent decision-making evaluators want
@@ -88,7 +88,6 @@ class LangGraphTracer(CallbackTracer):
         # ``get_trace()`` to flush any in-flight step the handler is
         # still holding — without this, the LAST LLM turn of a run is
         # lost (no following on_llm_start to trigger the flush).
-        # Codex D16 cycle 2 finding.
         self._live_handler: Any = None
 
     def _build_handler(self) -> Any:
@@ -164,7 +163,7 @@ class LangGraphTracer(CallbackTracer):
                 # in-flight step (pure routing nodes shouldn't pollute
                 # the trace) AND flush a populated tool-node step here
                 # because no following on_llm_start will be there to
-                # flush it. Codex D16 cycle 2 finding.
+                # flush it.
                 if run_id in self._node_meta:
                     self._node_meta.pop(run_id, None)
                     if self._current_step is not None:
@@ -291,7 +290,6 @@ class LangGraphTracer(CallbackTracer):
         Finalizes any in-flight step on the live handler before
         returning. The handler emits steps on each new ``on_llm_start``,
         so without an explicit flush the LAST step of a run is lost.
-        Codex D16 cycle 2 finding.
         """
         if self._live_handler is not None:
             try:

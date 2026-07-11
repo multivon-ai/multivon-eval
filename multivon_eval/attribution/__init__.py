@@ -7,10 +7,9 @@ Scope (v1):
     diffs across two refs. The output is intentionally descriptive
     ("these N prompts changed"), not causal — no attribution claims.
 
-    The hardened calibration spike of 2026-05-30 documented in
-    multivon-strategy/positioning/feature_prompt_attribution_calibration_spike_hardened_2026_05_30.md
-    showed Haiku-based attribution failing catastrophically on mixed-cause
-    regressions (HIGH-confidence-and-wrong, 14% rate). This package
+    A hardened calibration spike showed Haiku-based attribution failing
+    catastrophically on mixed-cause regressions (HIGH-confidence-and-wrong,
+    14% rate). This package
     ships the structured-diff substrate; attribution itself is gated
     on a future non-prompt-change sidecar signal.
 

@@ -6,8 +6,7 @@ Two integration paths, both supported:
   1. **Post-hoc** (default, recommended): the user's ``model_fn`` calls
      ``Runner.run_sync(...)`` and the tracer reads ``RunResult.new_items``
      after the run completes. Simple, no global state, no thread-safety
-     concerns. Codex D16 cycle 1 picked this over the global trace
-     processor.
+     concerns.
 
   2. **Live RunHooks**: an async hooks object passed as
      ``Runner.run(..., hooks=tracer.run_hooks())`` captures the trace
@@ -17,12 +16,12 @@ Two integration paths, both supported:
      trace after the run completes. Useful for streaming or when you
      want to intercept events live.
 
-The semantic model (codex cycle 1 critique): **one AgentStep per
+The semantic model: **one AgentStep per
 agent/LLM turn**. ``ToolCallItem`` and ``ToolCallOutputItem`` are
 paired into ``ToolCall`` and attached to the step started by the
 preceding ``MessageOutputItem`` / ``ReasoningItem``. Adjacent
 message-like items belonging to the same turn append to the open
-step rather than over-segmenting (codex D16 cycle 2 finding).
+step rather than over-segmenting.
 
 Requires: ``pip install 'multivon-eval[openai-agents]'``.
 """
@@ -117,9 +116,9 @@ class OpenAIAgentsTracer(AgentTracer):
         the run completes, call ``tracer.merge(hooks)`` to fold the
         buffer into the tracer's trace.
 
-        Why per-hook state: codex D16 cycle 2 caught that closing over
-        ``tracer._steps`` would interleave traces across concurrent
-        runs. This isolates each run.
+        Why per-hook state: closing over ``tracer._steps`` would
+        interleave traces across concurrent runs. This isolates
+        each run.
 
         Step boundaries are driven by ``on_llm_start`` (each LLM call
         opens a new step), not ``on_agent_start`` (which fires once
@@ -165,10 +164,10 @@ class OpenAIAgentsTracer(AgentTracer):
             async def on_tool_start(
                 self, context: Any, agent: Any, tool: Any,
             ) -> None:  # type: ignore[override]
-                # Codex D16 cycle 5 finding: prefer the SDK's
-                # context.tool_call_id / tool_name / tool_arguments
-                # over id(tool). Two parallel calls to the SAME tool
-                # would share id() but have distinct tool_call_ids.
+                # Prefer the SDK's context.tool_call_id / tool_name /
+                # tool_arguments over id(tool). Two parallel calls to
+                # the SAME tool would share id() but have distinct
+                # tool_call_ids.
                 call_id = (
                     _attr_or_key(context, "tool_call_id")
                     or getattr(tool, "call_id", None)
@@ -219,9 +218,8 @@ class OpenAIAgentsTracer(AgentTracer):
         this tracer's trace, then clear the buffer.
 
         Idempotent: a second merge of the same hooks is a no-op
-        because the first call clears ``hooks.steps``. Codex D16
-        cycle 5 finding — without the clear, two ``merge`` calls
-        duplicated the trace.
+        because the first call clears ``hooks.steps`` — without the
+        clear, two ``merge`` calls duplicated the trace.
         """
         buffered = getattr(hooks, "steps", None)
         if not buffered:
@@ -244,10 +242,10 @@ class OpenAIAgentsTracer(AgentTracer):
 _MESSAGE_LIKE = frozenset({"MessageOutputItem", "ReasoningItem"})
 
 # Known SDK item types we don't fully model yet but want to PRESERVE
-# as visible markers rather than silently drop. Codex D16 cycle 5
-# finding: the SDK ships ToolSearchCallItem / ToolSearchOutputItem /
-# ToolApprovalItem / MCPApprovalRequestItem / etc., and an eval that
-# silently ignored them would mask real agent behavior.
+# as visible markers rather than silently drop. The SDK ships
+# ToolSearchCallItem / ToolSearchOutputItem / ToolApprovalItem /
+# MCPApprovalRequestItem / etc., and an eval that silently ignored
+# them would mask real agent behavior.
 _KNOWN_UNHANDLED = frozenset({
     "ToolSearchCallItem",
     "ToolSearchOutputItem",
@@ -269,7 +267,7 @@ _KNOWN_UNHANDLED = frozenset({
 def _items_to_steps(items: list[Any]) -> list[AgentStep]:
     """Convert a list of ``RunResult.new_items`` to AgentSteps.
 
-    Walk items in order; group by agent turn. Rules (codex D16 cycle 2):
+    Walk items in order; group by agent turn. Rules:
 
     - A NEW step opens on the FIRST message-like item after a
       ``ToolCallItem`` / ``ToolCallOutputItem`` (the model's response
@@ -352,8 +350,7 @@ def _items_to_steps(items: list[Any]) -> list[AgentStep]:
             step.output = (step.output or "") + f"\n[{cls}]"
         # Truly unknown classes (custom subclasses, future SDK types
         # we haven't catalogued) ARE silently skipped — the alternative
-        # is noisy markers in every trace. Codex cycle 5 documented
-        # the trade-off.
+        # is noisy markers in every trace.
         last_kind = cls
 
     # Any orphan outputs that never matched a call become synthetic
@@ -376,7 +373,7 @@ def _items_to_steps(items: list[Any]) -> list[AgentStep]:
 def _extract_item_text(item: Any) -> str:
     """Pull the assistant text out of a MessageOutputItem / ReasoningItem.
 
-    Three real shapes (codex D16 cycle 4 finding):
+    Three real shapes:
 
     - ``MessageOutputItem.raw_item``: a Responses-API message with
       ``content: list[OutputContent]`` where each has a ``.text``.
@@ -442,7 +439,7 @@ def _attr_or_key(obj: Any, name: str, default: Any = None) -> Any:
     Defensive against SDK shape drift — some run-item snapshots
     surface fields as object attributes (dataclasses / pydantic
     models) and some as dict keys when they've been round-tripped
-    through JSON. Codex D16 cycle 4 finding.
+    through JSON.
     """
     if obj is None:
         return default

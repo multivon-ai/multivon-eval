@@ -53,7 +53,7 @@ def _with_max_tokens(judge: JudgeConfig, max_tokens: int | None) -> JudgeConfig:
 
 
 def _judge_call(prompt: str, max_tokens: int = 1024) -> str:
-    """Backward-compat shim — uses the global JudgeConfig."""
+    """Judge call using the global JudgeConfig."""
     return make_judge_call(prompt, _with_max_tokens(resolve_judge(None), max_tokens))
 
 
@@ -165,14 +165,10 @@ class Faithfulness(Evaluator):
 
     def evaluate(self, case: EvalCase, output: str) -> EvalResult:
         if not case.context:
-            # Case shape doesn't fit faithfulness — no context to ground against.
-            # Skip rather than fail; preserves aggregate pass-rate semantics.
             return self._skipped(
                 "Requires case.context — add retrieved context to enable Faithfulness.",
             )
         if _is_refusal(output):
-            # Short refusals make no claims to verify. Skipping here matches
-            # the intent: the model correctly declined; faithfulness is N/A.
             return self._skipped(
                 "response is a refusal — no substantive claims to verify.",
             )

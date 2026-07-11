@@ -107,10 +107,8 @@ class ComplianceError(MultivonError):
     (e.g. anchor_fn raised, chain version mismatch, framework unknown)."""
 
 
-# EvalGateFailure already exists in result.py for back-compat (SystemExit).
-# We mark it as a sibling of MultivonError so users can catch either.
-# The actual class definition stays in result.py to avoid an import cycle;
-# this module only re-exports it after import for the public surface.
+# EvalGateFailure is defined in result.py (avoids an import cycle) and
+# re-exported from the package root.
 __all__ = [
     "MultivonError",
     "JudgeUnavailable",

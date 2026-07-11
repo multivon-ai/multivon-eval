@@ -1,13 +1,13 @@
 """Runtime prompt recorder (v1) — opt-in capture of rendered prompts.
 
-The determinacy gate (issue #9 / epic #4) measured scanner v3 against five
+The determinacy gate measured scanner v3 against five
 real repos: 20.9% of call sites are statically resolvable. The other ~79%
 build prompts dynamically — statically unbridgeable by construction. This
 module is the designed answer: during an eval run it intercepts outgoing
 SDK calls and records the *rendered* prompt text per call site,
 fingerprinted with the SAME ``fingerprint_text`` the static scanner uses.
 
-Design constraints (carried over from the issue-#9 review, non-negotiable):
+Design constraints:
   - Opt-in only. Importing multivon_eval performs NO patching; zero
     overhead when off. Enabled via the ``--record-prompts`` pytest flag or
     the :func:`record_prompts` context manager.

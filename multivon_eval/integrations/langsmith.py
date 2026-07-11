@@ -190,7 +190,6 @@ class LangSmithImporter(CaseImporter):
         for child in children:
             run_type = getattr(child, "run_type", "")
             if run_type == "tool":
-                tool_input = self._extract_value(getattr(child, "inputs", None), None)
                 tool_output = self._extract_value(getattr(child, "outputs", None), None)
                 if getattr(child, "error", None):
                     tool_output = f"[ERROR: {child.error}]"

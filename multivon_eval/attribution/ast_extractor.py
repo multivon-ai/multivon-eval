@@ -1,7 +1,7 @@
 """AST-based extraction of prompt literals from SDK call sites.
 
-Detects three SDK call shapes (kwarg-only — per the v1 adversarial-fix
-discipline that drops fuzzy name-regex capture entirely)::
+Detects three SDK call shapes (kwarg-only; fuzzy name-regex capture is
+deliberately not attempted)::
 
     anthropic.messages.create(system=<literal>, messages=[{"role": ..., "content": <literal>}, ...])
     client.messages.create(...)              # any object.messages.create
@@ -86,7 +86,7 @@ def _identify_sdk(
     ``litellm_aliases`` maps module-level imported names to their litellm
     originals (``from litellm import acompletion as ac`` → {"ac": "acompletion"})
     so bare aliased calls — the dominant shape in real repos like pr-agent —
-    are detected. Determinacy-gate finding 2026-06-11.
+    are detected.
     """
     chain = _attr_chain(call.func)
     if not chain:
@@ -511,8 +511,8 @@ def scan_file_with_reason(
                         # a literal list whose entries can't be resolved. The
                         # call site is real; the prompts aren't statically
                         # visible. Emit one honest dynamic record instead of
-                        # vanishing — invisible call sites made 4/5 real repos
-                        # report zero sites in the 2026-06-11 determinacy gate.
+                        # vanishing — invisible call sites made real repos
+                        # report zero sites.
                         # A literal EMPTY list is statically known to carry no
                         # prompts: no record (that would be dishonest the
                         # other way).

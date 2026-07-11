@@ -34,7 +34,6 @@ Usage::
 from __future__ import annotations
 
 import html
-import json
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -345,12 +344,12 @@ def _verify_silent(reporter: ComplianceReporter, suite_name: str) -> list[tuple[
         # Lines look like "  OK  abc123def  2026-05-13T..."
         # or "  TAMPERED  abc123def  2026-05-13T..."
         parts = stripped.split(None, 2)
-        if len(parts) >= 2 and parts[0] in ("OK", "OK", "TAMPERED", "CHAIN", "ERROR"):
+        if len(parts) >= 2 and parts[0] in ("OK", "TAMPERED", "CHAIN", "ERROR"):
             # Re-join "CHAIN BROKEN" or "OK (legacy)" into one status field.
             if parts[0] == "CHAIN" and parts[1] == "BROKEN":
                 status = "CHAIN BROKEN"
                 rest = parts[2] if len(parts) > 2 else ""
-            elif parts[0] == "OK" and len(parts) >= 2 and parts[1].startswith("("):
+            elif parts[0] == "OK" and parts[1].startswith("("):
                 status = f"OK {parts[1]}"
                 rest = parts[2] if len(parts) > 2 else ""
             else:

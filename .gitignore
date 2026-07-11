@@ -19,3 +19,4 @@ eval_results.json
 check_eval_results.json
 rag_eval_results.json
 rag_eval_results.csv
+*.py,cover

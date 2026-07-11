@@ -32,7 +32,6 @@ from typing import Any, Optional
 
 from .attribution import PromptRecord, SCANNER_VERSION, scan_with_skips
 from .provenance import (
-    PROVENANCE_KEY,
     atomic_write_text,
     git_info,
     read_provenance,

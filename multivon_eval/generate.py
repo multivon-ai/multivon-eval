@@ -25,7 +25,6 @@ Usage:
 from __future__ import annotations
 import hashlib
 import json
-import os
 import re
 from pathlib import Path
 from typing import Any, Literal
@@ -164,12 +163,13 @@ Return a JSON array. Each element:
 
 Return ONLY the JSON array, no commentary."""
 
+    raw = "none"
     try:
         raw = _judge_call(prompt, max_tokens=3000)
         data = _extract_json_array(raw)
         return data[:n]
     except Exception as e:
-        raise RuntimeError(f"Generation failed: {e}\nRaw response: {raw[:500] if 'raw' in dir() else 'none'}")
+        raise RuntimeError(f"Generation failed: {e}\nRaw response: {raw[:500]}")
 
 
 # ── Private helpers ────────────────────────────────────────────────────────

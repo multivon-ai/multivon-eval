@@ -43,7 +43,6 @@ import pathlib
 import re
 from typing import Any
 
-from .judge import JudgeConfig
 from .exceptions import JudgeUnavailable
 
 

@@ -112,9 +112,9 @@ def assert_evaluators(
     Returns the list of :class:`EvalResult` (one per evaluator). Raises
     :class:`EvaluatorFailure` if any did not pass.
     """
-    override = _runs_override()
-    if override is not None:
-        runs = override
+    # Pytest --multivon-runs override, if active.
+    if _RUNS_OVERRIDE is not None:
+        runs = _RUNS_OVERRIDE
 
     results: list[EvalResult] = []
     for ev in evaluators:
@@ -139,11 +139,6 @@ def assert_evaluators(
     if any(not r.passed for r in results):
         raise EvaluatorFailure(results=results, case=case, output=output)
     return results
-
-
-def _runs_override() -> int | None:
-    """Pytest --multivon-runs override, if active."""
-    return _RUNS_OVERRIDE
 
 
 _RUNS_OVERRIDE: int | None = None

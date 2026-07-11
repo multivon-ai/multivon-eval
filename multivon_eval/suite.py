@@ -282,9 +282,8 @@ class EvalSuite:
                 single_runs.append(
                     self._run_case_once(case, model_fn, tracer=tracer)
                 )
-                if early_stop and i >= 1:
-                    if _sprt_stop(single_runs):
-                        break
+                if early_stop and i >= 1 and _sprt_stop(single_runs):
+                    break
 
             return _aggregate_runs(case, single_runs)
         finally:
@@ -379,9 +378,7 @@ class EvalSuite:
                              tracer is set, else fall back to 1. Pass an
                              explicit integer to pin it. ``workers=1``
                              forces strictly-serial execution (useful for
-                             debug). Field measurements: a 10-case x 6-
-                             evaluator RAG suite drops from ~167s serial to
-                             ~17s with workers=8.
+                             debug).
             runs:            Times to run each case (default 1). Use > 1 to
                              detect flaky cases and get score confidence intervals.
             tracer:          AgentTracer instance. Tracers are stateful, so
@@ -499,36 +496,11 @@ class EvalSuite:
         if json_path := (save_json or _os.environ.get("MULTIVON_JSON_OUTPUT")):
             report.save_json(json_path)
             print(f"  JSON report saved → {json_path}")
-        if junit_path := save_junit_xml:
-            report.save_junit_xml(junit_path)
-            print(f"  JUnit XML saved → {junit_path}")
+        if save_junit_xml:
+            report.save_junit_xml(save_junit_xml)
+            print(f"  JUnit XML saved → {save_junit_xml}")
 
-        if fail_threshold is not None:
-            if report.evaluated == 0 and report.errors > 0:
-                # Every case errored out before quality could be assessed.
-                # Don't pretend it's a pass-rate problem — surface the first
-                # underlying error so the user fixes the setup, not the model.
-                first_err = next(
-                    (cr for cr in report.case_results if cr.status in ERROR_STATUSES),
-                    None,
-                )
-                detail = (
-                    (first_err.judge_error or first_err.model_error
-                     or first_err.evaluator_error or "(no detail)")
-                    if first_err else "(no detail)"
-                )
-                raise EvalGateFailure(
-                    f"\nEval blocked: all {report.errors} case(s) errored before quality scoring. "
-                    f"First error:\n  {detail}",
-                    pass_rate=report.pass_rate,
-                    threshold=fail_threshold,
-                )
-            if report.pass_rate < fail_threshold:
-                raise EvalGateFailure(
-                    f"\nEval failed: pass rate {report.pass_rate:.1%} < threshold {fail_threshold:.1%}",
-                    pass_rate=report.pass_rate,
-                    threshold=fail_threshold,
-                )
+        _enforce_fail_threshold(report, fail_threshold)
 
         return report
 
@@ -832,32 +804,7 @@ class EvalSuite:
         if verbose:
             print_report(report)
 
-        if fail_threshold is not None:
-            if report.evaluated == 0 and report.errors > 0:
-                # Every case errored out before quality could be assessed.
-                # Don't pretend it's a pass-rate problem — surface the first
-                # underlying error so the user fixes the setup, not the model.
-                first_err = next(
-                    (cr for cr in report.case_results if cr.status in ERROR_STATUSES),
-                    None,
-                )
-                detail = (
-                    (first_err.judge_error or first_err.model_error
-                     or first_err.evaluator_error or "(no detail)")
-                    if first_err else "(no detail)"
-                )
-                raise EvalGateFailure(
-                    f"\nEval blocked: all {report.errors} case(s) errored before quality scoring. "
-                    f"First error:\n  {detail}",
-                    pass_rate=report.pass_rate,
-                    threshold=fail_threshold,
-                )
-            if report.pass_rate < fail_threshold:
-                raise EvalGateFailure(
-                    f"\nEval failed: pass rate {report.pass_rate:.1%} < threshold {fail_threshold:.1%}",
-                    pass_rate=report.pass_rate,
-                    threshold=fail_threshold,
-                )
+        _enforce_fail_threshold(report, fail_threshold)
 
         return report
 
@@ -887,8 +834,6 @@ class EvalSuite:
             ])
             print(result)
         """
-        from .result import CalibrationResult
-
         tp = fp = fn = tn = 0
         by_ev: dict[str, dict[str, int]] = {}
 
@@ -956,8 +901,7 @@ class EvalSuite:
         # silently swallow that error into their CaseResult via the
         # except clause below, and the user would see N-1 cases with
         # results=[] and actual_output="[ERROR: cannot enter ...]"
-        # while only case 0 ran. Field-reproduced in App 1 of the
-        # SDK deepdive.
+        # while only case 0 ran.
         import contextvars
 
         results: dict[int, CaseResult] = {}
@@ -1597,34 +1541,43 @@ class EvalSuite:
         if verbose:
             print_report(report)
 
-        if fail_threshold is not None:
-            if report.evaluated == 0 and report.errors > 0:
-                # Every case errored out before quality could be assessed.
-                # Don't pretend it's a pass-rate problem — surface the first
-                # underlying error so the user fixes the setup, not the model.
-                first_err = next(
-                    (cr for cr in report.case_results if cr.status in ERROR_STATUSES),
-                    None,
-                )
-                detail = (
-                    (first_err.judge_error or first_err.model_error
-                     or first_err.evaluator_error or "(no detail)")
-                    if first_err else "(no detail)"
-                )
-                raise EvalGateFailure(
-                    f"\nEval blocked: all {report.errors} case(s) errored before quality scoring. "
-                    f"First error:\n  {detail}",
-                    pass_rate=report.pass_rate,
-                    threshold=fail_threshold,
-                )
-            if report.pass_rate < fail_threshold:
-                raise EvalGateFailure(
-                    f"\nEval failed: pass rate {report.pass_rate:.1%} < threshold {fail_threshold:.1%}",
-                    pass_rate=report.pass_rate,
-                    threshold=fail_threshold,
-                )
+        _enforce_fail_threshold(report, fail_threshold)
 
         return report
+
+
+def _enforce_fail_threshold(report: EvalReport, fail_threshold: "float | None") -> None:
+    """Raise :class:`EvalGateFailure` when the report misses ``fail_threshold``.
+
+    No-op when ``fail_threshold`` is None. Shared by ``run()``,
+    ``run_on_cases()``, and ``run_async()``.
+    """
+    if fail_threshold is not None:
+        if report.evaluated == 0 and report.errors > 0:
+            # Every case errored out before quality could be assessed.
+            # Don't pretend it's a pass-rate problem — surface the first
+            # underlying error so the user fixes the setup, not the model.
+            first_err = next(
+                (cr for cr in report.case_results if cr.status in ERROR_STATUSES),
+                None,
+            )
+            detail = (
+                (first_err.judge_error or first_err.model_error
+                 or first_err.evaluator_error or "(no detail)")
+                if first_err else "(no detail)"
+            )
+            raise EvalGateFailure(
+                f"\nEval blocked: all {report.errors} case(s) errored before quality scoring. "
+                f"First error:\n  {detail}",
+                pass_rate=report.pass_rate,
+                threshold=fail_threshold,
+            )
+        if report.pass_rate < fail_threshold:
+            raise EvalGateFailure(
+                f"\nEval failed: pass rate {report.pass_rate:.1%} < threshold {fail_threshold:.1%}",
+                pass_rate=report.pass_rate,
+                threshold=fail_threshold,
+            )
 
 
 def _safe_lock(suite: "EvalSuite") -> "Any":
@@ -1641,7 +1594,7 @@ def _safe_lock(suite: "EvalSuite") -> "Any":
     the user thinks they're pinned to a known version, but the audit
     log would record no version and audit-package would fall back to
     the shipped default. Better to fail loudly at run time so the user
-    fixes the config. Codex D12 round-2 finding.
+    fixes the config.
     """
     try:
         return suite.lock()
@@ -1728,7 +1681,6 @@ def _sprt_stop(runs_so_far: list[CaseResult], alpha: float = 0.05, beta: float =
     alpha: false-positive rate (default 0.05)
     beta:  false-negative rate (default 0.20 → 80% power)
     """
-    import math as _math
     # Use CaseResult.passed (status-aware) — error/skipped runs are not
     # "successes" for SPRT termination even if evaluators happened to record
     # passed=True before the error fired.
@@ -1782,8 +1734,6 @@ def _measure_judge_reliability(
         cr = case_results[idx]
         orig_case = original_cases[idx] if idx < len(original_cases) else EvalCase(input=cr.case_input)
         for ev in evaluators:
-            if not hasattr(ev, "evaluate"):
-                continue
             ev_name = getattr(ev, "name", type(ev).__name__.lower())
             first = next((r for r in cr.results if r.evaluator == ev_name), None)
             if first is None:
