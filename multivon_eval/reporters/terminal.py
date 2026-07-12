@@ -139,7 +139,13 @@ def print_report(report: EvalReport) -> None:
         k = report.runs_per_case
         pak = report.pass_at_k(k)
         phk = report.pass_hat_k(k)
-        if pak.value is not None and phk.value is not None:
+        if pak.value is None or phk.value is None:
+            # Honest UNKNOWN (e.g. early_stop left some case with < k
+            # trials) — say so instead of silently dropping the block.
+            reason = phk.unknown_reason or pak.unknown_reason
+            console.print(f"  [bold]Reliability ({k} runs/case)[/]")
+            console.print(f"    [yellow]pass@{k} / pass^{k}: {reason}[/]")
+        else:
             console.print(f"  [bold]Reliability ({k} runs/case)[/]")
             console.print(
                 f"    pass@{k} = {pak.value:.0%} [dim][{pak.ci_low:.0%}–{pak.ci_high:.0%}][/] "
@@ -303,7 +309,16 @@ def print_validation(vreport) -> None:
         spend = costs.total_cost_usd
         spend_s = f"${spend:.4f}" if spend is not None else "unknown (no pricing data)"
         console.print(f"  [dim]judge spend: {spend_s} · {costs.total_tokens:,} tokens[/]")
-    verdict = "[green]PASSED[/]" if vreport.passed else "[red]FAILED[/]"
+    if vreport.passed:
+        verdict = "[green]PASSED[/]"
+    elif getattr(vreport, "nothing_validated", False):
+        verdict = "[red]NOTHING_VALIDATED[/]"
+        console.print(
+            "  [red]✗ nothing validated:[/] zero graders executed — this run "
+            "validated nothing and is NOT a green result."
+        )
+    else:
+        verdict = "[red]FAILED[/]"
     console.print(f"  Validation {verdict} — {len(vreport.broken)} broken, "
                   f"{len(vreport.no_discrimination)} non-discriminating, "
                   f"{len(vreport.unvalidatable)} unvalidatable, "

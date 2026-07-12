@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from .case import EvalCase
+from .exceptions import JudgeUnavailable
 from .result import EvalResult
 
 if TYPE_CHECKING:
@@ -31,6 +32,9 @@ STATUS_OK = "OK"
 STATUS_BROKEN = "BROKEN_TASK_OR_GRADER"
 STATUS_NO_DISCRIMINATION = "NO_DISCRIMINATION"
 STATUS_UNVALIDATABLE = "UNVALIDATABLE"
+# Report-level only: zero graders executed across the entire run — the
+# validate pass produced no information and must not read as green.
+STATUS_NOTHING_VALIDATED = "NOTHING_VALIDATED"
 
 _NUDGE = "add expected_output or reference_output to validate this task"
 
@@ -71,10 +75,28 @@ class ValidationReport:
         return [r for r in self.results if r.status == STATUS_OK]
 
     @property
+    def nothing_validated(self) -> bool:
+        """True when zero graders executed across the whole run (every
+        case is UNVALIDATABLE) — e.g. a judge-only suite audited in the
+        default offline mode. Such a run validated nothing and must not
+        report green."""
+        return bool(self.results) and len(self.unvalidatable) == len(self.results)
+
+    @property
+    def status(self) -> str:
+        """Report-level verdict: OK / BROKEN_TASK_OR_GRADER /
+        NOTHING_VALIDATED (zero graders executed — never OK)."""
+        if self.nothing_validated:
+            return STATUS_NOTHING_VALIDATED
+        return STATUS_OK if self.passed else STATUS_BROKEN
+
+    @property
     def passed(self) -> bool:
-        """No broken tasks/graders. NO_DISCRIMINATION and UNVALIDATABLE
-        are warnings, not failures — they don't flip CI red."""
-        return not self.broken
+        """No broken tasks/graders AND at least one grader actually
+        executed. NO_DISCRIMINATION and (some) UNVALIDATABLE cases are
+        warnings, not failures — but a run where EVERY case is
+        unvalidatable produced zero information and is not a pass."""
+        return not self.broken and not self.nothing_validated
 
     @property
     def effective_informative_cases(self) -> tuple[int, int]:
@@ -84,9 +106,13 @@ class ValidationReport:
 
     def to_dict(self) -> dict:
         ok_count, validated = self.effective_informative_cases
+        skipped_all = sorted({g for r in self.results for g in r.skipped_graders})
         return {
             "suite": self.suite_name,
             "passed": self.passed,
+            "status": self.status,
+            "costs": self.costs.to_dict() if self.costs is not None else None,
+            "skipped_judge_graders": skipped_all,
             "summary": {
                 "cases": len(self.results),
                 "ok": len(self.ok),
@@ -121,14 +147,25 @@ class ValidationReport:
 
     def __str__(self) -> str:
         ok_count, validated = self.effective_informative_cases
+        if self.passed:
+            verdict = "PASSED"
+        elif self.nothing_validated:
+            verdict = "NOTHING_VALIDATED"
+        else:
+            verdict = "FAILED"
         lines = [
             f"Validate: {self.suite_name} — "
-            f"{'PASSED' if self.passed else 'FAILED'} "
+            f"{verdict} "
             f"({len(self.broken)} broken, {len(self.no_discrimination)} "
             f"non-discriminating, {len(self.unvalidatable)} unvalidatable, "
             f"{len(self.ok)} OK)",
             f"  effective informative cases: {ok_count}/{validated} validated",
         ]
+        if self.nothing_validated:
+            lines.append(
+                "  NOTHING_VALIDATED: zero graders executed — this run "
+                "validated nothing; it is NOT a green result."
+            )
         for r in self.broken:
             who = r.failed_graders[0].evaluator if r.failed_graders else "?"
             why = r.failed_graders[0].reason if r.failed_graders else r.reason
@@ -139,6 +176,18 @@ class ValidationReport:
             lines.append(f"  NO_DISCRIMINATION: {r.case_input[:60]!r} — {r.reason}")
         for r in self.unvalidatable:
             lines.append(f"  UNVALIDATABLE: {r.case_input[:60]!r} — {r.reason}")
+        skipped_all = sorted({g for r in self.results for g in r.skipped_graders})
+        if skipped_all:
+            lines.append(
+                f"  judge-backed grader(s) not run (offline default): "
+                f"{', '.join(skipped_all)} — pass --judges to include them"
+            )
+        if self.costs is not None and getattr(self.costs, "total_tokens", 0):
+            spend = self.costs.total_cost_usd
+            spend_s = f"${spend:.4f}" if spend is not None else "unknown (no pricing data)"
+            lines.append(
+                f"  judge spend: {spend_s} · {self.costs.total_tokens:,} tokens"
+            )
         return "\n".join(lines)
 
 
@@ -160,7 +209,12 @@ def _resolve_reference(case: EvalCase) -> tuple[str | None, str | None]:
 
 def _run_grader(ev: Any, case: EvalCase, output: str) -> EvalResult:
     """Run one grader against a reference; a raising grader is itself a
-    finding (BROKEN), consistent with the honest error-accounting rule."""
+    finding (BROKEN), consistent with the honest error-accounting rule.
+
+    :class:`JudgeUnavailable` is the one exception to that rule — a judge
+    outage is infrastructure, not a grader verdict, so it's tagged
+    ``error_kind='judge_unavailable'`` and routed to UNVALIDATABLE by the
+    caller instead of BROKEN."""
     from .evaluators.deterministic import Latency, MaxLatency
 
     ev_name = getattr(ev, "name", type(ev).__name__)
@@ -169,6 +223,12 @@ def _run_grader(ev: Any, case: EvalCase, output: str) -> EvalResult:
             # A reference has no runtime; 0ms keeps latency graders inert.
             return ev.evaluate(case, output, latency_ms=0.0)
         return ev.evaluate(case, output)
+    except JudgeUnavailable as ex:
+        return EvalResult(
+            evaluator=ev_name, score=0.0, passed=False,
+            reason=f"judge unavailable while grading reference: {ex}",
+            metadata={"error_kind": "judge_unavailable"},
+        )
     except Exception as ex:
         return EvalResult(
             evaluator=ev_name, score=0.0, passed=False,
@@ -226,6 +286,8 @@ def _validate_case(
 
     failed: list[EvalResult] = []
     skipped: list[str] = []
+    judge_outages: list[EvalResult] = []
+    executed = 0  # graders that produced a REAL verdict on the reference
     # Graders that scored the reference for real (not skipped) and passed —
     # the pool the contrast check probes for discrimination.
     ref_passing: list[Any] = []
@@ -237,12 +299,18 @@ def _validate_case(
         result = _run_grader(ev, case, reference)
         if result.metadata.get("skipped"):
             continue  # case shape doesn't fit this grader — counts neither way
+        if result.metadata.get("error_kind") == "judge_unavailable":
+            # Infrastructure, not a grader verdict — never BROKEN.
+            judge_outages.append(result)
+            continue
+        executed += 1
         if result.passed:
             ref_passing.append(ev)
         else:
             failed.append(result)
 
     if failed:
+        # Only genuine grader verdicts may say BROKEN.
         return CaseValidation(
             case_index=idx, case_input=case.input, status=STATUS_BROKEN,
             failed_graders=failed, skipped_graders=skipped,
@@ -250,11 +318,47 @@ def _validate_case(
                    "unsolvable or the grader is miscalibrated",
         )
 
+    if judge_outages:
+        return CaseValidation(
+            case_index=idx, case_input=case.input,
+            status=STATUS_UNVALIDATABLE, skipped_graders=skipped,
+            reason=(
+                f"judge unavailable (infrastructure, not a grader verdict): "
+                f"{judge_outages[0].reason} — rerun when the judge endpoint "
+                f"is reachable"
+            ),
+        )
+
+    if executed == 0:
+        # Zero graders ran — this case was NOT validated and must not be OK.
+        if skipped and len(skipped) == len(evaluators):
+            reason = "all graders are judge-backed; rerun with --judges"
+        elif skipped:
+            reason = (
+                f"no grader produced a verdict — judge-backed grader(s) "
+                f"{', '.join(skipped)} skipped (offline default; rerun with "
+                f"--judges) and the remaining grader(s) did not apply to "
+                f"this case's shape"
+            )
+        else:
+            reason = "no grader applies to this case's shape — nothing validated"
+        return CaseValidation(
+            case_index=idx, case_input=case.input,
+            status=STATUS_UNVALIDATABLE, skipped_graders=skipped,
+            reason=reason,
+        )
+
     if contrast:
         bad_output = _find_contrast_twin(case, all_cases)
         if bad_output is not None:
             lenient = []
             for ev in ref_passing:
+                # Judge-backed graders never run in the offline default —
+                # the ref-grading loop above can't put them in ref_passing
+                # when include_judges is False, but the zero-LLM-calls
+                # guarantee must not depend on that invariant at a distance.
+                if getattr(ev, "uses_llm_judge", False) and not include_judges:
+                    continue
                 r = _run_grader(ev, case, bad_output)
                 if r.passed and not r.metadata.get("skipped"):
                     lenient.append(getattr(ev, "name", type(ev).__name__))
@@ -285,7 +389,10 @@ def validate_suite(
     judge-backed graders only with ``include_judges=True`` (their spend is
     tracked and reported). With ``contrast=True``, cases linked to a
     contrast twin also get a discrimination check against the twin's
-    known-bad output — zero extra LLM calls.
+    known-bad output — zero LLM calls in the default offline mode (the
+    contrast rerun excludes judge-backed graders unless
+    ``include_judges=True``, in which case its judge spend is included in
+    the tracked costs).
     """
     evaluators = list(suite.evaluators)
     cases = list(suite.cases)
@@ -327,4 +434,5 @@ __all__ = [
     "STATUS_BROKEN",
     "STATUS_NO_DISCRIMINATION",
     "STATUS_UNVALIDATABLE",
+    "STATUS_NOTHING_VALIDATED",
 ]

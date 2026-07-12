@@ -89,7 +89,13 @@ def cmd_validate(args) -> int:
     try:
         ns = runpy.run_path(args.file, run_name="multivon_eval_validate")
     except Exception as exc:
-        print(f"error: could not execute {args.file}: {exc}", file=sys.stderr)
+        print(
+            f"error: could not execute {args.file}: {exc}\n"
+            f'hint: keep suite.run(...) under if __name__ == "__main__": — '
+            f"an unguarded module-level run() executes the model under test "
+            f"at import time, which validate must never do.",
+            file=sys.stderr,
+        )
         return 2
 
     suites: list[EvalSuite] = []
@@ -124,8 +130,9 @@ def cmd_validate(args) -> int:
         out.write_text(json.dumps(payload, indent=2), encoding="utf-8")
         print(f"  JSON validation report saved → {args.json}")
 
-    # UNVALIDATABLE / NO_DISCRIMINATION are warnings, not failures — only a
-    # broken task/grader flips CI red.
+    # UNVALIDATABLE / NO_DISCRIMINATION are warnings, not failures — a broken
+    # task/grader flips CI red, and so does a report that validated NOTHING
+    # (zero graders executed, e.g. a judge-only suite audited offline).
     return 1 if any(not r.passed for r in reports) else 0
 
 

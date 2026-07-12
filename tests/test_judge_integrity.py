@@ -356,3 +356,104 @@ def test_resolve_fills_nones_on_direct_resolve():
     assert resolved.temperature == 0.0
     assert resolved.max_tokens == 1024
     assert resolved.timeout == 30
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Word-boundary verdict detection — unbounded prefix matching regression
+# ─────────────────────────────────────────────────────────────────────────────
+
+@pytest.mark.parametrize("reply,expected", [
+    # Prefix false-positives the bare startswith() version mis-scored.
+    ("Yesterday was unclear", None),      # was True
+    ("Nobody can determine this", None),  # was False
+    ("None of these", None),
+    ("Notably, the claim holds", None),
+    ("Yes.", True),
+    ("no —", False),
+    ('"No", it is not supported', False),
+    ("  YES — fully supported", True),
+    # Token fallback (single unambiguous verdict WORD anywhere) unchanged.
+    ("I cannot say yes.", True),
+    # Both verdict words present → UNKNOWN, never a guess.
+    ("I cannot say yes or no", None),
+])
+def test_parse_yes_no_word_boundary_table(reply, expected):
+    assert _parse_yes_no(reply) is expected
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Minimum-verdict-coverage rule: majority-UNKNOWN must not score the remainder
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _rubric_n(n: int) -> CustomRubric:
+    return CustomRubric(
+        criteria=[(f"Q{i}?", True) for i in range(n)],
+        threshold=0.5,
+    )
+
+
+def test_one_yes_nine_unknown_raises_not_scores_one():
+    answers = iter(["Yes"] + ["hard to say"] * 9)
+    with patch(
+        "multivon_eval.evaluators.llm_judge.make_judge_call",
+        side_effect=lambda prompt, cfg: next(answers),
+    ):
+        with pytest.raises(JudgeUnavailable, match="insufficient verdict coverage"):
+            _rubric_n(10).evaluate(EvalCase(input="q"), "out")
+
+
+def test_exactly_half_unknown_still_scores_with_disclosure():
+    answers = iter(["Yes", "Yes", "hmm", "hmm"])
+    with patch(
+        "multivon_eval.evaluators.llm_judge.make_judge_call",
+        side_effect=lambda prompt, cfg: next(answers),
+    ):
+        result = _rubric_n(4).evaluate(EvalCase(input="q"), "out")
+    assert result.score == pytest.approx(1.0)
+    assert "2 of 4 question(s) UNKNOWN" in result.reason
+
+
+def test_majority_unknown_surfaces_as_judge_error_status():
+    from multivon_eval import EvalSuite
+
+    suite = EvalSuite("cov").add_case(EvalCase(input="q")).add_evaluator(_rubric_n(10))
+    answers_by_call = {"n": 0}
+
+    def reply(prompt, cfg):
+        answers_by_call["n"] += 1
+        return "Yes" if answers_by_call["n"] == 1 else "cannot tell"
+
+    with patch(
+        "multivon_eval.evaluators.llm_judge.make_judge_call",
+        side_effect=reply,
+    ):
+        report = suite.run(lambda x: "out", verbose=False, workers=1)
+    assert report.case_results[0].status == EvalStatus.JUDGE_ERROR
+    assert report.evaluated == 0
+
+
+def test_faithfulness_majority_unknown_claims_raises():
+    claims = [f"claim {i}" for i in range(10)]
+    replies = iter([str(claims).replace("'", '"')] + ["Yes"] + ["unclear"] * 9)
+    with patch(
+        "multivon_eval.evaluators.llm_judge.make_judge_call",
+        side_effect=lambda prompt, cfg: next(replies),
+    ):
+        with pytest.raises(JudgeUnavailable, match="insufficient verdict coverage"):
+            Faithfulness(threshold=0.7).evaluate(
+                EvalCase(input="q", context="ctx"), "long output"
+            )
+
+
+def test_faithfulness_minority_unknown_disclosed_and_scored():
+    claims = ["a", "b", "c"]
+    replies = iter([str(claims).replace("'", '"'), "Yes", "No", "unclear"])
+    with patch(
+        "multivon_eval.evaluators.llm_judge.make_judge_call",
+        side_effect=lambda prompt, cfg: next(replies),
+    ):
+        result = Faithfulness(threshold=0.7).evaluate(
+            EvalCase(input="q", context="ctx"), "output"
+        )
+    assert result.score == pytest.approx(0.5)
+    assert "1 claim(s) UNKNOWN" in result.reason

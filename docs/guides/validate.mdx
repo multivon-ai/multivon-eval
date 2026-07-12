@@ -69,6 +69,15 @@ Or from the CLI, pointing at the Python file that defines your suite:
 multivon-eval validate eval_suite.py
 ```
 
+The CLI imports that file to find the suite, so keep the model run under a
+guard — an **unguarded module-level `suite.run(...)` executes your model at
+import time**, and the never-calls-your-model guarantee depends on the guard:
+
+```python
+if __name__ == "__main__":
+    suite.run(my_model_fn)
+```
+
 ---
 
 ## What the verdicts mean
@@ -78,9 +87,9 @@ multivon-eval validate eval_suite.py
 | `OK` | The reference passes every grader that ran. | No |
 | `BROKEN_TASK_OR_GRADER` | The known-good reference **fails** at least one grader. The task is unsolvable or the grader is miscalibrated; the reason carries the grader's own explanation. | Yes — exit 1 |
 | `NO_DISCRIMINATION` | A grader passes both the reference and a known-bad output — it contributes zero information on this task. | No — warning |
-| `UNVALIDATABLE` | No reference to check against. Add `expected_output` or `reference_output`. | No — warning |
+| `UNVALIDATABLE` | No reference to check against (add `expected_output` or `reference_output`), no grader executed on the case (e.g. all graders judge-backed in offline mode — rerun with `--judges`), or the judge was unreachable while grading. | No — warning |
 
-Only BROKEN flips the exit code. NO_DISCRIMINATION and UNVALIDATABLE are warnings — flipping them to failures would break existing CI pipelines on day one.
+BROKEN flips the exit code; individual NO_DISCRIMINATION and UNVALIDATABLE cases are warnings — flipping them to failures would break existing CI pipelines on day one. One exception: when **every** case is UNVALIDATABLE, zero graders executed and the run validated nothing — the report-level status is `NOTHING_VALIDATED` and the exit code is 1, never a green PASSED.
 
 ```yaml
 # CI recipe: validate before you run
@@ -92,7 +101,7 @@ Only BROKEN flips the exit code. NO_DISCRIMINATION and UNVALIDATABLE are warning
 
 ## The discrimination check
 
-Tasks generated with contrast twins (`generate_contrast_pairs`, linked via `metadata['pair_id']`) get a second check for free: the deterministic graders also run against the twin's known-bad output. A grader that passes **both** the reference and the known-bad twin cannot tell good from bad on that task — flagged `NO_DISCRIMINATION`, and the summary reports `effective informative cases: N/M validated` so you know how much of your suite actually carries signal. Zero LLM calls; disable with `--no-contrast` / `contrast=False`.
+Tasks generated with contrast twins (`generate_contrast_pairs`, linked via `metadata['pair_id']`) get a second check for free: the deterministic graders also run against the twin's known-bad output. A grader that passes **both** the reference and the known-bad twin cannot tell good from bad on that task — flagged `NO_DISCRIMINATION`, and the summary reports `effective informative cases: N/M validated` so you know how much of your suite actually carries signal. Zero LLM calls in the default offline mode — the discrimination rerun excludes judge-backed graders unless you opt in with `--judges`, in which case their spend is tracked with the rest. Disable with `--no-contrast` / `contrast=False`.
 
 ---
 
@@ -105,6 +114,8 @@ LLM-judge graders are skipped by default — validate is a free, offline audit, 
 ```
 
 `--judges` (CLI) or `suite.validate(include_judges=True)` opts in: judge graders run against every reference, and the spend is tracked and printed. Expect the same per-case judge cost as a normal run (QAG graders make several judge calls per task), minus the model calls — you are paying to grade references, not generations.
+
+A suite whose graders are **all** judge-backed therefore validates nothing in the offline default: every case lands `UNVALIDATABLE` ("all graders are judge-backed; rerun with --judges") and the report exits `NOTHING_VALIDATED`, not PASSED. A judge outage during a `--judges` run also marks affected cases `UNVALIDATABLE` (infrastructure), never `BROKEN_TASK_OR_GRADER` — only genuine grader verdicts may indict a task.
 
 ---
 

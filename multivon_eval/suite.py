@@ -411,8 +411,16 @@ class EvalSuite:
             tracer:          AgentTracer instance. Tracers are stateful, so
                              workers > 1 is not allowed when a tracer is provided.
             early_stop:      Stop each case early once the result is statistically
-                             clear (SPRT). Only applies when runs > 1. Reduces LLM
-                             spend on easy cases without sacrificing accuracy.
+                             clear (SPRT). Only applies when runs > 1 AND
+                             workers=1 — the parallel path does not implement
+                             it and emits a one-line stderr warning
+                             ("early_stop requires workers=1; ignoring").
+                             Note workers defaults to min(8, len(cases)), so
+                             pass workers=1 explicitly to get early stopping.
+                             Reduces LLM spend on easy cases without
+                             sacrificing accuracy; cases stopped early record
+                             fewer trials, so pass@k / pass^k at k=runs report
+                             an honest UNKNOWN.
             judge_retry:     :class:`JudgeRetry` policy for transient judge /
                              timeout errors. Default ``None`` = no retry.
                              Cases whose status is in ``policy.retry_on`` are
@@ -436,6 +444,14 @@ class EvalSuite:
                 "tracer and workers > 1 are incompatible — tracers are stateful. "
                 "Run with workers=1 (the default) when using a tracer."
             )
+
+        # early_stop is only implemented on the serial path; the parallel
+        # path silently ran every case the full `runs` times. Warn instead
+        # of silently spending the saved budget.
+        if early_stop and workers > 1:
+            import sys as _sys
+            _sys.stderr.write("early_stop requires workers=1; ignoring\n")
+            _sys.stderr.flush()
 
         # Warmup: prepare evaluators that need pre-run setup (e.g. CheckEvaluator
         # generates yes/no questions here so errors surface before the eval loop

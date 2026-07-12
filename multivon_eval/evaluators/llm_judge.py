@@ -63,23 +63,26 @@ def _call(prompt: str, judge: JudgeConfig, max_tokens: int | None = None) -> str
 
 _YES_WORD = re.compile(r"\byes\b")
 _NO_WORD = re.compile(r"\bno\b")
+# Leading verdict must be the WORD yes/no (optionally behind punctuation
+# like quotes), not a prefix of another word — bare startswith() matched
+# "Yesterday..." as YES and "Nobody..." as NO.
+_VERDICT_PREFIX = re.compile(r"^\W*(yes|no)\b")
 
 
 def _parse_yes_no(text: str) -> bool | None:
     """Parse a judge reply into a verdict: True / False / None (unknown).
 
-    Clear prefix verdicts keep the historical semantics exactly — the
-    calibrated thresholds were fit under them. Only the previously
-    mis-scored tail changes: a reply with no unambiguous verdict word
-    used to count as YES whenever "yes" appeared in the first 50 chars
-    (so "I cannot say yes or no with certainty" parsed as YES); it now
-    returns None so callers can exclude it from the score denominator.
+    Clear leading verdicts keep the historical semantics — but matched at
+    a word boundary, so "Yesterday was unclear" / "Nobody can determine
+    this" are no longer verdicts. A reply with exactly one verdict WORD
+    anywhere still counts (token fallback, unchanged); anything else is
+    None so callers can exclude it from the score denominator rather than
+    guess (e.g. "I cannot say yes or no with certainty").
     """
     text = text.strip().lower()
-    if text.startswith("yes"):
-        return True
-    if text.startswith("no"):
-        return False
+    m = _VERDICT_PREFIX.match(text)
+    if m:
+        return m.group(1) == "yes"
     has_yes = _YES_WORD.search(text) is not None
     has_no = _NO_WORD.search(text) is not None
     if has_yes and not has_no:
@@ -194,6 +197,17 @@ def _qag_eval(
             f"{len(questions)} question(s)",
             provider=judge.provider, model=judge.model,
         )
+    # Minimum-verdict-coverage rule: a score built from a small parseable
+    # remainder is not a measurement (1 YES + 9 UNKNOWN must not score
+    # 1.0). More than half UNKNOWN → judge outage, same routing as the
+    # all-UNKNOWN case above.
+    if unknown > len(questions) / 2:
+        raise JudgeUnavailable(
+            f"judge verdicts parseable for only {len(results)} of "
+            f"{len(questions)} question(s) ({unknown} UNKNOWN) — "
+            f"insufficient verdict coverage to score",
+            provider=judge.provider, model=judge.model,
+        )
     if unknown:
         reasons.append(
             f"{unknown} of {len(questions)} question(s) UNKNOWN — excluded from score denominator"
@@ -276,6 +290,16 @@ class Faithfulness(Evaluator):
             raise JudgeUnavailable(
                 f"judge returned no parseable Yes/No verdict for any of "
                 f"{min(len(claims), 10)} claim(s)",
+                provider=judge.provider, model=judge.model,
+            )
+        # Same minimum-verdict-coverage rule as _qag_eval: scoring on a
+        # minority of parseable verdicts is not a measurement.
+        attempted = min(len(claims), 10)
+        if unknown > attempted / 2:
+            raise JudgeUnavailable(
+                f"judge verdicts parseable for only {len(verified)} of "
+                f"{attempted} claim(s) ({unknown} UNKNOWN) — insufficient "
+                f"verdict coverage to score",
                 provider=judge.provider, model=judge.model,
             )
         header = f"{sum(verified)}/{len(verified)} claims grounded"

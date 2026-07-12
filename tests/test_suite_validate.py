@@ -399,3 +399,179 @@ class TestLockfileInvariant:
         a, b = lock(False), lock(True)
         assert a.cases_hash == b.cases_hash
         assert a.suite_hash == b.suite_hash
+
+
+# ─── (10) NOTHING_VALIDATED: zero graders executed is never green ───────────
+
+from multivon_eval.validate import STATUS_NOTHING_VALIDATED
+
+
+class TestNothingValidated:
+    def _judge_only_suite(self):
+        suite = EvalSuite("judge-only")
+        suite.add_cases([
+            EvalCase(input="q1", expected_output="good"),
+            EvalCase(input="q2", expected_output="also good"),
+        ])
+        suite.add_evaluator(SpyJudge())
+        return suite
+
+    def test_judge_only_suite_offline_is_not_green(self):
+        report = validate_suite(self._judge_only_suite())
+        assert all(r.status == STATUS_UNVALIDATABLE for r in report.results)
+        assert all(
+            "all graders are judge-backed; rerun with --judges" == r.reason
+            for r in report.results
+        )
+        assert report.nothing_validated is True
+        assert report.status == STATUS_NOTHING_VALIDATED
+        assert report.passed is False
+        # Nothing counted as informative either.
+        assert report.effective_informative_cases == (0, 0)
+
+    def test_str_says_nothing_validated_plainly(self):
+        text = str(validate_suite(self._judge_only_suite()))
+        assert "NOTHING_VALIDATED" in text
+        assert "zero graders executed" in text
+        assert "PASSED" not in text
+
+    def test_to_dict_carries_status(self):
+        data = validate_suite(self._judge_only_suite()).to_dict()
+        assert data["passed"] is False
+        assert data["status"] == STATUS_NOTHING_VALIDATED
+
+    def test_cli_exit_nonzero_for_judge_only_suite(self, tmp_path, capsys):
+        from multivon_eval.cli import cmd_validate
+        f = tmp_path / "eval_judge_only.py"
+        f.write_text(
+            "from multivon_eval import EvalCase, EvalSuite\n"
+            "from multivon_eval.evaluators.llm_judge import Relevance\n"
+            'suite = EvalSuite("cli-judge-only")\n'
+            'suite.add_case(EvalCase(input="a", expected_output="x"))\n'
+            "suite.add_evaluator(Relevance())\n"
+        )
+        assert cmd_validate(_args(f)) == 1
+        assert "NOTHING_VALIDATED" in capsys.readouterr().out
+
+    def test_ok_plus_unvalidatable_still_passes(self):
+        # Partial coverage stays a warning — only TOTAL blindness fails.
+        suite = EvalSuite("partial")
+        suite.add_cases([
+            EvalCase(input="a", expected_output="hello"),
+            EvalCase(input="b"),
+        ])
+        suite.add_evaluators(Contains(["hello"]), SpyJudge())
+        report = validate_suite(suite)
+        assert report.passed is True
+        assert report.status == STATUS_OK
+
+
+# ─── (11) contrast rerun makes zero judge calls offline ─────────────────────
+
+class TestContrastOffline:
+    def test_contrast_rerun_never_calls_judge_offline(self):
+        spy = SpyJudge()
+        original, twin = _pair("Paris is the capital of Germany")
+        suite = EvalSuite("contrast-judge")
+        suite.add_cases([original, twin])
+        suite.add_evaluators(Contains(["Paris"]), spy)
+        report = validate_suite(suite, contrast=True)  # offline default
+        assert spy.calls == 0
+        assert report.results[0].status == STATUS_NO_DISCRIMINATION
+
+    def test_contrast_filter_holds_even_if_ref_passing_leaks(self):
+        # Defense-in-depth: force a judge-backed grader into the contrast
+        # pool via _validate_case and assert the offline filter drops it.
+        from multivon_eval.validate import _validate_case
+
+        spy = SpyJudge()
+        original, twin = _pair("Paris is the capital of Germany")
+        cv = _validate_case(
+            0, original, [original, twin], [Contains(["Paris"]), spy],
+            include_judges=False, contrast=True,
+        )
+        assert spy.calls == 0
+        assert cv.status == STATUS_NO_DISCRIMINATION
+        assert "spy_judge" not in cv.reason
+
+    def test_include_judges_contrast_calls_are_tracked_in_costs(self):
+        spy = SpyJudge()
+        original, twin = _pair("Paris is the capital of Germany")
+        suite = EvalSuite("contrast-judges-on")
+        suite.add_cases([original, twin])
+        suite.add_evaluators(spy)
+        report = validate_suite(suite, include_judges=True, contrast=True)
+        # ref grading on the original (the twin carries no reference) +
+        # the contrast rerun against the twin's known-bad output.
+        assert spy.calls == 2
+        # costs snapshot travels on the report and into to_dict/to_json.
+        data = report.to_dict()
+        assert "costs" in data
+        assert json.loads(report.to_json())["skipped_judge_graders"] == []
+
+    def test_to_dict_discloses_skipped_judge_graders_offline(self):
+        suite = EvalSuite("disclose")
+        suite.add_case(EvalCase(input="a", expected_output="hello"))
+        suite.add_evaluators(Contains(["hello"]), SpyJudge())
+        data = validate_suite(suite).to_dict()
+        assert data["skipped_judge_graders"] == ["spy_judge"]
+        report = validate_suite(suite)
+        assert "spy_judge" in str(report)
+        assert "--judges" in str(report)
+
+
+# ─── (12) JudgeUnavailable routes to UNVALIDATABLE, not BROKEN ──────────────
+
+class TestJudgeUnavailableRouting:
+    def test_judge_outage_is_unvalidatable_infrastructure(self):
+        from multivon_eval import JudgeUnavailable
+
+        class OutageJudge(Evaluator):
+            name = "outage_judge"
+            uses_llm_judge = True
+
+            def evaluate(self, case, output):
+                raise JudgeUnavailable("503 from provider", provider="p", model="m")
+
+        suite = EvalSuite("outage")
+        suite.add_case(EvalCase(input="a", expected_output="x"))
+        suite.add_evaluator(OutageJudge())
+        report = validate_suite(suite, include_judges=True)
+        (cv,) = report.results
+        assert cv.status == STATUS_UNVALIDATABLE
+        assert "judge unavailable" in cv.reason
+        assert "not a grader verdict" in cv.reason
+        assert report.broken == []
+
+    def test_genuine_grader_failure_still_broken_despite_outage(self):
+        from multivon_eval import JudgeUnavailable
+
+        class OutageJudge(Evaluator):
+            name = "outage_judge"
+            uses_llm_judge = True
+
+            def evaluate(self, case, output):
+                raise JudgeUnavailable("503", provider="p", model="m")
+
+        suite = EvalSuite("outage+broken")
+        suite.add_case(EvalCase(input="a", expected_output="the answer"))
+        suite.add_evaluators(Contains(["unicorn"]), OutageJudge())
+        report = validate_suite(suite, include_judges=True)
+        (cv,) = report.results
+        # Only the genuine verdict speaks: BROKEN via Contains, and the
+        # outage never appears among the failed graders.
+        assert cv.status == STATUS_BROKEN
+        assert [g.evaluator for g in cv.failed_graders] == ["contains"]
+
+    def test_generic_grader_exception_still_broken(self):
+        class Crashy(Evaluator):
+            name = "crashy2"
+
+            def evaluate(self, case, output):
+                raise RuntimeError("actual bug")
+
+        suite = EvalSuite("crash2")
+        suite.add_case(EvalCase(input="a", expected_output="x"))
+        suite.add_evaluator(Crashy())
+        report = validate_suite(suite)
+        assert report.results[0].status == STATUS_BROKEN

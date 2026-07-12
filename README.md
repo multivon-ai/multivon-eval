@@ -29,9 +29,10 @@ suite = EvalSuite("smoke", purpose="capability")
 suite.add_cases([EvalCase(input="What is 2+2?", expected_output="4")])
 suite.add_evaluators(NotEmpty(), Contains(["4"]))
 
-report = suite.run(lambda prompt: "2+2 = 4", runs=5)  # swap the lambda for your model fn
-print(report.pass_rate, report.pass_rate_ci())  # 1.0, 95% CI [0.21, 1.0] — one task, and the CI says so
-print(report.pass_hat_k(3))                     # P(a task passes all 3 of 3 trials), with CI
+if __name__ == "__main__":  # guard so `multivon-eval validate` never runs your model at import time
+    report = suite.run(lambda prompt: "2+2 = 4", runs=5)  # swap the lambda for your model fn
+    print(report.pass_rate, report.pass_rate_ci())  # 1.0, 95% CI [0.21, 1.0] — one task, and the CI says so
+    print(report.pass_hat_k(3))                     # P(a task passes all 3 of 3 trials), with CI
 ```
 
 The `quickstart` template sticks to deterministic evaluators (`NotEmpty`, `Contains`, `WordCount`), so the first run needs no API key at all. The "no API key" promise is scoped to that template: the `python -m multivon_eval` demo will emit LLM-judge scores too if it detects a key or a local server (Ollama on `:11434`, LM Studio on `:1234`, or `OPENAI_BASE_URL`), so a running local model can show judge output under this banner. The template stays deterministic-only regardless.

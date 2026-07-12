@@ -92,6 +92,9 @@ class PassKResult:
     ci_high: float | None
     estimator: str              # 'combinatorial-unbiased' | 'hypergeometric-exact'
     n_cases: int
+    # min(n) over the cases the estimate is built from — the largest k the
+    # recorded data supports. One definition everywhere: suite_pass_k and
+    # the EvalReport UNKNOWN branches all report this same quantity.
     runs: int
     unknown_reason: str = ""
 
@@ -114,6 +117,9 @@ def _cluster_bootstrap_ci(
     bootstrap to a point, which overstates certainty. Fall back to a
     Wilson interval on the mean so a 10/10 suite still reports
     ``ci_low < 1.0``, matching :meth:`EvalReport.pass_rate_ci` honesty.
+    The Wilson fallback is a conservative heuristic (it treats the m
+    per-case estimates as m Bernoulli observations), not a
+    bootstrap-consistent interval.
     """
     if min(values) == max(values):
         from .experiments import wilson_interval
@@ -147,6 +153,10 @@ def suite_pass_k(
     """
     if metric not in ESTIMATOR_NAMES:
         raise ValueError(f"metric must be one of {sorted(ESTIMATOR_NAMES)}, got {metric!r}")
+    if not 0.0 < confidence < 1.0:
+        raise ValueError(f"confidence must be in (0, 1) exclusive, got {confidence}")
+    if n_boot < 1:
+        raise ValueError(f"n_boot must be >= 1, got {n_boot}")
     estimator_fn = pass_at_k if metric == METRIC_PASS_AT_K else pass_hat_k
     estimator_name = ESTIMATOR_NAMES[metric]
     if not case_stats:

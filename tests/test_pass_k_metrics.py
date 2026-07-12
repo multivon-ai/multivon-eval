@@ -304,3 +304,141 @@ def test_top_level_exports():
     assert mv.PassKResult is PassKResult
     for name in ("pass_at_k", "pass_hat_k", "PassKResult"):
         assert name in mv.__all__
+
+
+# ── (10) Heterogeneous per-case run counts (early_stop) ─────────────────────
+#
+# Release blocker: SPRT early_stop records fewer trials for easy cases, so
+# per-case n differs. Report surfaces (pass_at_k / pass_hat_k / to_json /
+# terminal) must NEVER raise after a paid run — they degrade to an honest
+# UNKNOWN naming the shortest-run case. Library functions keep ValueError.
+
+class TestHeterogeneousRuns:
+    def _hetero_cases(self):
+        return [_case("stopped-early", 6, 6), _case("ran-full", 10, 5)]
+
+    def test_report_does_not_raise_and_goes_unknown(self):
+        report = _report(self._hetero_cases())
+        res = report.pass_at_k(10)  # must not raise
+        assert res.value is None
+        assert res.ci_low is None and res.ci_high is None
+        assert "6 trials" in res.unknown_reason
+        assert "shortest-run case" in res.unknown_reason
+        assert "early_stop" in res.unknown_reason
+        assert "rerun with --runs >= 10 or pass k <= 6" in res.unknown_reason
+        assert res.runs == 6  # min(n) over evaluated cases — one definition
+
+    def test_case_order_independence(self):
+        fwd = _report(self._hetero_cases())
+        rev = _report(list(reversed(self._hetero_cases())))
+        assert fwd.runs_per_case == rev.runs_per_case == 10
+        f, r = fwd.pass_hat_k(10), rev.pass_hat_k(10)
+        assert f.value is None and r.value is None
+        assert f.unknown_reason == r.unknown_reason
+        assert f.runs == r.runs == 6
+        # And at a supported k both orders agree on the value.
+        assert fwd.pass_hat_k(3).value == pytest.approx(rev.pass_hat_k(3).value)
+
+    def test_supported_k_uses_each_cases_own_n(self):
+        report = _report(self._hetero_cases())
+        res = report.pass_at_k(3)
+        expected = (pass_at_k(6, 6, 3) + pass_at_k(10, 5, 3)) / 2
+        assert res.value == pytest.approx(expected)
+        assert res.runs == 6  # min(n), same definition as the UNKNOWN branch
+
+    def test_to_json_does_not_raise_and_discloses_unknown(self):
+        report = _report(self._hetero_cases())
+        summary = json.loads(report.to_json())["summary"]  # must not raise
+        assert summary["runs_per_case"] == 10
+        assert summary["pass_hat_k"]["value"] is None
+        assert "6 trials" in summary["pass_hat_k"]["unknown_reason"]
+        assert summary["pass_hat_k"]["runs"] == 6
+
+    def test_terminal_report_prints_unknown_line_not_crash(self):
+        from multivon_eval.reporters import terminal
+        report = _report(self._hetero_cases())
+        with terminal.console.capture() as cap:
+            terminal.print_report(report)  # must not raise
+        out = cap.get()
+        assert "Reliability (10 runs/case)" in out
+        assert "UNKNOWN" in out
+
+    def test_gate_still_fails_loud_on_heterogeneous_unknown(self):
+        # assert_pass_hat_k is a GATE, not a report — UNKNOWN must raise.
+        report = _report(self._hetero_cases())
+        with pytest.raises(EvalGateFailure, match="pass k <= 6"):
+            report.assert_pass_hat_k(10, 0.5)
+
+    def test_library_functions_keep_valueerror(self):
+        with pytest.raises(ValueError, match="extrapolat"):
+            pass_at_k(6, 6, 10)
+        with pytest.raises(ValueError, match="extrapolat"):
+            suite_pass_k([(6, 6), (10, 5)], 10, metric="pass^k")
+
+    def test_end_to_end_early_stop_run_completes(self, capsys):
+        # The original crash: runs=10, early_stop=True, workers=1 — SPRT
+        # stops the stable case at 6 trials, the flaky one runs all 10.
+        import itertools
+        from multivon_eval import EvalCase, EvalSuite
+        from multivon_eval.evaluators.deterministic import Contains
+
+        flip = itertools.cycle(["ok", "bad"])
+
+        def model(prompt):
+            return next(flip) if prompt == "flaky" else "ok"
+
+        suite = (
+            EvalSuite("hetero-e2e")
+            .add_cases([
+                EvalCase(input="flaky", expected_output="ok"),
+                EvalCase(input="stable", expected_output="ok"),
+            ])
+            .add_evaluator(Contains(["ok"]))
+        )
+        report = suite.run(model, runs=10, early_stop=True, workers=1,
+                           verbose=True)  # must not raise
+        run_counts = sorted(cr.runs for cr in report.case_results)
+        assert run_counts[0] < 10 <= run_counts[1] or run_counts == [10, 10]
+        json.loads(report.to_json())  # must not raise either
+
+
+# ── (11) suite_pass_k argument validation ───────────────────────────────────
+
+class TestSuitePassKArgValidation:
+    @pytest.mark.parametrize("confidence", [0.0, 1.0, -0.1, 1.5])
+    def test_confidence_must_be_in_open_unit_interval(self, confidence):
+        with pytest.raises(ValueError, match="confidence"):
+            suite_pass_k([(5, 3)], 2, metric="pass@k", confidence=confidence)
+
+    @pytest.mark.parametrize("n_boot", [0, -5])
+    def test_n_boot_must_be_positive(self, n_boot):
+        with pytest.raises(ValueError, match="n_boot"):
+            suite_pass_k([(5, 3)], 2, metric="pass@k", n_boot=n_boot)
+
+    def test_valid_edges_accepted(self):
+        res = suite_pass_k([(5, 3), (5, 4)], 2, metric="pass@k",
+                           confidence=0.5, n_boot=1)
+        assert res.value is not None
+
+
+# ── (12) early_stop is serial-only: parallel path warns ─────────────────────
+
+def test_early_stop_on_parallel_path_warns(capsys):
+    from multivon_eval import EvalCase, EvalSuite
+    from multivon_eval.evaluators.deterministic import NotEmpty
+
+    suite = EvalSuite("par")
+    for i in range(3):
+        suite.add_case(EvalCase(input=f"q{i}"))
+    suite.add_evaluator(NotEmpty())
+    suite.run(lambda p: "out", runs=2, early_stop=True, workers=2, verbose=False)
+    assert "early_stop requires workers=1; ignoring" in capsys.readouterr().err
+
+
+def test_early_stop_serial_path_does_not_warn(capsys):
+    from multivon_eval import EvalCase, EvalSuite
+    from multivon_eval.evaluators.deterministic import NotEmpty
+
+    suite = EvalSuite("ser").add_case(EvalCase(input="q")).add_evaluator(NotEmpty())
+    suite.run(lambda p: "out", runs=2, early_stop=True, workers=1, verbose=False)
+    assert "early_stop" not in capsys.readouterr().err

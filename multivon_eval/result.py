@@ -440,8 +440,17 @@ class EvalReport:
 
     @property
     def runs_per_case(self) -> int:
+        """Trials requested per case: the MAX of per-case run counts.
+
+        Per-case counts can differ when ``early_stop`` (SPRT) ends easy
+        cases before the requested ``runs`` — max recovers the requested
+        count and is case-order independent (this used to read
+        ``case_results[0].runs``, so the report changed with case order).
+        pass@k / pass^k at this k degrade to an honest UNKNOWN whenever
+        any evaluated case recorded fewer trials.
+        """
         if self.case_results:
-            return self.case_results[0].runs
+            return max(cr.runs for cr in self.case_results)
         return 1
 
     @property
@@ -583,30 +592,50 @@ class EvalReport:
         return stats
 
     def _pass_k_result(self, k: int, confidence: float, metric: str) -> "PassKResult":
+        """Report-surface pass@k / pass^k. NEVER raises for k > data.
+
+        Per-case run counts can be heterogeneous (early_stop / SPRT ends
+        easy cases early). Each case contributes with its own n; a case
+        with fewer than k trials cannot contribute without extrapolating,
+        so when k exceeds min(n) over the evaluated cases the metric
+        degrades to an honest UNKNOWN naming the binding case — it must
+        not crash a paid run in the terminal report or to_json().
+        Library calls (:func:`passk.pass_at_k` / :func:`passk.pass_hat_k`)
+        keep their ValueError; report methods may not raise.
+        """
         if k < 1:
             raise ValueError(f"k must be >= 1, got {k}")
         from . import passk
         stats = self._pass_k_case_stats()
-        runs = self.runs_per_case
-        if k > runs:
-            return passk.PassKResult(
-                k=k, metric=metric, value=None, ci_low=None, ci_high=None,
-                estimator=passk.ESTIMATOR_NAMES[metric],
-                n_cases=len(stats), runs=runs,
-                unknown_reason=(
-                    f"UNKNOWN — computed from {runs} trials per case; "
-                    f"rerun with --runs >= {k}. multivon-eval does not extrapolate."
-                ),
-            )
+        if stats:
+            min_n = min(n for n, _ in stats)
+            if k > min_n:
+                hetero = any(n != min_n for n, _ in stats)
+                where = (
+                    "the shortest-run case (early_stop)" if hetero
+                    else "each case"
+                )
+                return passk.PassKResult(
+                    k=k, metric=metric, value=None, ci_low=None, ci_high=None,
+                    estimator=passk.ESTIMATOR_NAMES[metric],
+                    n_cases=len(stats), runs=min_n,
+                    unknown_reason=(
+                        f"UNKNOWN — k={k} exceeds the {min_n} trials of {where}; "
+                        f"rerun with --runs >= {k} or pass k <= {min_n}. "
+                        f"multivon-eval does not extrapolate."
+                    ),
+                )
         return passk.suite_pass_k(stats, k, metric=metric, confidence=confidence)
 
     def pass_at_k(self, k: int, confidence: float = 0.95) -> "PassKResult":
         """pass@k over evaluated cases — "succeeds at least once in k tries".
 
-        Unbiased combinatorial estimator per case, averaged over cases,
-        with a cluster-bootstrap CI (cases resampled, not trials).
-        Returns an honest UNKNOWN result (``value is None``) when
-        ``k > runs_per_case`` — no extrapolation.
+        Unbiased combinatorial estimator per case (each case uses its own
+        recorded trial count), averaged over cases, with a
+        cluster-bootstrap CI (cases resampled, not trials). Returns an
+        honest UNKNOWN result (``value is None``) when k exceeds the
+        trial count of ANY evaluated case (e.g. after ``early_stop``) —
+        no extrapolation, and never an exception.
         """
         from .passk import METRIC_PASS_AT_K
         return self._pass_k_result(k, confidence, METRIC_PASS_AT_K)
@@ -615,9 +644,11 @@ class EvalReport:
         """pass^k over evaluated cases — "succeeds all k tries".
 
         Exact hypergeometric estimator per case (never the upward-biased
-        plug-in ``(c/n)**k``), averaged over cases, with a
-        cluster-bootstrap CI. Returns an honest UNKNOWN result when
-        ``k > runs_per_case``.
+        plug-in ``(c/n)**k``; each case uses its own recorded trial
+        count), averaged over cases, with a cluster-bootstrap CI.
+        Returns an honest UNKNOWN result when k exceeds the trial count
+        of ANY evaluated case (e.g. after ``early_stop``) — never an
+        exception.
         """
         from .passk import METRIC_PASS_HAT_K
         return self._pass_k_result(k, confidence, METRIC_PASS_HAT_K)
@@ -650,9 +681,11 @@ class EvalReport:
 
         Raises :class:`EvalGateFailure` (same CI exit semantics as
         ``fail_threshold`` / ``assert_budget``) when the lower bound
-        falls below ``min_ci_low`` — or when pass^k is UNKNOWN
-        (``k > runs_per_case``): an ungateable claim must fail loudly,
-        not silently pass.
+        falls below ``min_ci_low`` — or when pass^k is UNKNOWN (k exceeds
+        the recorded trials of some case, e.g. after ``early_stop``): an
+        ungateable claim must fail loudly, not silently pass. This is a
+        GATE, so it raises on UNKNOWN even though report surfaces
+        (terminal / to_json) merely degrade to UNKNOWN.
         """
         res = self.pass_hat_k(k)
         if res.value is None:
@@ -822,7 +855,10 @@ class EvalReport:
                         if res.ci_low is not None else None
                     ),
                     "estimator": res.estimator,
+                    "runs": res.runs,
                 }
+                if res.value is None:
+                    summary[key]["unknown_reason"] = res.unknown_reason
         return json.dumps(
             {
                 "suite": self.suite_name,
