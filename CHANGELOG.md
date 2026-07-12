@@ -4,6 +4,10 @@ All notable changes to `multivon-eval`. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+(reserved for in-flight work — empty)
+
+## [0.16.0] — 2026-07-13
+
 ### Fixed
 
 - **Heterogeneous per-case run counts no longer crash pass@k / pass^k report surfaces.** `early_stop` (SPRT) records fewer trials for easy cases, so per-case n differs — the terminal reliability block and `to_json()` then raised `ValueError` AFTER the paid model run (and before `save_json`), with case-order-dependent behavior (`runs_per_case` read `case_results[0].runs`). Report surfaces never raise now: each case contributes with its own n, and when k exceeds the shortest case's trial count the metric degrades to an honest UNKNOWN naming the minimum (e.g. "k=10 exceeds the 6 trials of the shortest-run case (early_stop); rerun with --runs >= 10 or pass k <= 6"). `runs_per_case` is now the max (the requested `--runs`, order-independent); `PassKResult.runs` means min(n) over the included cases everywhere — one definition. `assert_pass_hat_k` still fails loud on UNKNOWN (it's a gate, not a report), and the library functions `pass_at_k` / `pass_hat_k` / `suite_pass_k` keep their `ValueError`.
