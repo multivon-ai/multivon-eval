@@ -1,0 +1,121 @@
+---
+title: "Validate: Grade Your Graders"
+description: Run every task's graders against a known-good reference output. A reference that fails its own graders indicts the eval, not the agent.
+---
+
+New in 0.16.0. Every eval framework helps you grade your agent; `multivon-eval validate` also grades your eval. [Anthropic's guidance](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents) is blunt about why: a 0% pass rate usually means a broken task or a miscalibrated grader, not an incapable agent. When the CORE-Bench authors ran their own reference solutions through their own harness, only 42% passed — fixing the tasks and graders took it to 95% without touching any model.
+
+The mechanism is the same as a reference solution in a coding benchmark: for every task that carries a known-good output, run the suite's graders against **that output**. If the known-good answer fails, the task is unsolvable or the grader is miscalibrated — either way, the agent is innocent.
+
+Two guarantees:
+
+- **validate never calls the model under test.** It scores references, not generations.
+- **By default it makes zero LLM calls at all.** Judge-backed graders are skipped unless you opt in with `--judges`.
+
+---
+
+## `reference_output`
+
+The reference for each task resolves in order:
+
+1. `EvalCase.reference_output` — a new additive field (0.16.0): a string, or a callable `(case) -> str` invoked at validate time. A raising callable marks the task BROKEN with the traceback — never a silent skip.
+2. `EvalCase.expected_output` — the field you probably already set.
+
+`reference_output` exists for tasks where the grading target and the literal expected string differ (e.g. a judge-graded task where any well-formed answer should pass). It is deliberately excluded from the lockfile `cases_hash`, so adding references does not invalidate historical suite locks.
+
+Tasks with neither field are **UNVALIDATABLE** — listed with a nudge, never silently dropped.
+
+---
+
+## Running it
+
+```python
+from multivon_eval import EvalSuite, EvalCase
+from multivon_eval.evaluators.deterministic import Contains
+
+suite = EvalSuite("support-bot")
+suite.add_cases([
+    EvalCase(
+        input="What is the refund window?",
+        expected_output="Refunds are accepted within 30 days of purchase.",
+    ),
+    EvalCase(
+        input="How do I contact support?",
+        expected_output="Email support@example.com.",
+        reference_output="You can reach us any time at support@example.com.",
+    ),
+    EvalCase(input="Do you ship to Norway?"),  # no reference yet
+])
+suite.add_evaluators(Contains(["30 days"]))
+
+vreport = suite.validate()
+print(vreport)
+print("passed:", vreport.passed)
+```
+
+```
+Validate: support-bot — FAILED (1 broken, 0 non-discriminating, 1 unvalidatable, 1 OK)
+  effective informative cases: 1/2 validated
+  BROKEN_TASK_OR_GRADER: 'How do I contact support?' — contains: Missing: ['30 days']
+  UNVALIDATABLE: 'Do you ship to Norway?' — add expected_output or reference_output to validate this task
+passed: False
+```
+
+The finding is real: a `Contains(["30 days"])` grader applied to a support-contact task can never pass, no matter how good the agent is. That grader/task combination would have silently dragged the pass rate down forever.
+
+Or from the CLI, pointing at the Python file that defines your suite:
+
+```bash
+multivon-eval validate eval_suite.py
+```
+
+---
+
+## What the verdicts mean
+
+| Verdict | Meaning | Breaks CI? |
+|---------|---------|-----------|
+| `OK` | The reference passes every grader that ran. | No |
+| `BROKEN_TASK_OR_GRADER` | The known-good reference **fails** at least one grader. The task is unsolvable or the grader is miscalibrated; the reason carries the grader's own explanation. | Yes — exit 1 |
+| `NO_DISCRIMINATION` | A grader passes both the reference and a known-bad output — it contributes zero information on this task. | No — warning |
+| `UNVALIDATABLE` | No reference to check against. Add `expected_output` or `reference_output`. | No — warning |
+
+Only BROKEN flips the exit code. NO_DISCRIMINATION and UNVALIDATABLE are warnings — flipping them to failures would break existing CI pipelines on day one.
+
+```yaml
+# CI recipe: validate before you run
+- run: multivon-eval validate eval_suite.py   # exit 1 only on BROKEN
+- run: multivon-eval run eval_suite.py        # the actual eval
+```
+
+---
+
+## The discrimination check
+
+Tasks generated with contrast twins (`generate_contrast_pairs`, linked via `metadata['pair_id']`) get a second check for free: the deterministic graders also run against the twin's known-bad output. A grader that passes **both** the reference and the known-bad twin cannot tell good from bad on that task — flagged `NO_DISCRIMINATION`, and the summary reports `effective informative cases: N/M validated` so you know how much of your suite actually carries signal. Zero LLM calls; disable with `--no-contrast` / `contrast=False`.
+
+---
+
+## Judge-backed graders and cost
+
+LLM-judge graders are skipped by default — validate is a free, offline audit, and the report names what it skipped:
+
+```
+  judge-backed grader(s) not run (offline default): faithfulness — pass --judges to include them.
+```
+
+`--judges` (CLI) or `suite.validate(include_judges=True)` opts in: judge graders run against every reference, and the spend is tracked and printed. Expect the same per-case judge cost as a normal run (QAG graders make several judge calls per task), minus the model calls — you are paying to grade references, not generations.
+
+---
+
+## Zero-pass suspects in normal runs
+
+Validation has a companion heuristic in every `suite.run()` report (0.16.0): `EvalReport.zero_pass_cases` lists evaluated tasks that failed **every** trial under `runs > 1` — or every failing task when a single-run suite lands at exactly 0%. The report footer flags them:
+
+```
+  ⚠ 3 task(s) failed every trial. 0% pass usually means a broken task or
+  grader, not an incapable agent — run multivon-eval validate before
+  blaming the model.
+```
+
+This is the floor-side counterpart to the [saturation monitor](/guides/statistical-rigor#what-a-100-pass-rate-actually-tells-you) at the ceiling: both exist because the ends of the pass-rate scale are where evals lie most confidently.

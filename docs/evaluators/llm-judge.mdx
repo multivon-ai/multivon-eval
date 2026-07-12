@@ -41,9 +41,13 @@ export JUDGE_MODEL=claude-haiku-4-5
 | `provider` | `"anthropic"` | `"anthropic"` or `"openai"` |
 | `model` | `"claude-haiku-4-5"` | Model name for the chosen provider |
 | `base_url` | `""` | Custom endpoint for local/self-hosted servers (see below) |
-| `temperature` | `0.0` | Sampling temperature (0 = deterministic) |
-| `max_tokens` | `1024` | Token budget for judge responses |
-| `timeout` | `30` | Request timeout in seconds |
+| `temperature` | `None` = inherit, effective `0.0` | Sampling temperature (0 = deterministic) |
+| `max_tokens` | `None` = inherit, effective `1024` | Token budget for judge responses |
+| `timeout` | `None` = inherit, effective `30` | Request timeout in seconds |
+
+<Note>
+  **Changed in 0.16.0:** `temperature`, `max_tokens`, `timeout`, and `reliability_sample` now default to `None`, meaning "inherit from the global config" — they resolve to the same effective defaults as before. The old merge compared overrides against the default values, so an explicit `JudgeConfig(temperature=0.0)` was silently ignored whenever a nonzero global was configured. Explicit values — including `0.0` — now always win.
+</Note>
 
 The model under test and the judge model can be different providers.
 
@@ -99,6 +103,45 @@ To inspect the full calibration table:
 from multivon_eval import threshold_table
 print(threshold_table())
 ```
+
+### UNKNOWN verdicts
+
+New in 0.16.0. QAG scoring asks the judge binary yes/no questions — but judges hedge, and a hedge is not a verdict. The parser now has three outcomes per question:
+
+- A reply starting with "yes"/"no", or containing exactly one unambiguous verdict word, parses as before — the calibrated thresholds above were fit under these semantics, and they are unchanged.
+- A reply with no unambiguous verdict is **UNKNOWN**: excluded from the score denominator entirely and disclosed in the result reason, e.g. `1 of 3 question(s) UNKNOWN — excluded from score denominator`. An UNKNOWN never counts for or against the model.
+- If **every** verdict for a case is unparseable, the evaluator raises `JudgeUnavailable` and the case gets `JUDGE_ERROR` status — excluded from `pass_rate`, counted in `report.errors`.
+
+One honest sentence about the past: before 0.16.0 the parser fell back to "does 'yes' appear in the first 50 characters", so a judge replying "I cannot say yes or no with certainty" was scored as YES. That yes-bias is gone; the previously mis-scored tail is now UNKNOWN.
+
+### Error budget: `max_error_rate`
+
+New in 0.16.0. `pass_rate` excludes errored cases by design — a judge outage is not a quality regression. The blind spot: 90 judge errors plus 10 passes is a 100% pass rate, and a `fail_threshold` gate would wave it through. `max_error_rate` closes it:
+
+```python
+from multivon_eval import EvalSuite, EvalCase, EvalGateFailure
+from multivon_eval.evaluators.deterministic import Contains
+
+suite = EvalSuite("checkout-bot")
+suite.add_cases([EvalCase(input=f"question {i}") for i in range(10)])
+suite.add_evaluators(Contains(["ok"]))
+
+def mostly_down(prompt: str) -> str:
+    if prompt != "question 0":
+        raise TimeoutError("upstream 504")   # stands in for judge/model outages
+    return "ok"
+
+try:
+    suite.run(mostly_down, fail_threshold=0.85, max_error_rate=0.10, verbose=False)
+except EvalGateFailure as e:
+    print(e)
+# Eval gate INDETERMINATE: error rate 90.0% exceeds error budget 10.0% —
+# 9 of 10 case(s) errored before quality could be scored (model_error=9).
+# pass_rate 100.0% covers only the 1 evaluated case(s); fix the errors
+# before trusting this gate.
+```
+
+Available on `suite.run`, `run_async`, and `run_on_cases`. With `max_error_rate` unset, a `fail_threshold` gate still warns loudly on stderr when the error rate reaches 10% — the same threshold `view --dir` flags. `report.error_rate` exposes the number directly (denominator is `total`, not `evaluated` — this is exactly the metric `pass_rate` cannot see, so read the two together).
 
 ## Faithfulness
 

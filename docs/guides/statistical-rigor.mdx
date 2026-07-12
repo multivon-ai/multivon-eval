@@ -119,6 +119,40 @@ This is the difference between "we improved" and "we think we improved but can't
 
 ---
 
+## What a 100% pass rate actually tells you
+
+New in 0.16.0. A suite at 100% can no longer detect improvement — and, less obviously, it is bad at detecting regressions too. Two properties on every report quantify what a perfect score can still claim:
+
+```python
+report.saturated                    # True when every EVALUATED task passed
+report.min_detectable_regression    # smallest pass-rate DROP detectable at 80% power
+```
+
+`saturated` is built on `evaluated`, not `total` — a 100% assembled from judge outages doesn't count. `min_detectable_regression` anchors its variance near the observed rate, capped at a 0.95 baseline, so a perfect score can't flatter its own sensitivity. Concretely, a 40-task suite at 100%:
+
+```
+  ⚠ Saturated: 40/40 trials passed. All this run can claim is a pass rate
+  ≥ 91.2% (95% Wilson). At n=40, the smallest regression this suite can
+  detect at 80% power is ~14% — a real 5pp quality drop would look like
+  noise. Graduate this suite to a regression suite (purpose='regression')
+  and add harder capability tasks.
+```
+
+The Wilson lower bound is the honest floor: 40/40 is consistent with a true pass rate of 91.2%. And at n=40, a real 14pp drop is the smallest this suite would reliably notice (~6% at n=200). This is always a warning, never a gate.
+
+**Graduation.** Declare the suite's intent with the `purpose` kwarg — `''` (unset), `'capability'`, or `'regression'`:
+
+```python
+suite = EvalSuite("smoke-tests", purpose="capability")   # saturation = nag to graduate
+suite = EvalSuite("smoke-tests", purpose="regression")   # saturation = expected; warning inverts
+```
+
+A saturated capability suite (n ≥ 3) gets the graduation warning above. A `purpose='regression'` suite inverts it: 100% is the expected steady state, and any task below ceiling prints a triage warning instead ("N previously-passing task(s) below ceiling — something broke; triage before shipping"). The purpose is copied onto the report and serialized in the JSON summary alongside `saturated` and `min_detectable_regression`; `view --dir` shows a saturated badge.
+
+The 0% end of the scale has its own detector — see [zero-pass suspects](/guides/validate#zero-pass-suspects-in-normal-runs).
+
+---
+
 ## Multi-run flakiness detection
 
 Combine `runs=N` with statistical rigor for per-case stability analysis:
@@ -133,6 +167,8 @@ for cr in report.case_results:
     lo, hi = wilson_interval(cr.pass_count, cr.runs)
     print(f"  {cr.case_input[:40]}: {cr.run_pass_rate:.0%} [{lo:.0%}, {hi:.0%}]")
 ```
+
+The same multi-run data also yields pass@k (capability) and pass^k (consistency) with cluster-bootstrap CIs — see [pass@k and pass^k](/guides/reliability-metrics).
 
 ---
 
@@ -224,3 +260,4 @@ Before trusting an eval result, ask:
 4. **Are there flaky cases inflating the variance?** Check `report.flaky_count`.
 5. **Are multi-evaluator comparisons corrected?** `exp.compare()` applies BH correction automatically; watch the `*` markers.
 6. **Is my judge calibrated?** Run `suite.calibrate()` once on a labeled sample before using eval scores to gate deploys.
+7. **Is the suite saturated?** A 100% pass rate only proves a Wilson floor; check `report.min_detectable_regression` for what the suite can still see, and graduate it to `purpose='regression'`.

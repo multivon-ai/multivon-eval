@@ -1,0 +1,157 @@
+---
+title: "pass@k and pass^k"
+description: Capability vs consistency from the same multi-run data — unbiased estimators, cluster-bootstrap CIs, and a CI-lower-bound gate.
+---
+
+New in 0.16.0. A single pass rate hides a distinction that matters in production: a task your agent solves *sometimes* and a task it solves *every time* both contribute the same way to `pass_rate`. Two metrics, computed from the `--runs N` data you already have, pull them apart — the framing follows [Anthropic's guidance on agent evals](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents):
+
+| Metric | Question it answers | What it measures |
+|--------|--------------------|------------------|
+| **pass@k** | "Does at least one of k trials succeed?" | Capability — can the agent do it at all |
+| **pass^k** | "Do all k trials succeed?" | Consistency — what a user hitting this feature k times experiences |
+
+A demo selects for pass@k. A production SLA is pass^k. The gap between them is your flakiness, quantified.
+
+---
+
+## The estimators
+
+Both are computed per task from its n recorded trials (c of which passed), then averaged over tasks.
+
+**pass@k** uses the unbiased combinatorial estimator from the HumanEval paper:
+
+```
+pass@k = 1 − C(n−c, k) / C(n, k)
+```
+
+**pass^k** uses the exact hypergeometric analogue:
+
+```
+pass^k = C(c, k) / C(n, k)
+```
+
+The naive plug-in `(c/n)^k` is deliberately not implemented. It samples with replacement from a finite trial pool, which biases the estimate upward — a vanity metric. Concretely, with 3 passes in 5 trials at k=2:
+
+```python
+from multivon_eval import pass_at_k, pass_hat_k
+
+pass_at_k(5, 3, 2)    # 0.9
+pass_hat_k(5, 3, 2)   # 0.3 — the exact estimate
+(3 / 5) ** 2          # 0.36 — the plug-in, flattering by 6pp
+```
+
+---
+
+## From an eval report
+
+No new run mode — the metrics come from the same `runs=N` data:
+
+```python
+import hashlib
+from collections import defaultdict
+
+from multivon_eval import EvalSuite, EvalCase
+from multivon_eval.evaluators.deterministic import Contains
+
+_trials = defaultdict(int)
+
+def flaky_agent(prompt: str) -> str:
+    # Stand-in for your real agent: deterministic ~60% success per trial.
+    trial = _trials[prompt]
+    _trials[prompt] += 1
+    digest = hashlib.md5(f"{prompt}:{trial}".encode()).hexdigest()
+    if int(digest, 16) % 10 < 6:
+        return "deploy complete"
+    return "error: lock timeout"
+
+suite = EvalSuite("deploy-bot", purpose="capability")
+suite.add_cases([EvalCase(input=f"deploy service {i}") for i in range(20)])
+suite.add_evaluators(Contains(["deploy complete"]))
+
+report = suite.run(flaky_agent, runs=5)
+
+pak = report.pass_at_k(5)
+phk = report.pass_hat_k(5)
+print(f"pass@5 = {pak.value:.0%} [{pak.ci_low:.0%}, {pak.ci_high:.0%}]")
+print(f"pass^5 = {phk.value:.0%} [{phk.ci_low:.0%}, {phk.ci_high:.0%}]")
+# pass@5 = 100% [84%, 100%]
+# pass^5 = 10% [0%, 25%]
+```
+
+Same agent, same data: it can do almost everything (pass@5 = 100% [84%, 100%]) and reliably does almost nothing (pass^5 = 10% [0%, 25%]). The terminal report prints this automatically for any multi-run suite:
+
+```
+  Reliability (5 runs/case)
+    pass@5 = 100% [84%–100%] — at least one of 5 tries succeeds (capability)
+    pass^5 = 10% [0%–25%] — all 5 tries succeed; what a user hitting this
+      feature 5 times experiences (reliability)
+    passes sometimes, never reliably: 'deploy service 0' (4/5 runs)
+```
+
+Errored and skipped tasks are excluded from the case pool — the same denominator discipline as `pass_rate`. A judge outage is not a capability signal.
+
+---
+
+## Why the CI resamples cases, not trials
+
+The confidence intervals are a **cluster bootstrap**: tasks are resampled with replacement, the mean of per-task estimators is recomputed, and a percentile interval is taken. Trials within a task are correlated — the same prompt, the same failure modes — so resampling raw trials would treat 20 tasks × 5 trials as 100 independent observations and fake precision the data doesn't have. The unit of independence is the task; the CI respects that.
+
+Degenerate suites (every per-task estimate identical, including all-pass) fall back to a Wilson interval on the mean, so a perfect score still reports `ci_low < 1.0` — the same honesty as `pass_rate_ci()`.
+
+---
+
+## The honest-UNKNOWN rule
+
+You cannot estimate pass@10 from 5 trials without extrapolating, so multivon-eval doesn't:
+
+```python
+res = report.pass_at_k(10)   # report was run with runs=5
+print(res.value)
+# None
+print(res.unknown_reason)
+# UNKNOWN — computed from 5 trials per case; rerun with --runs >= 10.
+# multivon-eval does not extrapolate.
+```
+
+`value is None` is the contract for UNKNOWN. There is no projected curve and no warning-then-guess. Rerun with `runs >= k` or lower k.
+
+---
+
+## Lottery cases
+
+The tasks driving the pass@k / pass^k gap — passing sometimes, never reliably — are ranked by per-task divergence:
+
+```python
+for cr in report.lottery_cases()[:3]:
+    print(f"{cr.case_input}: {cr.pass_count}/{cr.runs} trials passed")
+# deploy service 0: 4/5 trials passed
+# deploy service 1: 2/5 trials passed
+# deploy service 3: 3/5 trials passed
+```
+
+These are your best debugging targets: read the transcripts of a 4/5 task and diff the passing trial against the failing one.
+
+---
+
+## Gating on the CI lower bound
+
+`assert_pass_hat_k` gates on the **lower bound** of the pass^k CI, not the point estimate — the same `EvalGateFailure` exit semantics as `fail_threshold`:
+
+```python
+from multivon_eval import EvalGateFailure
+
+try:
+    report.assert_pass_hat_k(5, min_ci_low=0.75)
+except EvalGateFailure as e:
+    print(e)
+# pass^5 gate FAILED: CI lower bound 0.000 < required 0.750
+# (pass^5 = 0.100, CI [0.000, 0.250])
+```
+
+If pass^k is UNKNOWN (`k > runs`), the gate raises with the UNKNOWN reason rather than silently passing — an ungateable claim must fail loudly.
+
+---
+
+## Serialization
+
+When `runs > 1`, the JSON summary carries both metrics (`pass_at_k` / `pass_hat_k`, each with `k`, `value`, `ci_95`, `estimator`), and `view --dir` shows a pass^k column. Reports saved before 0.16.0 gain the metrics on load via `EvalReport.from_dict` — per-case trial counts were already stored, so no migration is needed.

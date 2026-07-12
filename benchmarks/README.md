@@ -31,7 +31,7 @@ Judge models: multivon-eval uses `claude-haiku-4-5-20251001` for benchmarks 1–
 
 ¹ **In-distribution.** F1 0.804 is reported on the same HaluEval-QA-100 split used to calibrate the Hallucination threshold (`dataset_hash: halueval-qa-2024-100c` in `_calibration_data/v2.json`). Treat this as a calibrated-default sanity check, not an out-of-distribution generalization claim.
 
-² **Genuinely held-out** — and this row's framing was corrected after a peer-review round flagged that the prior "held-out" claim was actually in-distribution (see correction note below). The number you want for the cross-distribution claim is **F1 0.830 [0.70–0.92] on HaluEval-Sum n=60**, produced by running the **Hallucination** evaluator with explicit Haiku JudgeConfig so the calibrated threshold (**0.55** per `_calibration_data/v2.json`, calibrated on HaluEval-**QA**) is applied without re-tuning against HaluEval-**Summarization** cases. Different task family, different evaluator-of-record for this dataset, calibration set ↮ test set. This is the honest cross-distribution generalization figure. See Benchmark 4 for the methodology + raw counts.
+² **Genuinely held-out** — and this row's framing was corrected after a peer-review round flagged that the prior "held-out" claim was actually in-distribution (see correction note below). The number you want for the cross-distribution claim is **F1 0.830 [0.70–0.92] on HaluEval-Sum n=60**, produced by running the **Hallucination** evaluator at its calibrated threshold (**0.55** per `_calibration_data/v2.json`, calibrated on HaluEval-**QA**) without re-tuning against HaluEval-**Summarization** cases. The benchmark script pins the judge with an explicit Haiku `JudgeConfig` for reproducibility; since 0.9.7 a bare `Hallucination()` resolves the same calibrated 0.55 at `evaluate()` time (see the Benchmark 4 reproducibility note). Different task family, different evaluator-of-record for this dataset, calibration set ↮ test set. This is the honest cross-distribution generalization figure. See Benchmark 4 for the methodology + raw counts.
 
 ³ **In-distribution, not held-out as previously claimed.** Earlier versions of this table labeled the Faithfulness-on-HaluEval-Sum result as "held-out" with the threshold "frozen from v2 calibration." That framing was wrong: the Faithfulness evaluator is itself calibrated on HaluEval-Sum (`dataset_hash: halueval-sum-2024-60c` in `_calibration_data/v2.json`, threshold 0.9 for Haiku, F1=0.783). Re-running Faithfulness on HaluEval-Sum reproduces the calibration F1 by construction — it's not a held-out evaluation, it's the calibration measurement again. The number is real, the framing was misleading. **The genuine cross-distribution figure is row ², not row ³.** See the correction note in Benchmark 3.
 
@@ -161,7 +161,15 @@ All CIs above are bootstrap-1000 on F1 with stable RNG seed (see `benchmarks/_ad
 
 **Raw counts (n=60 cases):** TP=22, FP=1, FN=8, TN=29.
 
-**Important reproducibility note:** the script uses **explicit** `JudgeConfig(provider='anthropic', model='claude-haiku-4-5-20251001')` so the calibrated threshold (0.55) is applied. Without that, `Hallucination()` falls back to the default threshold (0.7), which produces F1 0.852 [0.73–0.94] — a different number on the same data. The defensible cross-distribution F1 is the one **at the calibrated threshold**; the default-threshold figure is not held-out (it's just an arbitrary threshold).
+**Reproducibility note:** the script passes an explicit `JudgeConfig(provider='anthropic', model='claude-haiku-4-5-20251001')` to pin the judge. The calibrated threshold (0.55) applies **with or without** that explicit config: since 0.9.7, evaluators resolve their judge at `evaluate()` time (default judge: `claude-haiku-4-5-20251001`) and look up the calibrated threshold for the resolved (evaluator, judge) pair. The init-time `threshold` attribute (0.7) is only a pre-resolution placeholder; it is used — with a loud warning — only when no calibration row exists for your judge. Verify in three lines:
+
+```python
+from multivon_eval.judge import resolve_judge
+from multivon_eval.calibration import calibrated_threshold
+print(calibrated_threshold("hallucination", resolve_judge(None)))  # 0.55
+```
+
+**Historical footnote (what 0.9.7 fixed):** before 0.9.7, a bare `Hallucination()` really did evaluate at the init default 0.7, which produced F1 0.852 [0.73–0.94] on this same data. That figure is not held-out — it was the accident of an uncalibrated threshold — and it stays here only as the record of the correction. The defensible cross-distribution F1 is 0.830 [0.70–0.92], **at the calibrated threshold**.
 
 **What this discharges — for real this time:** the contamination criticism on the cross-distribution claim. The Hallucination evaluator was tuned on QA-style short-context cases (Wikipedia-sourced, single-hop QA). We applied that exact evaluator with its calibrated threshold (no re-tuning) to long-context summarization cases. F1 = 0.830, slightly higher than the in-distribution F1 = 0.812 on HaluEval-QA. The threshold generalizes across task families inside HaluEval.
 
@@ -198,7 +206,7 @@ Comparing evaluators against each other tells you which one scores higher, not w
 
 ### Limitations
 
-- **The headline Hallucination F1 (0.804) is in-distribution.** The threshold was tuned on the same HaluEval-QA-100 split it is tested on. Treat it as a calibrated-default sanity check, not an OOD generalization claim. For the genuine cross-task figure see Benchmark 4 (F1 0.830 [0.70–0.92] on HaluEval-Sum with the QA-calibrated Hallucination evaluator at the calibrated threshold 0.55, not the runtime default 0.7).
+- **The headline Hallucination F1 (0.804) is in-distribution.** The threshold was tuned on the same HaluEval-QA-100 split it is tested on. Treat it as a calibrated-default sanity check, not an OOD generalization claim. For the genuine cross-task figure see Benchmark 4 (F1 0.830 [0.70–0.92] on HaluEval-Sum with the QA-calibrated Hallucination evaluator at the calibrated threshold 0.55 — the value that resolves automatically at `evaluate()` time, not the uncalibrated 0.7 fallback).
 - **The Faithfulness benchmark on HaluEval-Sum (Benchmark 3) is also in-distribution** despite earlier framing to the contrary. Faithfulness/Haiku is calibrated on HaluEval-Sum, so testing it on HaluEval-Sum reproduces the calibration. The framing was corrected on 2026-06-03 after a round-2 peer review (ML researcher persona) caught it. See the correction note in Benchmark 3.
 - **"Best-tuned" F1 numbers reported anywhere in this repo are upper bounds.** Threshold sweeps reported below are conducted on the test set; the best-F1 values are not held-out estimates. Treat them as ceilings, not generalization claims.
 - HaluEval QA represents a specific distribution (Wikipedia-sourced, single-hop). Performance may vary on domain-specific or multi-hop contexts.
@@ -243,15 +251,16 @@ Comparing evaluators against each other tells you which one scores higher, not w
 
 **Dataset:** HaluEval QA (100 cases), HaluEval Summarization (60 cases), curated relevance golden set (40 cases). Labels: 50/50 faithful/hallucinated for each split.
 
-**Task:** Sweep thresholds 0.30–0.90 in 0.05 steps. Find the threshold that maximises F1 against human labels for each (evaluator, judge) pair. Results are baked into the library — but the calibrated threshold only applies automatically when an explicit `JudgeConfig` is passed to the evaluator. See the reproducibility note in **Benchmark 4** for the 0.9.7 fix: `Hallucination()` *without* a `JudgeConfig` argument uses its init-time default (0.7) rather than looking up the calibrated value for Haiku (0.55) in `_calibration_data/v2.json`. The same gotcha applies to `Faithfulness()` and `Relevance()`.
+**Task:** Sweep thresholds 0.30–0.90 in 0.05 steps. Find the threshold that maximises F1 against human labels for each (evaluator, judge) pair. Results are baked into the library and apply automatically: since 0.9.7, evaluators resolve their judge at `evaluate()` time and look up the calibrated threshold for the resolved (evaluator, judge) pair — with or without an explicit `JudgeConfig`. (Pre-0.9.7 releases leaked the init-time default 0.7 when no `JudgeConfig` was passed; see the historical footnote in **Benchmark 4**.) An explicit `threshold=` always wins, and an (evaluator, judge) pair with no calibration row warns loudly and falls back to 0.7. The same rules apply to `Faithfulness()` and `Relevance()`.
 
 ```python
-# Calibrated threshold applies (recommended):
 from multivon_eval import Hallucination, JudgeConfig
-Hallucination(judge_config=JudgeConfig(provider="anthropic", model="claude-haiku-4-5-20251001"))
 
-# Falls back to init-time default 0.7 (often NOT what you want):
-Hallucination()
+Hallucination()                  # calibrated threshold resolved at evaluate() time
+                                 # (0.55 for the default claude-haiku-4-5 judge)
+Hallucination(judge=JudgeConfig(provider="anthropic",
+                                model="claude-haiku-4-5-20251001"))  # same 0.55, judge pinned
+Hallucination(threshold=0.8)     # explicit override always wins
 ```
 
 | Judge | Evaluator | Optimal threshold | F1 |
@@ -268,7 +277,7 @@ Hallucination()
 
 **Key findings:**
 
-- **Faithfulness optimal threshold is 0.90 across all three judges.** These judges score faithful outputs very high and unfaithful ones very low — the signal is binary with a sharp separation near the top of the scale. The library default of 0.7 would produce false passes; 0.90 is the correct gate.
+- **Faithfulness optimal threshold is 0.90 across all three judges.** These judges score faithful outputs very high and unfaithful ones very low — the signal is binary with a sharp separation near the top of the scale. An uncalibrated 0.7 gate would produce false passes; the calibrated lookup applies 0.90 automatically for these judges.
 - **Relevance optimal threshold is 0.30 for Haiku, Sonnet, and GPT-4o-mini.** Relevance judgments are extremely confident — relevant responses score near 1.0, irrelevant ones near 0.0. Any threshold from 0.30 to ~0.85 achieves perfect F1.
 - **Hallucination thresholds vary by model (0.30–0.55).** Haiku is more conservative (flags fewer things as hallucinations, requiring a lower threshold to catch them). Sonnet and GPT-4o-mini are more aggressive, already flagging most hallucinations without needing a high threshold.
 - **Pass `threshold=` explicitly to override for your domain.** The calibrated defaults are derived from Wikipedia-sourced QA and news summarization. Domain-specific content (medical, legal, financial) may warrant a different threshold.

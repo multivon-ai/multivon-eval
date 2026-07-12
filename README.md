@@ -9,41 +9,7 @@
 
 **[Docs](https://docs.multivon.ai)** · [Website](https://multivon.ai) · [PyPI](https://pypi.org/project/multivon-eval) · [Changelog](CHANGELOG.md) · [Benchmark vs DeepEval + RAGAS](https://github.com/multivon-ai/eval-framework-benchmark)
 
-**AI evaluation for teams that ship models to production.**
-
-### Why we exist
-
-**The eval tools don't agree with each other.** We ran the three popular ones (multivon-eval, DeepEval, RAGAS) over the same data with the same labels. On a simple yes/no hallucination call, they disagree on 56% of cases. Cohen's **κ = 0.03** — agreement no better than a coin flip. So when your CI gate flips after you switch frameworks, that's the tool arguing with itself, not your model getting worse. Raw data and code: [eval-framework-benchmark](https://github.com/multivon-ai/eval-framework-benchmark).
-
-**We test ourselves the hard way.** We calibrate the Hallucination evaluator on one dataset (HaluEval-QA), then score it on a different one (HaluEval-Sum, n=60) without re-tuning. It gets **F1 0.830 [0.70–0.92]**. On the in-distribution comparison, our worst case (CI lower bound 0.71) still beats DeepEval's best case (upper bound 0.68): F1 0.804 [0.71–0.88] vs 0.586 [0.48–0.68]. Full method and raw counts: [`benchmarks/README.md`](benchmarks/README.md) Benchmark 4.
-
-**When the measurement catches us, we publish it.** Three times, newest first:
-
-- We added a pixels-only mode to our PDF benchmark, and the leaderboard nearly flipped. Every PDF leader dropped (GPT-5 94.7% → 67.6%, Haiku 91.2% → 58.2%) and every laggard rose (Opus 79.4% → 85.9%). The benchmark had been measuring each provider's text-extraction pipeline as much as the model.
-- That same pixels mode then caught a bug in *our own* benchmark on its first run: two trap families rendered a visible tofu box (■) instead of the invisible character we claimed they used. We redesigned them, footnoted the affected rows, and added a glyph-level gate so it can't ship again.
-- We set a 50% bar for our prompt-drift detector, measured real traffic, and hit **20.9%**. We published the failed gate and shipped the honest design (a runtime recorder in its own trust tier) instead of the claim we couldn't back.
-
-Earlier, the release run 0.9.4 → 0.9.5 → 0.9.6 → 0.9.7 was the same discipline at smaller scale: a review caught a "held-out" claim that wasn't, plus a threshold mismatch that had inflated the held-out F1 from 0.830 to 0.852, plus three runtime blockers — four releases in a day, all still on PyPI. We hold the framework to the same standard it asks of your models.
-
-multivon-eval runs structured evals over model outputs: string checks, LLM-judge scoring, agent traces, multi-turn conversations. Python API, terminal and HTML reports, CI hooks.
-
-**Index:**
-[Quickstart](#quickstart--30-seconds-no-api-key) ·
-[What's new 0.10–0.15](#whats-new-in-010015) ·
-[Ecosystem](#the-multivon-ecosystem) ·
-[Why multivon-eval](#why-multivon-eval) ·
-[Install](#install) ·
-[Core concepts](#core-concepts) ·
-[Compliance & privacy](#compliance--privacy) ·
-[Statistical rigor](#statistical-rigor) ·
-[Synthetic data](#synthetic-dataset-generation) ·
-[Experiments](#experiment-tracking) ·
-[CLI](#cli) ·
-[CI/CD](#cicd-integration) ·
-[Architecture](#architecture) ·
-[Examples](#examples) ·
-[Tests](#tests) ·
-[Roadmap](#roadmap)
+**AI evaluation for teams that ship models to production.** The popular eval frameworks disagree with *each other* on 56% of hallucination verdicts — Cohen's **κ = 0.03**, agreement no better than a coin flip, measured on the same data with the same labels ([raw data + code](https://github.com/multivon-ai/eval-framework-benchmark)). multivon-eval is the framework that measures itself first.
 
 ## Quickstart — 30 seconds, no API key
 
@@ -52,6 +18,20 @@ pip install multivon-eval
 python -m multivon_eval                       # runs a demo eval — no setup
 multivon-eval init -t quickstart -d my-eval   # scaffold your own (offline)
 cd my-eval && python eval.py
+```
+
+Or as code — fully offline, and `runs=5` records five trials per task:
+
+```python
+from multivon_eval import EvalSuite, EvalCase, Contains, NotEmpty
+
+suite = EvalSuite("smoke", purpose="capability")
+suite.add_cases([EvalCase(input="What is 2+2?", expected_output="4")])
+suite.add_evaluators(NotEmpty(), Contains(["4"]))
+
+report = suite.run(lambda prompt: "2+2 = 4", runs=5)  # swap the lambda for your model fn
+print(report.pass_rate, report.pass_rate_ci())  # 1.0, 95% CI [0.21, 1.0] — one task, and the CI says so
+print(report.pass_hat_k(3))                     # P(a task passes all 3 of 3 trials), with CI
 ```
 
 The `quickstart` template sticks to deterministic evaluators (`NotEmpty`, `Contains`, `WordCount`), so the first run needs no API key at all. The "no API key" promise is scoped to that template: the `python -m multivon_eval` demo will emit LLM-judge scores too if it detects a key or a local server (Ollama on `:11434`, LM Studio on `:1234`, or `OPENAI_BASE_URL`), so a running local model can show judge output under this banner. The template stays deterministic-only regardless.
@@ -70,6 +50,71 @@ The `quickstart` template sticks to deterministic evaluators (`NotEmpty`, `Conta
 | Multi-turn dialogue eval | `multivon-eval init -t conversation` | Yes (or local Ollama) |
 
 LLM-judge evaluators auto-activate when `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or a local server (Ollama on `:11434`, LM Studio on `:1234`, or `OPENAI_BASE_URL`) is detected — but every template runs without one in some form.
+
+### Why we exist
+
+**The eval tools don't agree with each other.** We ran the three popular ones (multivon-eval, DeepEval, RAGAS) over the same data with the same labels. On a simple yes/no hallucination call, they disagree on 56% of cases. Cohen's **κ = 0.03** — agreement no better than a coin flip. So when your CI gate flips after you switch frameworks, that's the tool arguing with itself, not your model getting worse. Raw data and code: [eval-framework-benchmark](https://github.com/multivon-ai/eval-framework-benchmark).
+
+**We test ourselves the hard way.** We calibrate the Hallucination evaluator on one dataset (HaluEval-QA), then score it on a different one (HaluEval-Sum, n=60) without re-tuning. It gets **F1 0.830 [0.70–0.92]**. On the in-distribution comparison, our worst case (CI lower bound 0.71) still beats DeepEval's best case (upper bound 0.68): F1 0.804 [0.71–0.88] vs 0.586 [0.48–0.68]. Full method and raw counts: [`benchmarks/README.md`](benchmarks/README.md) Benchmark 4.
+
+**When the measurement catches us, we publish it.** Three times, newest first:
+
+- We added a pixels-only mode to our PDF benchmark, and the leaderboard nearly flipped. Every PDF leader dropped (GPT-5 94.7% → 67.6%, Haiku 91.2% → 58.2%) and every laggard rose (Opus 79.4% → 85.9%). The benchmark had been measuring each provider's text-extraction pipeline as much as the model.
+- That same pixels mode then caught a bug in *our own* benchmark on its first run: two trap families rendered a visible tofu box (■) instead of the invisible character we claimed they used. We redesigned them, footnoted the affected rows, and added a glyph-level gate so it can't ship again.
+- We set a 50% bar for our prompt-drift detector, measured real traffic, and hit **20.9%**. We published the failed gate and shipped the honest design (a runtime recorder in its own trust tier) instead of the claim we couldn't back.
+
+Earlier, the release run 0.9.4 → 0.9.5 → 0.9.6 → 0.9.7 was the same discipline at smaller scale: a review caught a "held-out" claim that wasn't, plus a threshold mismatch that had inflated the held-out F1 from 0.830 to 0.852, plus three runtime blockers — four releases in a day, all still on PyPI. We hold the framework to the same standard it asks of your models.
+
+multivon-eval runs structured evals over model outputs: string checks, LLM-judge scoring, agent traces, multi-turn conversations. Python API, terminal and HTML reports, CI hooks.
+
+## Demystifying evals, operationalized
+
+Anthropic's [Demystifying evals for AI agents](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents) lays out how their teams build agent evals. Each recommendation maps to a runnable multivon-eval feature. (Vocabulary map, stated once: a **task** is an `EvalCase`, a **trial** is one of `--runs N`, a **grader** is an `Evaluator`, the **transcript** is `agent_trace`, the **outcome** is the graded verdict. The API names predate the post and stay for stability.)
+
+| The post recommends | In multivon-eval |
+|---|---|
+| Keep a reference solution per task — a 0% pass rate usually means a broken task or grader, not an incapable agent | `multivon-eval validate eval.py` runs your graders against each task's reference output (`BROKEN_TASK_OR_GRADER` exits 1); every report flags zero-pass suspects (`EvalReport.zero_pass_cases`) |
+| Report pass@k *and* pass^k when agents are non-deterministic | `suite.run(model_fn, runs=N)` prints a reliability panel; `report.pass_at_k(k)` / `report.pass_hat_k(k)` with CIs; gate CI on `report.assert_pass_hat_k(k, min_ci_low)` |
+| Graduate saturated capability evals into regression suites | saturation warning with the Wilson floor + minimum detectable regression; `EvalSuite(purpose="regression")` flips the warning's direction |
+| Read the transcripts | `multivon-eval view --dir runs/` — per-case judge reasons, diff two runs with McNemar p |
+| Give the judge an explicit "Unknown" way out | hedged judge verdicts parse as UNKNOWN — excluded from the QAG score denominator and disclosed; all-UNKNOWN raises `JUDGE_ERROR`, never a silent 0.0 |
+| Grade each dimension with an isolated judge | QAG scoring — binary per-dimension questions instead of one 1–10 rating |
+| Calibrate the judge against human labels | `suite.calibrate(labeled_pairs)` + shipped per-(judge × evaluator) thresholds with provenance ([`_calibration_data/v2.json`](multivon_eval/_calibration_data/v2.json)) |
+
+The first three rows and the judge-UNKNOWN row land in 0.16.0 (on `main`, release pending — see [What's new in 0.16.0](#whats-new-in-0160-upcoming)); the other rows are shipped on PyPI today.
+
+**Index:**
+[Quickstart](#quickstart--30-seconds-no-api-key) ·
+[Why we exist](#why-we-exist) ·
+[Demystifying evals](#demystifying-evals-operationalized) ·
+[What's new 0.16.0](#whats-new-in-0160-upcoming) ·
+[What's new 0.10–0.15](#whats-new-in-010015) ·
+[Ecosystem](#the-multivon-ecosystem) ·
+[Why multivon-eval](#why-multivon-eval) ·
+[Install](#install) ·
+[Core concepts](#core-concepts) ·
+[Compliance & privacy](#compliance--privacy) ·
+[Statistical rigor](#statistical-rigor) ·
+[Synthetic data](#synthetic-dataset-generation) ·
+[Experiments](#experiment-tracking) ·
+[CLI](#cli) ·
+[CI/CD](#cicd-integration) ·
+[Architecture](#architecture) ·
+[Examples](#examples) ·
+[Tests](#tests) ·
+[Roadmap](#roadmap)
+
+## What's new in 0.16.0 (upcoming)
+
+> Landed on `main`, ships as 0.16.0 — the released package still reports 0.15.2 until the release goes out. Full detail in [CHANGELOG.md](CHANGELOG.md) under *Unreleased*. Built from the same [Demystifying evals](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents) checklist mapped above.
+
+- **pass@k and pass^k, estimated honestly.** The same `--runs N` data answers two different questions: `report.pass_at_k(k)` — "does at least one of k trials pass?" (capability) — and `report.pass_hat_k(k)` — "do all k trials pass?" (reliability: what a user hitting the feature k times experiences). Unbiased combinatorial / exact hypergeometric estimators — never the upward-biased `(c/n)**k` plug-in — with cluster-bootstrap CIs that resample tasks, not trials (trials within a task are correlated; resampling them fakes precision). When `k > runs` the answer is an honest **UNKNOWN** with a rerun hint — the framework does not extrapolate past the data. `report.lottery_cases()` names the tasks driving the pass@k↔pass^k gap; `report.assert_pass_hat_k(k, min_ci_low)` gates CI on the pass^k CI *lower bound* and fails loudly (never silently passes) when the metric is UNKNOWN.
+
+- **`multivon-eval validate` — grade your graders before blaming the model.** Runs every grader against each task's reference output (`EvalCase.reference_output`, falling back to `expected_output`) without ever calling the model under test. A reference that fails its own graders is `BROKEN_TASK_OR_GRADER` — the task is unsolvable or the grader miscalibrated; either way the agent is innocent. Contrast-twin tasks get a zero-LLM-call discrimination check (`NO_DISCRIMINATION` when a grader passes both the reference and the known-bad twin — zero information); tasks without a reference are listed `UNVALIDATABLE`, never dropped. LLM-judge graders are skipped by default; `--judges` opts in and reports the spend. Exits 1 only on BROKEN. Companion signal in every report: `EvalReport.zero_pass_cases` flags tasks that failed every trial — 0% pass usually means a broken task or grader, not an incapable agent.
+
+- **Saturation monitor.** A suite at 100% can no longer detect improvement, and the report now says so instead of celebrating: `EvalReport.saturated` (all *evaluated* tasks passed — a 100% built on judge outages doesn't count) plus `EvalReport.min_detectable_regression`, with a warning that quantifies the Wilson floor and recommends graduating the suite. `EvalSuite(purpose="capability")` vs `purpose="regression"` flips the warning's direction (a regression suite *below* ceiling warns instead). Always a warning, never a gate.
+
+- **Judge integrity.** Hedged judge replies ("I cannot say yes or no…") no longer parse as YES — they are UNKNOWN, excluded from the QAG score denominator and disclosed in the reason; judge exceptions surface as `JUDGE_ERROR` / `EVALUATOR_ERROR` statuses instead of laundering into 0.0 quality scores; and a new `max_error_rate=` budget on the CI gate stops 90 judge errors + 10 passes from gating green (raises `EvalGateFailure`: "Eval gate INDETERMINATE"). Unset, a `fail_threshold` gate still warns loudly on stderr at ≥ 10% errors.
 
 ## What's new in 0.10–0.15
 
@@ -150,12 +195,14 @@ Five public + one early-access package, all built on a shared evaluation engine:
 
 | Repo | What it is |
 |---|---|
-| **multivon-eval** (you are here) | Python SDK — 44 evaluators + `bootstrap` CLI + `multivon_eval.auto` |
+| **multivon-eval** (you are here) | Python SDK — 44 evaluators (2 experimental) + `bootstrap` CLI + `multivon_eval.auto` |
 | [pdfhell](https://github.com/multivon-ai/pdfhell) | Adversarial PDFs that break AI document readers — procedural ground truth, not LLM-as-judge |
 | [multivon-mcp](https://github.com/multivon-ai/multivon-mcp) | MCP server exposing 22 evaluation tools to Claude / Cursor / Cline / OpenCode |
 | [eval-action](https://github.com/multivon-ai/eval-action) | GitHub Action — run a suite on every PR, post a comment, gate the merge on regressions |
 | [eval-framework-benchmark](https://github.com/multivon-ai/eval-framework-benchmark) | Reproducible head-to-head benchmark vs DeepEval + RAGAS |
-| multivon-guard *(early access)* | Local proxy that catches LLM coding agents leaking secrets / PII before the request hits the wire. [`hello@multivon.ai`](mailto:hello@multivon.ai). |
+| multivon-guard *(early access)*⁺ | Local proxy that catches LLM coding agents leaking secrets / PII before the request hits the wire. [`hello@multivon.ai`](mailto:hello@multivon.ai). |
+
+⁺ multivon-guard is a closed early-access product, not open source — listed for completeness, no public repo yet.
 
 ### When NOT to use multivon-eval
 
@@ -166,6 +213,9 @@ Five public + one early-access package, all built on a shared evaluation engine:
 | To gate every PR on eval regressions automatically | [eval-action](https://github.com/multivon-ai/eval-action) |
 | Adversarial PDF benchmarking with code-based ground truth | [pdfhell](https://github.com/multivon-ai/pdfhell) |
 | To see how multivon-eval stacks up against DeepEval / RAGAS | [eval-framework-benchmark](https://github.com/multivon-ai/eval-framework-benchmark) |
+| Frontier-model capability studies on a research-grade harness | [Inspect AI](https://inspect.aisi.org.uk/) (UK AI Security Institute) — the reference research harness; if you're publishing model-capability results, start there |
+| Tracing dashboards / production observability | [Arize Phoenix](https://phoenix.arize.com/) or [LangSmith](https://www.langchain.com/langsmith) — observability platforms. They trace, we gate — use one *with* multivon-eval, not instead of it |
+| Quick agent-trajectory matching inside LangChain, no statistics needed | [agentevals](https://github.com/langchain-ai/agentevals) — trajectory matchers without CIs or significance tests; lighter if that's all you need |
 | Just to gate on a single LLM judge call without a suite | call `Faithfulness(...).evaluate(case, output)` directly — overkill to spin up an `EvalSuite` |
 
 > Claude Code skills run inside Claude Code; the MCP server works with any MCP client (Cursor, Cline, Claude Desktop, OpenCode); the GitHub Action runs on every PR. All three call the same evaluators against the same calibration table. The only difference is where the agent lives.
@@ -243,7 +293,7 @@ The question every team eventually hits: did this change make the model better o
 | Synthetic data generation | ✓ | ✓ | ✓ | — |
 | Open source (Apache 2.0) | ✓ | ✓ | ✓ | ✓ |
 
-> Comparison based on each project's public documentation as of June 2026 (last reviewed 2026-06-03; revisit every minor release). We host these benchmarks open: see [`benchmarks/`](benchmarks/) for code + datasets and [`benchmarks/results/`](benchmarks/results/) for the raw output JSON. Found something wrong? [Open an issue](https://github.com/multivon-ai/multivon-eval/issues) — we'll fix it.
+> Comparison based on each project's public documentation (last reviewed 2026-07-13; revisit every minor release). Inspect AI, Phoenix/LangSmith, and agentevals are different categories — research harness, observability platforms, trajectory matchers — so they're routed in [When NOT to use multivon-eval](#when-not-to-use-multivon-eval) rather than scored in this table. We host these benchmarks open: see [`benchmarks/`](benchmarks/) for code + datasets and [`benchmarks/results/`](benchmarks/results/) for the raw output JSON. Found something wrong? [Open an issue](https://github.com/multivon-ai/multivon-eval/issues) — we'll fix it.
 
 ### Numbers, not adjectives
 
@@ -285,7 +335,7 @@ Pairwise Cohen's κ across the 5 judges: 0.60–0.80 (substantial on most pairs)
 | Rep 1 (cold) | 2.9 s | 4 |
 | Rep 2 (hot)  | 0 ms | 0 |
 
-Cache speedup on the rep-1→rep-2 transition: **2,271×**. Cache hits also produce identical scores by construction — flake-proof reruns. `set_cache()` auto-enables caching for every subsequent `JudgeConfig`; no need to thread `cache=True` through every evaluator.
+Cache speedup on the rep-1→rep-2 transition: **2,271×** — read that as "paid API calls vs local cache hits (4 calls → 0)", so a large ratio is expected by construction, not a model-quality claim. The point is that cache hits produce identical scores by construction — flake-proof reruns. `set_cache()` auto-enables caching for every subsequent `JudgeConfig`; no need to thread `cache=True` through every evaluator.
 
 ### What makes `multivon-eval` different
 
@@ -296,12 +346,12 @@ Cache speedup on the rep-1→rep-2 transition: **2,271×**. Cache hits also prod
 | **Bootstrap CLI** | `multivon-eval bootstrap` (new in 0.8.0) | Cold-start from product description + traces → tuned suite in 60s |
 | **Agent-native** | Tool-call accuracy, plan quality, step faithfulness, task completion | Works with traces from any framework (LangChain, LlamaIndex, OpenAI Agents SDK, custom) |
 | **Four tiers** | Deterministic / LLM-judge / agent-trace / conversation | Mix freely; pay for LLM calls only where they matter |
-| **Reliability + flakiness** | `suite.run(runs=5)` + statistical significance | Detect cases that pass sometimes and fail others; tells you regressions from noise |
+| **Reliability + flakiness** | `suite.run(runs=5)` + pass@k / pass^k + statistical significance | Detect cases that pass sometimes and fail others; tells you regressions from noise; pass^k reports what a user hitting the feature k times experiences |
 | **Statistical rigor** | Wilson CIs, bootstrap, p10/p50/p90, power warnings, BH correction | NAACL 2025: single-run eval scores are unreliable. CIs ship by default |
 | **No cold-start** | `generate_from_file("docs/")` synthesises cases | No labeled data required to start |
 | **Local-first compliance** | `PIIEvaluator` + `SchemaEvaluator` + `ComplianceReporter` | Hash-chained audit trails, EU AI Act / NIST AI RMF mappings, `EvalSuite.eu_ai_act_high_risk()` factory |
 | **Experiment tracking** | `Experiment.record(report)` + `compare(a, b)` | p-values, CIs, McNemar across runs |
-| **Cache** | `set_cache(JudgeCache(...))` — once | 2,271× speedup on rep-2 (4 judge calls → 0), identical scores guaranteed |
+| **Cache** | `set_cache(JudgeCache(...))` — once | Reruns are free by construction (4 judge calls → 0; measured 2,271× on rep-2), identical scores guaranteed |
 
 ---
 
@@ -363,6 +413,8 @@ report.save_json("results.json")    # also save_csv, save_html, save_junit_xml
 
 Agent cases use `agent_trace=[AgentStep(...)]` + `expected_tool_calls=[...]`. Conversation cases use `conversation=[{"role": ..., "content": ...}]`. Load existing datasets with `load("cases.jsonl")` or `load("cases.csv")`.
 
+In the vocabulary of Anthropic's [evals post](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents): an `EvalCase` is a *task*, each of `runs=N` is a *trial*, an `Evaluator` is a *grader*, and `agent_trace` is the *transcript* — see the [mapping table](#demystifying-evals-operationalized) above.
+
 > **ToolCallAccuracy three-shape semantics** (0.9.0): `expected_tool_calls=None` skips the case (no expectation set), `expected_tool_calls=[]` asserts "no tools should have been called" (and a non-empty trace fails), and `expected_tool_calls=[...]` checks the trace contains the named calls in order. The skip variant is treated as `skipped-pass` in the report, not `0.0` — see the [`integrations/`](multivon_eval/integrations/) tracers (`LangGraphTracer`, `OpenAIAgentsTracer`, `ManualTracer`) for how each tracer populates `agent_trace`.
 
 ### Evaluators — 44 across 7 tiers
@@ -374,10 +426,10 @@ Agent cases use `agent_trace=[AgentStep(...)]` + `expected_tool_calls=[...]`. Co
 | **Agent-trace** | `ToolCallAccuracy`, `ToolArgumentAccuracy`, `ToolCallNecessity`, `TrajectoryEfficiency`, `AgentMemoryEval`, `PlanQuality`, `TaskCompletion`, `StepFaithfulness` | LLM-judge subset |
 | **Compliance** | `PIIEvaluator` (zero API calls, multi-jurisdiction), `SchemaEvaluator` (Pydantic + JSON Schema) | Free |
 | **Conversation** | `ConversationRelevance`, `KnowledgeRetention`, `ConversationCompleteness`, `TurnConsistency` | LLM-judge |
-| **Multimodal** | `VQAFaithfulness`, `DocumentGrounding` | LLM-judge |
+| **Multimodal** *(experimental)* | `VQAFaithfulness`, `DocumentGrounding` | LLM-judge |
 | **Consistency** | `SelfConsistency` | LLM-judge |
 
-**Full reference + signatures + examples per evaluator:** [docs.multivon.ai/evaluators](https://docs.multivon.ai/evaluators).
+The 2 multimodal evaluators are counted in the 44 but are still experimental — they have not been through the calibration pipeline the text evaluators use. **Full reference + signatures + examples per evaluator:** [docs.multivon.ai/evaluators](https://docs.multivon.ai/evaluators).
 
 ---
 
@@ -387,7 +439,7 @@ For regulated industries (healthcare, finance, legal) where traces can't leave y
 
 - **`PIIEvaluator`** — local regex-only detection across GDPR, CCPA, HIPAA, DPDP (India), PIPEDA jurisdictions. Email, phone, SSN, credit card (Luhn), passport, IBAN, Aadhaar (Verhoeff), PAN. `redact=True` masks in the report. Zero LLM calls.
 - **`SchemaEvaluator`** — validates outputs against Pydantic models or JSON Schema with per-field failures. Based on StructEval (2025): GPT-4 fails complex structured extraction ~12% of the time even with explicit format instructions.
-- **`ComplianceReporter`** — hash-chained NDJSON audit log (`prev_hash` linked, SHA-256). Each result annotated with EU AI Act articles (9(2)(b), 10, 15) or NIST AI RMF subcategories. `reporter.coverage(suite)` surfaces uncovered controls before you ship. `EvalSuite.eu_ai_act_high_risk()` factory + `for_regulated(jurisdiction="hipaa")`.
+- **`ComplianceReporter`** — append-only hash-chained NDJSON audit log (`prev_hash` linked, SHA-256). The chain detects accidental edits; for tamper *evidence* against a deliberate rewrite, anchor the head hash externally (e.g. in a signed commit or timestamping service). Each result annotated with EU AI Act articles (9(2)(b), 10, 15) or NIST AI RMF subcategories. `reporter.coverage(suite)` surfaces uncovered controls before you ship. `EvalSuite.eu_ai_act_high_risk()` factory + `for_regulated(jurisdiction="hipaa")`.
 
 ```python
 from multivon_eval import EvalSuite, ComplianceReporter
@@ -395,7 +447,7 @@ from multivon_eval import EvalSuite, ComplianceReporter
 suite = EvalSuite.eu_ai_act_high_risk(jurisdiction="gdpr")
 reporter = ComplianceReporter(output_dir="./audit", framework="eu-ai-act")
 reporter.record(suite.run(model_fn, runs=5))
-reporter.verify(suite.name)  # tamper-evident chain check
+reporter.verify(suite.name)  # hash-chain check — detects accidental edits; anchor the head hash externally for tamper evidence
 ```
 
 **Full reference:** [docs.multivon.ai/compliance](https://docs.multivon.ai/compliance) — jurisdictions, Article mappings, audit-pack generation, sample-audit-pack download.
@@ -415,6 +467,8 @@ Score distribution  p10:0.41  p50:0.88  p90:0.96
 What ships by default in every report:
 
 - **Wilson 95% CI** on pass rate · **bootstrap 95% CI** on avg score
+- **pass@k / pass^k** (0.16.0) — `report.pass_at_k(k)` (capability: at least one of k trials) and `report.pass_hat_k(k)` (reliability: all k trials) from `runs=N` data, unbiased estimators with cluster-bootstrap CIs; honest UNKNOWN when `k > runs`; `assert_pass_hat_k(k, min_ci_low)` gates on the CI lower bound
+- **Saturation monitor** (0.16.0) — a 100% suite reports its Wilson floor and minimum detectable regression instead of celebrating; `EvalSuite(purpose="regression")` for graduated suites
 - **p10 / p50 / p90 percentiles** — exposes bimodal distributions that `avg_score` hides
 - **Power warning** when your test set is too small to detect the shift you care about
 - **`runs_needed(delta=0.10)` + `min_detectable_effect(n=50)`** for sample-size sizing
@@ -468,6 +522,7 @@ CLI: `multivon-eval experiments list / history / compare`.
 ```bash
 multivon-eval init -t <template> -d <dir>     # scaffold a starter eval suite (templates: quickstart, agent, rag, regulated, conversation, agent-langgraph, agent-openai-sdk)
 multivon-eval run eval.py                     # execute an eval file
+multivon-eval validate eval.py                # grade your graders: run evaluators against each task's reference output — exits 1 on BROKEN_TASK_OR_GRADER (0.16.0)
 multivon-eval report results.json             # print a saved JSON report
 multivon-eval view results.json [--open]      # render the JSON as an HTML dashboard
 multivon-eval view --dir runs/                # browse a folder of reports — sortable index, open any, diff two

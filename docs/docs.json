@@ -70,12 +70,15 @@
           {
             "group": "Guides",
             "pages": [
+              "guides/anthropic-evals-checklist",
               "guides/generate",
               "guides/bootstrap",
               "guides/simulate",
               "guides/install-skills",
               "guides/intelligent-eval",
               "guides/statistical-rigor",
+              "guides/reliability-metrics",
+              "guides/validate",
               "guides/reliability",
               "guides/examples",
               "guides/score-logged-outputs",

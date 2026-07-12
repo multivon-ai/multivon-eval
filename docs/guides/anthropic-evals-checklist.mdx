@@ -1,0 +1,34 @@
+---
+title: "Demystifying Evals, Operationalized"
+description: Anthropic's agent-eval recommendations mapped to the multivon-eval command or API that executes each one.
+---
+
+Anthropic's [Demystifying evals for AI agents](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents) is the clearest published account of how agent evals fail in practice. This page maps each recommendation to the thing you actually run. Every row names a command or API that exists in the release stated — no aspirational rows.
+
+## Vocabulary
+
+The post's vocabulary and multivon-eval's API names, stated once. The API is not being renamed — a rename would break every existing suite for zero information gain.
+
+| Post says | multivon-eval says |
+|-----------|-------------------|
+| task | `EvalCase` (a case) |
+| trial | one of `runs=N` (a run) |
+| grader | `Evaluator` |
+| transcript | agent trace / conversation transcript |
+| outcome | `CaseResult` status (`PASSED`, `FAILED_QUALITY`, `JUDGE_ERROR`, ...) |
+
+New warning and report copy uses the post's terms ("40/40 trials passed", "broken task or grader", "graduate this suite").
+
+## The mapping
+
+| Recommendation | What executes it | Since |
+|----------------|------------------|-------|
+| Write reference solutions; 0% pass means a broken task, not a bad agent | [`multivon-eval validate`](/guides/validate) — runs every task's graders against its reference output, never calls the model; `report.zero_pass_cases` flags all-trials-failed suspects in every run | 0.16.0 |
+| Measure pass@k *and* pass^k under non-determinism | `suite.run(fn, runs=N)` + [`report.pass_at_k(k)` / `report.pass_hat_k(k)`](/guides/reliability-metrics) — unbiased estimators, cluster-bootstrap CIs, `assert_pass_hat_k` gate | 0.16.0 |
+| Graduate saturated capability evals | [Saturation monitor](/guides/statistical-rigor#what-a-100-pass-rate-actually-tells-you) — `report.saturated`, `report.min_detectable_regression`, `EvalSuite(purpose="regression")` | 0.16.0 |
+| Give the judge an "Unknown" way out | [UNKNOWN verdicts](/evaluators/llm-judge#unknown-verdicts) — hedged judge replies excluded from the score denominator and disclosed, never coerced to yes; the [`max_error_rate`](/evaluators/llm-judge#error-budget-max_error_rate) budget keeps judge outages from gating green | 0.16.0 |
+| Read the transcripts | [`multivon-eval view --dir`](/reference/view) — report browser with per-case judge reasons and side-by-side run diffs | 0.15.0 |
+| Use isolated per-dimension judges, not one 1–10 rating | [QAG evaluators](/evaluators/llm-judge) — binary questions per dimension, auditable down to each verdict | shipped |
+| Calibrate the judge against human labels | [`suite.calibrate()`](/guides/statistical-rigor#judge-calibration) + per-(judge × evaluator) calibrated thresholds with provenance | shipped |
+
+The three 0.16.0 features protect the places where evals lie most confidently: the 0% floor (`validate`), the 100% ceiling (saturation monitor), and the single-number middle (pass@k vs pass^k).
