@@ -133,6 +133,29 @@ def print_report(report: EvalReport) -> None:
         )
     console.print(Panel(summary, title="Summary", border_style="dim"))
 
+    # Reliability block: pass@k (capability) vs pass^k (reliability),
+    # k = runs_per_case — the largest k the recorded data can support.
+    if multi_run:
+        k = report.runs_per_case
+        pak = report.pass_at_k(k)
+        phk = report.pass_hat_k(k)
+        if pak.value is not None and phk.value is not None:
+            console.print(f"  [bold]Reliability ({k} runs/case)[/]")
+            console.print(
+                f"    pass@{k} = {pak.value:.0%} [dim][{pak.ci_low:.0%}–{pak.ci_high:.0%}][/] "
+                f"— at least one of {k} tries succeeds (capability)"
+            )
+            console.print(
+                f"    pass^{k} = {phk.value:.0%} [dim][{phk.ci_low:.0%}–{phk.ci_high:.0%}][/] "
+                f"— all {k} tries succeed; what a user hitting this feature "
+                f"{k} times experiences (reliability)"
+            )
+            for cr in report.lottery_cases(k)[:3]:
+                console.print(
+                    f"    [yellow]passes sometimes, never reliably:[/] "
+                    f"{cr.case_input[:60]!r} ({cr.pass_count}/{cr.runs} runs)"
+                )
+
     # Power warning: flag when dataset is too small to detect meaningful changes
     if report.total > 0:
         from ..experiments import min_detectable_effect, runs_needed
@@ -145,6 +168,9 @@ def print_report(report: EvalReport) -> None:
                 f"Add ≥{needed} cases to reliably detect a 10pp shift."
             )
 
+    _print_saturation_monitor(report)
+    _print_zero_pass_footer(report)
+
     # Judge reliability
     if report.judge_reliability is not None:
         rel_color = "green" if report.judge_reliability >= 0.85 else "yellow" if report.judge_reliability >= 0.70 else "red"
@@ -153,4 +179,133 @@ def print_report(report: EvalReport) -> None:
             f"[dim]agreement across repeated calls (sampled {report.total} cases)[/]"
         )
 
+    console.print()
+
+
+def _print_saturation_monitor(report: EvalReport) -> None:
+    """Ceiling-side warning: a suite at 100% can't detect improvement.
+
+    Capability suites (purpose != 'regression') get a graduation nudge
+    quantified as the minimum detectable regression; regression suites
+    invert — any task below ceiling is the news. Always a warning,
+    never a gate.
+    """
+    from ..result import EvalStatus
+
+    if report.purpose == "regression":
+        # FAILED_QUALITY already covers pass_count < runs (multi-run below
+        # ceiling); error statuses are deliberately excluded — an outage is
+        # not a regression.
+        below_ceiling = [
+            cr for cr in report.case_results
+            if cr.status == EvalStatus.FAILED_QUALITY
+        ]
+        if below_ceiling:
+            console.print(
+                f"  [yellow]⚠ Regression suite:[/] {len(below_ceiling)} "
+                f"previously-passing task(s) below ceiling — something broke; "
+                f"triage before shipping."
+            )
+            for cr in below_ceiling[:5]:
+                console.print(f"    • {cr.case_input[:60]!r}")
+        return
+
+    # A tiny saturated suite already gets the power warning above; both
+    # firing on 2 cases is noise.
+    if not report.saturated or report.evaluated < 3:
+        return
+    wilson_lower = report.pass_rate_ci()[0]
+    mde = report.min_detectable_regression
+    console.print(
+        f"  [yellow]⚠ Saturated:[/] {report.passed}/{report.evaluated} trials "
+        f"passed. All this run can claim is a pass rate ≥ {wilson_lower:.1%} "
+        f"(95% Wilson). At n={report.evaluated}, the smallest regression this "
+        f"suite can detect at 80% power is [bold]~{mde:.0%}[/] — a real 5pp "
+        f"quality drop would look like noise. Graduate this suite to a "
+        f"regression suite (purpose='regression') and add harder capability "
+        f"tasks."
+    )
+
+
+def _print_zero_pass_footer(report: EvalReport) -> None:
+    """Floor-side warning, paired with the saturation monitor above:
+    0% pass usually indicts the task or grader, not the agent."""
+    suspects = report.zero_pass_cases
+    if not suspects:
+        return
+    console.print(
+        f"  [yellow]⚠[/] {len(suspects)} task(s) failed every trial. "
+        f"0% pass usually means a broken task or grader, not an incapable "
+        f"agent — run [bold]multivon-eval validate[/] before blaming the model."
+    )
+
+
+def print_validation(vreport) -> None:
+    """Render a :class:`multivon_eval.validate.ValidationReport`."""
+    from rich.table import Table as _Table
+
+    console.print()
+    console.rule(f"[bold white]Validate: {vreport.suite_name}[/]")
+    console.print()
+
+    table = _Table(box=box.SIMPLE_HEAD, show_footer=False, padding=(0, 1))
+    table.add_column("#", style="dim", width=4)
+    table.add_column("Case", max_width=44)
+    table.add_column("Verdict", width=24)
+    table.add_column("Detail", max_width=60)
+    _COLORS = {
+        "OK": "green",
+        "BROKEN_TASK_OR_GRADER": "red",
+        "NO_DISCRIMINATION": "yellow",
+        "UNVALIDATABLE": "dim",
+    }
+    for cv in vreport.results:
+        color = _COLORS.get(cv.status, "white")
+        detail = cv.reason
+        if cv.failed_graders:
+            fg = cv.failed_graders[0]
+            detail = f"{fg.evaluator}: {fg.reason}" if fg.reason else fg.evaluator
+        table.add_row(
+            str(cv.case_index + 1),
+            cv.case_input[:44],
+            f"[{color}]{cv.status}[/]",
+            detail[:60],
+        )
+    console.print(table)
+
+    ok_count, validated = vreport.effective_informative_cases
+    if validated:
+        console.print(f"  effective informative cases: {ok_count}/{validated} validated")
+    for cv in vreport.broken:
+        console.print(
+            f"  [red]✗ broken task or grader:[/] {cv.case_input[:60]!r} — the "
+            f"reference output fails its own graders; the agent is innocent."
+        )
+    for cv in vreport.no_discrimination:
+        console.print(
+            f"  [yellow]⚠ no discrimination:[/] {cv.case_input[:60]!r} — "
+            f"grader passes both the reference and its known-bad contrast twin; "
+            f"it contributes zero information."
+        )
+    if vreport.unvalidatable:
+        console.print(
+            f"  [dim]ℹ {len(vreport.unvalidatable)} case(s) unvalidatable — add "
+            f"expected_output or reference_output to validate these tasks.[/]"
+        )
+    skipped = sorted({g for cv in vreport.results for g in cv.skipped_graders})
+    if skipped:
+        console.print(
+            f"  [dim]judge-backed grader(s) not run (offline default): "
+            f"{', '.join(skipped)} — pass --judges to include them.[/]"
+        )
+    costs = getattr(vreport, "costs", None)
+    if costs is not None and getattr(costs, "total_tokens", 0):
+        spend = costs.total_cost_usd
+        spend_s = f"${spend:.4f}" if spend is not None else "unknown (no pricing data)"
+        console.print(f"  [dim]judge spend: {spend_s} · {costs.total_tokens:,} tokens[/]")
+    verdict = "[green]PASSED[/]" if vreport.passed else "[red]FAILED[/]"
+    console.print(f"  Validation {verdict} — {len(vreport.broken)} broken, "
+                  f"{len(vreport.no_discrimination)} non-discriminating, "
+                  f"{len(vreport.unvalidatable)} unvalidatable, "
+                  f"{len(vreport.ok)} OK")
     console.print()

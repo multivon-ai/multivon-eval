@@ -4,7 +4,10 @@ import csv
 import math
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any
+from typing import Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .passk import PassKResult
 
 
 class EvalStatus(str, Enum):
@@ -302,6 +305,10 @@ class EvalReport:
     # capture the EXACT evaluator + case state that drove the decisions.
     # See :class:`multivon_eval.lockfile.SuiteLock` for the schema.
     suite_lock: Any = None  # SuiteLock | None — Any avoids the circular import
+    # Declared intent of the suite: '' (unset) | 'capability' | 'regression'.
+    # Drives the saturation-monitor messaging: a capability suite at 100%
+    # gets a graduation nudge; a regression suite inverts the warning.
+    purpose: str = ""
 
     @property
     def total(self) -> int:
@@ -321,6 +328,15 @@ class EvalReport:
     def skipped(self) -> int:
         """Cases deliberately skipped (e.g., via tag filter)."""
         return sum(1 for r in self.case_results if r.status == EvalStatus.SKIPPED)
+
+    @property
+    def error_rate(self) -> float:
+        """Fraction of ALL cases that errored (model/judge/evaluator/timeout).
+
+        Denominator is ``total``, not ``evaluated`` — this is the metric
+        ``pass_rate`` is blind to by design, so the two must be read together.
+        """
+        return self.errors / self.total if self.total else 0.0
 
     @property
     def errors_by_kind(self) -> dict[str, int]:
@@ -359,6 +375,56 @@ class EvalReport:
         if not evaluated:
             return 0.0
         return sum(r.score for r in evaluated) / len(evaluated)
+
+    @property
+    def saturated(self) -> bool:
+        """True when every EVALUATED case passed.
+
+        Built on ``evaluated``, not ``total`` — a 100% assembled from judge
+        outages or skips must not count as saturation. A saturated suite
+        can no longer detect improvement; see
+        :attr:`min_detectable_regression` for what it can still claim.
+        """
+        return self.evaluated > 0 and self.passed == self.evaluated
+
+    @property
+    def min_detectable_regression(self) -> float:
+        """Smallest pass-rate DROP this suite can detect at 80% power.
+
+        Anchors the variance term near the observed pass rate, capped at
+        0.95 — at a true ceiling p(1-p) → 0 would flatter the MDE toward
+        zero, promising sensitivity the suite doesn't have. Returns 1.0
+        (nothing detectable) when no case evaluated.
+        """
+        if self.evaluated == 0:
+            return 1.0
+        from .experiments import min_detectable_effect
+        return min_detectable_effect(
+            self.evaluated, baseline=max(0.5, min(self.pass_rate, 0.95)),
+        )
+
+    @property
+    def zero_pass_cases(self) -> list["CaseResult"]:
+        """Cases that failed EVERY trial — broken-task/grader suspects.
+
+        With runs > 1: evaluated cases with ``pass_count == 0``. With a
+        single run there is no per-case trial signal, so the heuristic
+        only fires suite-wide: when ``pass_rate == 0.0`` every evaluated
+        (failing) case is suspect. 0% pass usually means a broken task or
+        grader, not an incapable agent — ``multivon-eval validate`` checks
+        the graders against reference outputs before the model is blamed.
+        """
+        evaluated = [
+            cr for cr in self.case_results if cr.status in EVALUATION_STATUSES
+        ]
+        multi = [cr for cr in evaluated if cr.runs > 1 and cr.pass_count == 0]
+        if multi:
+            return multi
+        if any(cr.runs > 1 for cr in evaluated):
+            return []
+        if evaluated and self.pass_rate == 0.0:
+            return evaluated
+        return []
 
     @property
     def flaky_count(self) -> int:
@@ -499,6 +565,109 @@ class EvalReport:
         scores = [cr.score for cr in self.case_results if cr.status in EVALUATION_STATUSES]
         return bootstrap_interval(scores, confidence)
 
+    def _pass_k_case_stats(self) -> list[tuple[int, int]]:
+        """Per-case (n_trials, n_passes) over EVALUATED cases only.
+
+        Same denominator discipline as :attr:`pass_rate` — error and
+        skipped cases are excluded so infrastructure problems don't
+        masquerade as reliability signal.
+        """
+        stats: list[tuple[int, int]] = []
+        for cr in self.case_results:
+            if cr.status not in EVALUATION_STATUSES:
+                continue
+            if cr.pass_count >= 0:
+                stats.append((cr.runs, cr.pass_count))
+            else:
+                stats.append((1, 1 if cr.passed else 0))
+        return stats
+
+    def _pass_k_result(self, k: int, confidence: float, metric: str) -> "PassKResult":
+        if k < 1:
+            raise ValueError(f"k must be >= 1, got {k}")
+        from . import passk
+        stats = self._pass_k_case_stats()
+        runs = self.runs_per_case
+        if k > runs:
+            return passk.PassKResult(
+                k=k, metric=metric, value=None, ci_low=None, ci_high=None,
+                estimator=passk.ESTIMATOR_NAMES[metric],
+                n_cases=len(stats), runs=runs,
+                unknown_reason=(
+                    f"UNKNOWN — computed from {runs} trials per case; "
+                    f"rerun with --runs >= {k}. multivon-eval does not extrapolate."
+                ),
+            )
+        return passk.suite_pass_k(stats, k, metric=metric, confidence=confidence)
+
+    def pass_at_k(self, k: int, confidence: float = 0.95) -> "PassKResult":
+        """pass@k over evaluated cases — "succeeds at least once in k tries".
+
+        Unbiased combinatorial estimator per case, averaged over cases,
+        with a cluster-bootstrap CI (cases resampled, not trials).
+        Returns an honest UNKNOWN result (``value is None``) when
+        ``k > runs_per_case`` — no extrapolation.
+        """
+        from .passk import METRIC_PASS_AT_K
+        return self._pass_k_result(k, confidence, METRIC_PASS_AT_K)
+
+    def pass_hat_k(self, k: int, confidence: float = 0.95) -> "PassKResult":
+        """pass^k over evaluated cases — "succeeds all k tries".
+
+        Exact hypergeometric estimator per case (never the upward-biased
+        plug-in ``(c/n)**k``), averaged over cases, with a
+        cluster-bootstrap CI. Returns an honest UNKNOWN result when
+        ``k > runs_per_case``.
+        """
+        from .passk import METRIC_PASS_HAT_K
+        return self._pass_k_result(k, confidence, METRIC_PASS_HAT_K)
+
+    def lottery_cases(self, k: int | None = None) -> list["CaseResult"]:
+        """Cases driving the pass@k / pass^k gap, largest divergence first.
+
+        These pass sometimes but never reliably — high pass@k, low
+        pass^k. ``k`` defaults to ``runs_per_case``.
+        """
+        from .passk import pass_at_k as _pak, pass_hat_k as _phk
+        if k is None:
+            k = self.runs_per_case
+        if k < 1:
+            raise ValueError(f"k must be >= 1, got {k}")
+        scored: list[tuple[float, CaseResult]] = []
+        for cr in self.case_results:
+            if cr.status not in EVALUATION_STATUSES or cr.pass_count < 0:
+                continue
+            if k > cr.runs:
+                continue
+            gap = _pak(cr.runs, cr.pass_count, k) - _phk(cr.runs, cr.pass_count, k)
+            if gap > 0:
+                scored.append((gap, cr))
+        scored.sort(key=lambda t: t[0], reverse=True)
+        return [cr for _, cr in scored]
+
+    def assert_pass_hat_k(self, k: int, min_ci_low: float) -> None:
+        """Gate the run on the pass^k CI LOWER bound.
+
+        Raises :class:`EvalGateFailure` (same CI exit semantics as
+        ``fail_threshold`` / ``assert_budget``) when the lower bound
+        falls below ``min_ci_low`` — or when pass^k is UNKNOWN
+        (``k > runs_per_case``): an ungateable claim must fail loudly,
+        not silently pass.
+        """
+        res = self.pass_hat_k(k)
+        if res.value is None:
+            raise EvalGateFailure(
+                f"pass^{k} gate FAILED: {res.unknown_reason}",
+                threshold=min_ci_low,
+            )
+        if res.ci_low < min_ci_low:
+            raise EvalGateFailure(
+                f"pass^{k} gate FAILED: CI lower bound {res.ci_low:.3f} < "
+                f"required {min_ci_low:.3f} "
+                f"(pass^{k} = {res.value:.3f}, CI [{res.ci_low:.3f}, {res.ci_high:.3f}])",
+                pass_rate=res.value, threshold=min_ci_low,
+            )
+
     def score_percentiles(self, percentiles: list[int] | None = None) -> dict[str, float]:
         """
         Score distribution percentiles. Reveals bimodal patterns avg_score hides.
@@ -610,6 +779,7 @@ class EvalReport:
             suite_name=data.get("suite", ""),
             model_id=data.get("model", ""),
             case_results=case_results,
+            purpose=(data.get("summary") or {}).get("purpose", ""),
         )
 
     def to_json(self) -> str:
@@ -617,30 +787,47 @@ class EvalReport:
             if hasattr(obj, "__dataclass_fields__"):
                 return obj.__dict__
             return str(obj)
+        summary: dict[str, Any] = {
+            "total": self.total,
+            "evaluated": self.evaluated,
+            "passed": self.passed,
+            "failed": self.failed,
+            "errors": self.errors,
+            "errors_by_kind": self.errors_by_kind,
+            "skipped": self.skipped,
+            "pass_rate": round(self.pass_rate, 4),
+            "pass_rate_ci_95": list(self.pass_rate_ci()),
+            "avg_score": round(self.avg_score, 4),
+            "avg_score_ci_95": list(self.avg_score_ci()),
+            "score_percentiles": self.score_percentiles(),
+            "runs_per_case": self.runs_per_case,
+            "flaky_count": self.flaky_count,
+            "stability_score": round(self.stability_score, 4),
+            "judge_reliability": self.judge_reliability,
+            "purpose": self.purpose,
+            "saturated": self.saturated,
+            "min_detectable_regression": round(self.min_detectable_regression, 4),
+            "by_evaluator": {k: round(v, 4) for k, v in self.scores_by_evaluator().items()},
+            "costs": self.costs.to_dict() if self.costs is not None else None,
+        }
+        if self.runs_per_case > 1:
+            k = self.runs_per_case
+            for key, res in (("pass_at_k", self.pass_at_k(k)),
+                             ("pass_hat_k", self.pass_hat_k(k))):
+                summary[key] = {
+                    "k": res.k,
+                    "value": round(res.value, 4) if res.value is not None else None,
+                    "ci_95": (
+                        [round(res.ci_low, 4), round(res.ci_high, 4)]
+                        if res.ci_low is not None else None
+                    ),
+                    "estimator": res.estimator,
+                }
         return json.dumps(
             {
                 "suite": self.suite_name,
                 "model": self.model_id,
-                "summary": {
-                    "total": self.total,
-                    "evaluated": self.evaluated,
-                    "passed": self.passed,
-                    "failed": self.failed,
-                    "errors": self.errors,
-                    "errors_by_kind": self.errors_by_kind,
-                    "skipped": self.skipped,
-                    "pass_rate": round(self.pass_rate, 4),
-                    "pass_rate_ci_95": list(self.pass_rate_ci()),
-                    "avg_score": round(self.avg_score, 4),
-                    "avg_score_ci_95": list(self.avg_score_ci()),
-                    "score_percentiles": self.score_percentiles(),
-                    "runs_per_case": self.runs_per_case,
-                    "flaky_count": self.flaky_count,
-                    "stability_score": round(self.stability_score, 4),
-                    "judge_reliability": self.judge_reliability,
-                    "by_evaluator": {k: round(v, 4) for k, v in self.scores_by_evaluator().items()},
-                    "costs": self.costs.to_dict() if self.costs is not None else None,
-                },
+                "summary": summary,
                 "cases": [
                     {
                         "input": cr.case_input,

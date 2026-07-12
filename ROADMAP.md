@@ -54,15 +54,16 @@ Track of what's shipped + what's coming. Updated when a feature lands or moves b
 - [x] Cache (`JudgeCache`, `set_cache()`) — 2,271× speedup on cache hits
 - [x] Framework integrations — LangChain, LangSmith, LangGraph, OpenAI Agents SDK, ManualTracer
 - [x] Production targets — `DeployedAPITarget`, `BrowserTarget`, `MultiTurnAPITarget`, `BearerAuth`, `APIKeyAuth`
+- [x] Pytest plugin — `assert_evaluators()` + `pytest11` entry point + `multivon_costs` fixture (since 0.6.0; the `@eval_case` decorator form is still in flight below)
+- [x] `LiteLLMAdapter` — Azure, Bedrock, Vertex AI, 100+ providers via one interface (since 0.6.0; `pip install "multivon-eval[litellm]"`)
+- [x] Agent simulation — `multivon-eval simulate`, persona-driven adaptive multi-turn eval with the "simulated personas" honesty contract (0.12.0)
 
 ## In flight (not yet shipped)
 
 - [ ] LlamaIndex / CrewAI tracer integrations
-- [ ] Pytest plugin (`@eval_case` decorator)
-- [ ] LiteLLM adapter (covers Azure, Bedrock, Vertex AI, 100+ providers via one interface)
+- [ ] `@eval_case` decorator for the pytest plugin (the plugin itself shipped; this sugar form did not)
 - [ ] Tiered eval cost optimizer — start with heuristic, escalate to local model, escalate to frontier only when needed
-- [ ] Agent simulation / adversarial user testing
-- [ ] Multi-LLM consultation as v0.9 upgrade to the bootstrap CLI (Claude + GPT + Gemini for metric proposal)
+- [ ] Multi-LLM consultation as an upgrade to the bootstrap CLI (Claude + GPT + Gemini for metric proposal)
 - [ ] Trust & safety evaluator family — extend the existing `Toxicity` / `Bias` judges into full coverage of the trustworthiness dimensions popularized by benchmarks like [TrustLLM](https://github.com/HowieHwong/TrustLLM) (ICML 2024): robustness (input-perturbation + prompt-injection resistance), harmful-content / jailbreak refusal, and machine ethics. Truthfulness (Faithfulness/Hallucination) and privacy (`PIIEvaluator`) are already shipped; this closes the remaining dimensions so a team can gate a model on trustworthiness the same way they gate on faithfulness today.
 
 ## How to influence the roadmap

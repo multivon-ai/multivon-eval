@@ -137,6 +137,10 @@ from .result import (
     EvalStatus, EVALUATION_STATUSES, ERROR_STATUSES,
     PairwiseReport, PairwiseResult,
 )
+# pass@k / pass^k reliability metrics (unbiased estimators + cluster-bootstrap CIs)
+from .passk import pass_at_k, pass_hat_k, PassKResult
+# Grade-your-grader: reference-solution audit of the eval itself
+from .validate import CaseValidation, ValidationReport, validate_suite
 from .calibration import (
     calibrated_threshold, threshold_table,
     calibration_provenance, load_calibration, CalibrationEntry,
@@ -192,6 +196,10 @@ __all__ = [
     "Experiment", "list_experiments", "wilson_interval", "bootstrap_interval",
     "runs_needed", "min_detectable_effect", "cohens_h", "benjamini_hochberg",
     "mcnemar_test", "bayesian_interval",
+    # pass@k / pass^k reliability metrics
+    "pass_at_k", "pass_hat_k", "PassKResult",
+    # Grade-your-grader validation
+    "CaseValidation", "ValidationReport", "validate_suite",
     # Exceptions
     "MultivonError", "JudgeUnavailable", "CalibrationMissing",
     "EvaluatorPrereqMissing", "CacheError", "SecretsError", "ComplianceError",

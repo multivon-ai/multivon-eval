@@ -19,6 +19,10 @@ class Evaluator(ABC):
 
     name: str = "evaluator"
     threshold: float = 0.5
+    # True on evaluators that make LLM-judge calls. ``multivon-eval
+    # validate`` skips those by default so the grader audit stays free
+    # and offline; --judges opts in.
+    uses_llm_judge: bool = False
 
     def __init__(self, threshold: float = 0.5):
         self.threshold = threshold

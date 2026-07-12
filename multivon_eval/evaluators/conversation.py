@@ -20,6 +20,7 @@ class ConversationRelevance(Evaluator):
     Requires case.conversation.
     """
     name = "conversation_relevance"
+    uses_llm_judge = True
 
     def __init__(self, threshold: float = 0.7, judge: JudgeConfig | None = None):
         super().__init__(threshold)
@@ -50,6 +51,7 @@ class KnowledgeRetention(Evaluator):
     is consistent with facts introduced in earlier turns.
     """
     name = "knowledge_retention"
+    uses_llm_judge = True
 
     def __init__(self, threshold: float = 0.7, judge: JudgeConfig | None = None):
         super().__init__(threshold)
@@ -86,6 +88,7 @@ class ConversationCompleteness(Evaluator):
     Requires case.conversation.
     """
     name = "conversation_completeness"
+    uses_llm_judge = True
 
     def __init__(self, threshold: float = 0.7, judge: JudgeConfig | None = None):
         super().__init__(threshold)
@@ -121,6 +124,7 @@ class TurnConsistency(Evaluator):
     Requires case.conversation.
     """
     name = "turn_consistency"
+    uses_llm_judge = True
 
     def __init__(self, threshold: float = 0.8, judge: JudgeConfig | None = None):
         super().__init__(threshold)

@@ -115,6 +115,7 @@ class SelfConsistency(Evaluator):
     """
 
     name = "self_consistency"
+    uses_llm_judge = True
 
     # Score range considered borderline — triggers adaptive escalation
     _BORDERLINE_LO = 0.3

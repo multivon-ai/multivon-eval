@@ -69,19 +69,23 @@ class JudgeConfig:
                      Examples: "http://localhost:11434/v1" (Ollama),
                      "http://localhost:1234/v1" (LM Studio). Ignored for
                      Anthropic. Also read from OPENAI_BASE_URL env var.
-        temperature: Sampling temperature for the judge (default 0.0 for
-                     determinism).
-        max_tokens:  Token budget for judge responses (default 1024).
-        timeout:     Request timeout in seconds (default 30).
+        temperature: Sampling temperature for the judge. ``None`` (the field
+                     default) means "not set — inherit from the global config",
+                     resolving to 0.0 for determinism. An explicit 0.0 always
+                     wins over a nonzero global.
+        max_tokens:  Token budget for judge responses. ``None`` = inherit,
+                     resolving to 1024.
+        timeout:     Request timeout in seconds. ``None`` = inherit,
+                     resolving to 30.
     """
     provider: str = ""
     model: str = ""
     base_url: str = ""
-    temperature: float = 0.0
-    max_tokens: int = 1024
-    timeout: int = 30
+    temperature: float | None = None
+    max_tokens: int | None = None
+    timeout: int | None = None
     reliability_check: bool = False
-    reliability_sample: int = 5
+    reliability_sample: int | None = None
     cache: bool = False
     # Reserved for future backends (prometheus, minichek, local hf model)
     extra: dict = field(default_factory=dict)
@@ -111,11 +115,11 @@ class JudgeConfig:
             provider=provider,
             model=model,
             base_url=base_url,
-            temperature=self.temperature,
-            max_tokens=self.max_tokens,
-            timeout=self.timeout,
+            temperature=self.temperature if self.temperature is not None else 0.0,
+            max_tokens=self.max_tokens if self.max_tokens is not None else 1024,
+            timeout=self.timeout if self.timeout is not None else 30,
             reliability_check=self.reliability_check,
-            reliability_sample=self.reliability_sample,
+            reliability_sample=self.reliability_sample if self.reliability_sample is not None else 5,
             cache=cache,
             extra=self.extra,
         )
@@ -145,15 +149,18 @@ def resolve_judge(per_evaluator: JudgeConfig | None) -> JudgeConfig:
     base = _GLOBAL_JUDGE
     override = per_evaluator or JudgeConfig()
 
+    # None-sentinel merge: only fields the user left unset fall through to
+    # the base. Value-sentinels (``!= 0.0`` etc.) made an explicit
+    # temperature=0.0 impossible to assert over a nonzero global.
     merged = JudgeConfig(
         provider=override.provider or base.provider,
         model=override.model or base.model,
         base_url=override.base_url or base.base_url,
-        temperature=override.temperature if override.temperature != 0.0 else base.temperature,
-        max_tokens=override.max_tokens if override.max_tokens != 1024 else base.max_tokens,
-        timeout=override.timeout if override.timeout != 30 else base.timeout,
+        temperature=override.temperature if override.temperature is not None else base.temperature,
+        max_tokens=override.max_tokens if override.max_tokens is not None else base.max_tokens,
+        timeout=override.timeout if override.timeout is not None else base.timeout,
         reliability_check=override.reliability_check or base.reliability_check,
-        reliability_sample=override.reliability_sample if override.reliability_sample != 5 else base.reliability_sample,
+        reliability_sample=override.reliability_sample if override.reliability_sample is not None else base.reliability_sample,
         cache=override.cache or base.cache,
         extra={**base.extra, **override.extra},
     )

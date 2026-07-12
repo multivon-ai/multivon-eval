@@ -61,13 +61,56 @@ def _call(prompt: str, judge: JudgeConfig, max_tokens: int | None = None) -> str
     return make_judge_call(prompt, _with_max_tokens(judge, max_tokens))
 
 
-def _parse_yes_no(text: str) -> bool:
+_YES_WORD = re.compile(r"\byes\b")
+_NO_WORD = re.compile(r"\bno\b")
+
+
+def _parse_yes_no(text: str) -> bool | None:
+    """Parse a judge reply into a verdict: True / False / None (unknown).
+
+    Clear prefix verdicts keep the historical semantics exactly — the
+    calibrated thresholds were fit under them. Only the previously
+    mis-scored tail changes: a reply with no unambiguous verdict word
+    used to count as YES whenever "yes" appeared in the first 50 chars
+    (so "I cannot say yes or no with certainty" parsed as YES); it now
+    returns None so callers can exclude it from the score denominator.
+    """
     text = text.strip().lower()
     if text.startswith("yes"):
         return True
     if text.startswith("no"):
         return False
-    return "yes" in text[:50]
+    has_yes = _YES_WORD.search(text) is not None
+    has_no = _NO_WORD.search(text) is not None
+    if has_yes and not has_no:
+        return True
+    if has_no and not has_yes:
+        return False
+    return None
+
+
+def _extract_json_array(raw: str) -> list | None:
+    """Best-effort extraction of a JSON array from a judge reply.
+
+    JSON-first, then greedy bracket match, then lazy — the lazy-only
+    regex truncated any claim list whose strings contained ']'.
+    Returns None when nothing parses to a list.
+    """
+    candidates = [raw]
+    greedy = re.search(r"\[.*\]", raw, re.DOTALL)
+    if greedy:
+        candidates.append(greedy.group())
+    lazy = re.search(r"\[.*?\]", raw, re.DOTALL)
+    if lazy:
+        candidates.append(lazy.group())
+    for cand in candidates:
+        try:
+            parsed = json.loads(cand)
+        except Exception:
+            continue
+        if isinstance(parsed, list):
+            return parsed
+    return None
 
 
 # ── Refusal heuristic ──────────────────────────────────────────────────────
@@ -123,22 +166,39 @@ def _qag_eval(
     context_prompt: str,
     judge: JudgeConfig,
 ) -> tuple[float, list[str]]:
-    """Run QAG eval: list of (question, expect_yes) pairs. Returns (score, reasons)."""
+    """Run QAG eval: list of (question, expect_yes) pairs. Returns (score, reasons).
+
+    Judge exceptions propagate (JudgeUnavailable → JUDGE_ERROR status,
+    anything else → EVALUATOR_ERROR) instead of being scored as silent
+    False votes. Unparseable verdicts count as UNKNOWN: excluded from
+    the score denominator and disclosed in the reasons.
+    """
+    if not questions:
+        return 0.0, []
     results, reasons = [], []
+    unknown = 0
     for question, expect_yes in questions:
         prompt = f"{context_prompt}\n\nQuestion: {question}\nAnswer with only \"Yes\" or \"No\"."
-        try:
-            answer = _call(prompt, judge, max_tokens=100)
-            got_yes = _parse_yes_no(answer)
-            passed = got_yes == expect_yes
-            results.append(passed)
-            reasons.append(f"{'✓' if passed else '✗'} {question[:100]}")
-        except JudgeUnavailable:
-            raise
-        except Exception as e:
-            results.append(False)
-            reasons.append(f"✗ {question[:100]} (error: {e})")
-    score = sum(results) / len(results) if results else 0.0
+        answer = _call(prompt, judge, max_tokens=100)
+        got_yes = _parse_yes_no(answer)
+        if got_yes is None:
+            unknown += 1
+            reasons.append(f"? {question[:100]} (unparseable judge reply — excluded from score)")
+            continue
+        passed = got_yes == expect_yes
+        results.append(passed)
+        reasons.append(f"{'✓' if passed else '✗'} {question[:100]}")
+    if not results:
+        raise JudgeUnavailable(
+            f"judge returned no parseable Yes/No verdict for any of "
+            f"{len(questions)} question(s)",
+            provider=judge.provider, model=judge.model,
+        )
+    if unknown:
+        reasons.append(
+            f"{unknown} of {len(questions)} question(s) UNKNOWN — excluded from score denominator"
+        )
+    score = sum(results) / len(results)
     return score, reasons
 
 
@@ -152,6 +212,7 @@ class Faithfulness(Evaluator):
     to override (e.g. threshold=0.8 for stricter gating).
     """
     name = "faithfulness"
+    uses_llm_judge = True
 
     def __init__(self, threshold: float | None = None, judge: JudgeConfig | None = None):
         self._explicit_threshold = threshold
@@ -176,41 +237,54 @@ class Faithfulness(Evaluator):
         self.threshold = self._resolve_threshold(judge)
         context = case.context_str()
 
-        try:
-            raw = _call(
-                f"Extract every factual claim from this response as a JSON list of strings.\n"
-                f"Include only verifiable statements. Return ONLY a JSON array.\n\nResponse:\n{output}\n\nJSON array:",
-                judge, max_tokens=512,
+        raw = _call(
+            f"Extract every factual claim from this response as a JSON list of strings.\n"
+            f"Include only verifiable statements. Return ONLY a JSON array.\n\nResponse:\n{output}\n\nJSON array:",
+            judge, max_tokens=512,
+        )
+        claims = _extract_json_array(raw)
+        if claims is None:
+            # Deterministic parse limitation, not a model-quality signal —
+            # raise so the suite routes it to EVALUATOR_ERROR instead of
+            # scoring 0.0 (which is indistinguishable from "model failed").
+            raise ValueError(
+                f"faithfulness: could not extract a claims JSON array from "
+                f"judge reply: {raw[:120]!r}"
             )
-            match = re.search(r'\[.*?\]', raw, re.DOTALL)
-            claims = json.loads(match.group()) if match else []
-        except JudgeUnavailable:
-            raise
-        except Exception:
-            return self._result(0.0, "Failed to extract claims")
 
         if not claims:
             return self._result(1.0, "No verifiable claims found")
 
+        capped = len(claims) > 10
         verified, reasons = [], []
+        unknown = 0
         for claim in claims[:10]:
-            try:
-                answer = _call(
-                    f"Context:\n{context}\n\nClaim: {claim}\n\n"
-                    f"Is this claim fully supported by the context? Answer with only \"Yes\" or \"No\".",
-                    judge, max_tokens=100,
-                )
-                supported = _parse_yes_no(answer)
-                verified.append(supported)
-                reasons.append(f"{'✓' if supported else '✗'} {claim[:80]}")
-            except JudgeUnavailable:
-                raise
-            except Exception:
-                verified.append(False)
-                reasons.append(f"✗ {claim[:80]} (eval error)")
+            answer = _call(
+                f"Context:\n{context}\n\nClaim: {claim}\n\n"
+                f"Is this claim fully supported by the context? Answer with only \"Yes\" or \"No\".",
+                judge, max_tokens=100,
+            )
+            supported = _parse_yes_no(answer)
+            if supported is None:
+                unknown += 1
+                reasons.append(f"? {str(claim)[:80]} (unparseable judge reply — excluded from score)")
+                continue
+            verified.append(supported)
+            reasons.append(f"{'✓' if supported else '✗'} {str(claim)[:80]}")
 
-        score = sum(verified) / len(verified) if verified else 0.0
-        return self._result(score, f"{sum(verified)}/{len(verified)} claims grounded\n" + "\n".join(reasons))
+        if not verified:
+            raise JudgeUnavailable(
+                f"judge returned no parseable Yes/No verdict for any of "
+                f"{min(len(claims), 10)} claim(s)",
+                provider=judge.provider, model=judge.model,
+            )
+        header = f"{sum(verified)}/{len(verified)} claims grounded"
+        if capped:
+            header = f"verified {min(len(claims), 10)} of {len(claims)} claims (capped); " + header
+        if unknown:
+            header += f"; {unknown} claim(s) UNKNOWN — excluded from score denominator"
+        score = sum(verified) / len(verified)
+        return self._result(score, header + "\n" + "\n".join(reasons))
 
 
 class Hallucination(Evaluator):
@@ -223,6 +297,7 @@ class Hallucination(Evaluator):
     to override.
     """
     name = "hallucination"
+    uses_llm_judge = True
 
     def __init__(self, threshold: float | None = None, judge: JudgeConfig | None = None):
         self._explicit_threshold = threshold
@@ -260,6 +335,7 @@ class Hallucination(Evaluator):
 class Relevance(Evaluator):
     """Measures whether the response directly addresses the input question."""
     name = "relevance"
+    uses_llm_judge = True
 
     def __init__(self, threshold: float | None = None, judge: JudgeConfig | None = None):
         self._explicit_threshold = threshold
@@ -288,6 +364,7 @@ class Relevance(Evaluator):
 class Coherence(Evaluator):
     """Measures logical consistency, clarity, and structure of the response."""
     name = "coherence"
+    uses_llm_judge = True
 
     def __init__(self, threshold: float = 0.7, judge: JudgeConfig | None = None):
         super().__init__(threshold)
@@ -312,6 +389,7 @@ class Toxicity(Evaluator):
     Score 1.0 = not toxic. Score 0.0 = toxic.
     """
     name = "toxicity"
+    uses_llm_judge = True
 
     def __init__(self, threshold: float = 0.9, judge: JudgeConfig | None = None):
         super().__init__(threshold)
@@ -336,6 +414,7 @@ class Bias(Evaluator):
     Score 1.0 = no detectable bias. Score 0.0 = significant bias.
     """
     name = "bias"
+    uses_llm_judge = True
 
     def __init__(self, threshold: float = 0.8, judge: JudgeConfig | None = None):
         super().__init__(threshold)
@@ -362,6 +441,7 @@ class Summarization(Evaluator):
     Requires case.context (source document).
     """
     name = "summarization"
+    uses_llm_judge = True
 
     def __init__(self, threshold: float = 0.7, judge: JudgeConfig | None = None):
         super().__init__(threshold)
@@ -389,6 +469,7 @@ class AnswerAccuracy(Evaluator):
     Uses the judge to compare, not string matching — handles paraphrasing.
     """
     name = "answer_accuracy"
+    uses_llm_judge = True
 
     def __init__(self, threshold: float = 0.7, judge: JudgeConfig | None = None):
         super().__init__(threshold)
@@ -420,6 +501,7 @@ class ContextPrecision(Evaluator):
     Requires case.context.
     """
     name = "context_precision"
+    uses_llm_judge = True
 
     def __init__(self, threshold: float = 0.7, judge: JudgeConfig | None = None):
         super().__init__(threshold)
@@ -433,23 +515,31 @@ class ContextPrecision(Evaluator):
         judge = resolve_judge(self._judge_cfg)
         chunks = case.context if isinstance(case.context, list) else [case.context]
         results, reasons = [], []
+        unknown = 0
         for i, chunk in enumerate(chunks[:8]):
-            try:
-                answer = _call(
-                    f"Question: {case.input}\n\nContext chunk:\n{chunk}\n\n"
-                    f"Is this context chunk relevant and useful for answering the question? Answer \"Yes\" or \"No\".",
-                    judge, max_tokens=100,
-                )
-                relevant = _parse_yes_no(answer)
-                results.append(relevant)
-                preview = chunk[:60].replace("\n", " ")
-                reasons.append(f"{'✓' if relevant else '✗'} Chunk {i+1}: {preview}...")
-            except JudgeUnavailable:
-                raise
-            except Exception:
-                results.append(False)
-        score = sum(results) / len(results) if results else 0.0
-        return self._result(score, f"{sum(results)}/{len(results)} chunks relevant\n" + "\n".join(reasons))
+            answer = _call(
+                f"Question: {case.input}\n\nContext chunk:\n{chunk}\n\n"
+                f"Is this context chunk relevant and useful for answering the question? Answer \"Yes\" or \"No\".",
+                judge, max_tokens=100,
+            )
+            relevant = _parse_yes_no(answer)
+            preview = chunk[:60].replace("\n", " ")
+            if relevant is None:
+                unknown += 1
+                reasons.append(f"? Chunk {i+1}: {preview}... (unparseable judge reply — excluded from score)")
+                continue
+            results.append(relevant)
+            reasons.append(f"{'✓' if relevant else '✗'} Chunk {i+1}: {preview}...")
+        if not results:
+            raise JudgeUnavailable(
+                f"judge returned no parseable Yes/No verdict for any of "
+                f"{min(len(chunks), 8)} chunk(s)",
+                provider=judge.provider, model=judge.model,
+            )
+        header = f"{sum(results)}/{len(results)} chunks relevant"
+        if unknown:
+            header += f"; {unknown} chunk(s) UNKNOWN — excluded from score denominator"
+        return self._result(sum(results) / len(results), header + "\n" + "\n".join(reasons))
 
 
 class ContextRecall(Evaluator):
@@ -459,6 +549,7 @@ class ContextRecall(Evaluator):
     Requires both case.context and case.expected_output.
     """
     name = "context_recall"
+    uses_llm_judge = True
 
     def __init__(self, threshold: float = 0.7, judge: JudgeConfig | None = None):
         super().__init__(threshold)
@@ -493,6 +584,7 @@ class CustomRubric(Evaluator):
     The judge evaluates each with yes/no; score = pass rate.
     """
     name = "custom_rubric"
+    uses_llm_judge = True
 
     def __init__(
         self,
@@ -524,6 +616,7 @@ class GEval(Evaluator):
     (position/framing bias mitigation).
     """
     name = "g_eval"
+    uses_llm_judge = True
 
     def __init__(
         self,
@@ -640,6 +733,7 @@ class CheckEvaluator(Evaluator):
             questions=["Does it cover returns?", "Is the timeline mentioned?"],
         )
     """
+    uses_llm_judge = True
 
     def __init__(
         self,

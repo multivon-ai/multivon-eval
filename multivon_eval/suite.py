@@ -40,9 +40,16 @@ class EvalSuite:
         report = suite.run(my_model_fn, runs=5)      # multi-run, flakiness detection
     """
 
-    def __init__(self, name: str, model_id: str = ""):
+    _PURPOSES = ("", "capability", "regression")
+
+    def __init__(self, name: str, model_id: str = "", purpose: str = ""):
+        if purpose not in self._PURPOSES:
+            raise ValueError(
+                f"purpose must be one of {self._PURPOSES}, got {purpose!r}"
+            )
         self.name = name
         self.model_id = model_id
+        self.purpose = purpose
         self._cases: list[EvalCase] = []
         self._evaluators: list[Evaluator] = []
 
@@ -131,6 +138,19 @@ class EvalSuite:
         else:
             raise TypeError(f"verify_lock: unsupported argument {type(saved).__name__}")
         verify_suite_against_lock(self, lock)
+
+    def validate(self, **kwargs: "Any") -> "Any":
+        """Grade this suite's graders against reference outputs.
+
+        Never calls the model under test — each case's evaluators run
+        against ``case.reference_output`` (falling back to
+        ``expected_output``). A reference that fails its own graders is a
+        broken task or grader, not an incapable agent. See
+        :func:`multivon_eval.validate.validate_suite` for kwargs
+        (``include_judges``, ``contrast``).
+        """
+        from .validate import validate_suite
+        return validate_suite(self, **kwargs)
 
     def add_check(
         self,
@@ -352,6 +372,7 @@ class EvalSuite:
         model_fn: Callable[[str], str],
         verbose: bool = True,
         fail_threshold: float | None = None,
+        max_error_rate: float | None = None,
         workers: int | None = None,
         runs: int = 1,
         tracer: "AgentTracer | None" = None,
@@ -373,6 +394,12 @@ class EvalSuite:
             model_fn:        Callable str → str.
             verbose:         Print terminal report.
             fail_threshold:  Exit(1) in CI if pass_rate < threshold.
+            max_error_rate:  Error budget for the gate. pass_rate excludes
+                             errored cases, so it can look perfect while most
+                             cases errored; set this to make the gate raise
+                             (indeterminate) when errors/total exceeds it.
+                             Default ``None`` = warn on stderr at >= 10%
+                             errors when a fail_threshold gate is active.
             workers:         Parallel threads for cases. Default ``None`` is
                              "auto": pick ``min(8, len(cases))`` when no
                              tracer is set, else fall back to 1. Pass an
@@ -458,6 +485,7 @@ class EvalSuite:
             judge_reliability=judge_reliability,
             costs=cost_tracker.snapshot(),
             suite_lock=_safe_lock(self),
+            purpose=self.purpose,
         )
 
         if verbose:
@@ -500,7 +528,7 @@ class EvalSuite:
             report.save_junit_xml(save_junit_xml)
             print(f"  JUnit XML saved → {save_junit_xml}")
 
-        _enforce_fail_threshold(report, fail_threshold)
+        _enforce_fail_threshold(report, fail_threshold, max_error_rate)
 
         return report
 
@@ -625,7 +653,7 @@ class EvalSuite:
         from .adapters import LiteLLMAdapter
 
         # Split run_kwargs from litellm-specific kwargs (api_base, api_key, etc.)
-        _run_keys = {"verbose", "fail_threshold", "workers", "runs", "tracer", "early_stop"}
+        _run_keys = {"verbose", "fail_threshold", "max_error_rate", "workers", "runs", "tracer", "early_stop"}
         adapter_kwargs = {k: v for k, v in run_kwargs.items() if k not in _run_keys}
         suite_kwargs = {k: v for k, v in run_kwargs.items() if k in _run_keys}
 
@@ -740,6 +768,7 @@ class EvalSuite:
         traced_outputs: list[tuple[EvalCase, str]],
         verbose: bool = True,
         fail_threshold: float | None = None,
+        max_error_rate: float | None = None,
     ) -> EvalReport:
         """
         Run evaluators on pre-evaluated (case, output) pairs.
@@ -755,6 +784,7 @@ class EvalSuite:
             traced_outputs:  List of (EvalCase, output_str) pairs.
             verbose:         Print terminal report.
             fail_threshold:  Exit(1) in CI if pass_rate < threshold.
+            max_error_rate:  Error budget for the gate — see :meth:`run`.
         """
         case_results = []
         for case, output in traced_outputs:
@@ -799,12 +829,13 @@ class EvalSuite:
             case_results=case_results,
             model_id=self.model_id,
             suite_lock=_safe_lock(self),
+            purpose=self.purpose,
         )
 
         if verbose:
             print_report(report)
 
-        _enforce_fail_threshold(report, fail_threshold)
+        _enforce_fail_threshold(report, fail_threshold, max_error_rate)
 
         return report
 
@@ -1360,6 +1391,7 @@ class EvalSuite:
         model_fn: Callable[[str], Awaitable[str]],
         verbose: bool = True,
         fail_threshold: float | None = None,
+        max_error_rate: float | None = None,
         concurrency: int = 5,
         runs: int = 1,
         evaluator_concurrency: int | None = None,
@@ -1369,6 +1401,7 @@ class EvalSuite:
 
         Args:
             model_fn:               Async callable str → str.
+            max_error_rate:         Error budget for the gate — see :meth:`run`.
             concurrency:            Max concurrent cases in flight (default 5).
             runs:                   Times to run each case (default 1).
             evaluator_concurrency:  Max concurrent evaluators *per case*.
@@ -1536,42 +1569,75 @@ class EvalSuite:
             judge_reliability=judge_reliability,
             costs=cost_tracker.snapshot(),
             suite_lock=_safe_lock(self),
+            purpose=self.purpose,
         )
 
         if verbose:
             print_report(report)
 
-        _enforce_fail_threshold(report, fail_threshold)
+        _enforce_fail_threshold(report, fail_threshold, max_error_rate)
 
         return report
 
 
-def _enforce_fail_threshold(report: EvalReport, fail_threshold: "float | None") -> None:
-    """Raise :class:`EvalGateFailure` when the report misses ``fail_threshold``.
+def _enforce_fail_threshold(
+    report: EvalReport,
+    fail_threshold: "float | None",
+    max_error_rate: "float | None" = None,
+) -> None:
+    """Raise :class:`EvalGateFailure` when the report misses ``fail_threshold``
+    or blows the ``max_error_rate`` error budget.
 
-    No-op when ``fail_threshold`` is None. Shared by ``run()``,
-    ``run_on_cases()``, and ``run_async()``.
+    ``pass_rate`` excludes error cases from its denominator by design, so a
+    run with 90 judge errors and 10 passes reports pass_rate 1.0. The error
+    budget closes that blind spot: with ``max_error_rate`` set, the gate goes
+    indeterminate (raises) when ``errors / total`` exceeds it. With it unset,
+    a loud stderr warning fires at >= 10% errors (same threshold ``view
+    --dir`` already flags) whenever a ``fail_threshold`` gate is active.
+
+    No-op when both are None. Shared by ``run()``, ``run_on_cases()``, and
+    ``run_async()``.
     """
+    if fail_threshold is not None and report.evaluated == 0 and report.errors > 0:
+        # Every case errored out before quality could be assessed.
+        # Don't pretend it's a pass-rate problem — surface the first
+        # underlying error so the user fixes the setup, not the model.
+        first_err = next(
+            (cr for cr in report.case_results if cr.status in ERROR_STATUSES),
+            None,
+        )
+        detail = (
+            (first_err.judge_error or first_err.model_error
+             or first_err.evaluator_error or "(no detail)")
+            if first_err else "(no detail)"
+        )
+        raise EvalGateFailure(
+            f"\nEval blocked: all {report.errors} case(s) errored before quality scoring. "
+            f"First error:\n  {detail}",
+            pass_rate=report.pass_rate,
+            threshold=fail_threshold,
+        )
+    if max_error_rate is not None and report.error_rate > max_error_rate:
+        kinds = ", ".join(f"{k}={v}" for k, v in sorted(report.errors_by_kind.items()))
+        raise EvalGateFailure(
+            f"\nEval gate INDETERMINATE: error rate {report.error_rate:.1%} exceeds "
+            f"error budget {max_error_rate:.1%} — {report.errors} of {report.total} "
+            f"case(s) errored before quality could be scored ({kinds}). "
+            f"pass_rate {report.pass_rate:.1%} covers only the {report.evaluated} "
+            f"evaluated case(s); fix the errors before trusting this gate.",
+            pass_rate=report.pass_rate,
+            threshold=fail_threshold,
+        )
     if fail_threshold is not None:
-        if report.evaluated == 0 and report.errors > 0:
-            # Every case errored out before quality could be assessed.
-            # Don't pretend it's a pass-rate problem — surface the first
-            # underlying error so the user fixes the setup, not the model.
-            first_err = next(
-                (cr for cr in report.case_results if cr.status in ERROR_STATUSES),
-                None,
+        if max_error_rate is None and report.error_rate >= 0.10:
+            import sys as _sys
+            _sys.stderr.write(
+                f"\n  ⚠ error budget: {report.errors}/{report.total} case(s) "
+                f"({report.error_rate:.0%}) errored — pass_rate excludes them, so the "
+                f"gate below may be unreliable. Pass max_error_rate= to enforce an "
+                f"error budget.\n\n"
             )
-            detail = (
-                (first_err.judge_error or first_err.model_error
-                 or first_err.evaluator_error or "(no detail)")
-                if first_err else "(no detail)"
-            )
-            raise EvalGateFailure(
-                f"\nEval blocked: all {report.errors} case(s) errored before quality scoring. "
-                f"First error:\n  {detail}",
-                pass_rate=report.pass_rate,
-                threshold=fail_threshold,
-            )
+            _sys.stderr.flush()
         if report.pass_rate < fail_threshold:
             raise EvalGateFailure(
                 f"\nEval failed: pass rate {report.pass_rate:.1%} < threshold {fail_threshold:.1%}",
@@ -1726,7 +1792,10 @@ def _measure_judge_reliability(
         return None
 
     import random as _rand
-    sample_size = min(judge_cfg.reliability_sample, len(case_results))
+    # The global config may be unresolved (None-sentinel fields) — fall back
+    # to the resolved default sample size.
+    reliability_sample = judge_cfg.reliability_sample if judge_cfg.reliability_sample is not None else 5
+    sample_size = min(reliability_sample, len(case_results))
     sample_indices = _rand.sample(range(len(case_results)), sample_size)
 
     agreements: list[bool] = []

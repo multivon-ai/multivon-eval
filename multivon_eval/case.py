@@ -1,6 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Callable
 
 
 @dataclass
@@ -34,6 +34,12 @@ class EvalCase:
         expected_tool_calls:  Ordered list of tool names the agent should call.
         metadata:             Arbitrary key-value data (e.g. source_id, difficulty).
         tags:                 Labels for filtering reports.
+        reference_output:     Known-good output used ONLY by ``multivon-eval
+                              validate`` to grade the graders (falls back to
+                              expected_output). May be a callable invoked at
+                              validate time. Deliberately EXCLUDED from the
+                              suite lockfile's cases_hash so adding it never
+                              invalidates historical locks.
     """
     input: str
     expected_output: str | None = None
@@ -43,6 +49,7 @@ class EvalCase:
     expected_tool_calls: list[str] | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
     tags: list[str] = field(default_factory=list)
+    reference_output: str | Callable[["EvalCase"], str] | None = None
 
     def context_str(self) -> str:
         if self.context is None:

@@ -84,6 +84,8 @@ class ReportEntry:
     flaky: int
     total_cost: Optional[float]
     mtime: float
+    pass_hat_k: Optional[float] = None  # absent in pre-pass^k reports
+    saturated: bool = False  # absent in pre-saturation-monitor reports
 
     @property
     def stem(self) -> str:
@@ -112,6 +114,12 @@ def _entry_from_dict(idx: int, path: Path, base_dir: Path, data: dict) -> Report
         ci_low, ci_high = 0.0, 0.0
     costs = summary.get("costs") or {}
     total_cost = costs.get("total_cost_usd") if isinstance(costs, dict) else None
+    phk = summary.get("pass_hat_k")
+    pass_hat_k: Optional[float]
+    try:
+        pass_hat_k = float(phk["value"]) if isinstance(phk, dict) and phk.get("value") is not None else None
+    except (TypeError, ValueError):
+        pass_hat_k = None
     return ReportEntry(
         idx=idx,
         path=path,
@@ -127,6 +135,8 @@ def _entry_from_dict(idx: int, path: Path, base_dir: Path, data: dict) -> Report
         flaky=int(summary.get("flaky_count") or 0),
         total_cost=total_cost,
         mtime=path.stat().st_mtime,
+        pass_hat_k=pass_hat_k,
+        saturated=bool(summary.get("saturated") or False),
     )
 
 
@@ -290,7 +300,13 @@ def render_index(
             badges.append(f'<span class="{cls}" title="{title}">err {e.errors}</span>')
         if e.flaky:
             badges.append(f'<span class="badge flaky">flaky {e.flaky}</span>')
+        if e.saturated:
+            badges.append(
+                '<span class="badge flaky" title="all evaluated cases passed — '
+                'this suite can no longer detect improvement">saturated</span>'
+            )
         badge_html = " ".join(badges)
+        phk_cell = _DIM_DASH if e.pass_hat_k is None else f"{e.pass_hat_k:.0%}"
         cost = "—" if e.total_cost is None else f"${e.total_cost:.4f}"
         # Per-row diff control: pick a baseline from the dropdown, jump to DIFF.
         diff_ctl = (
@@ -308,6 +324,7 @@ def render_index(
             f'<td class="dim">{_rel_time(e.mtime, now)}</td>'
             f'<td class="r num">{e.n_cases}</td>'
             f'<td class="num">{pr}{_ci_bar(e)}</td>'
+            f'<td class="r num">{phk_cell}</td>'
             f'<td>{badge_html}</td>'
             f'<td class="r num">{cost}</td>'
             f'<td>{diff_ctl}</td>'
@@ -323,6 +340,7 @@ def render_index(
             f'<th>{_sort_header("when", "when", sort, direction)}</th>'
             f'<th class="r">{_sort_header("n", "n", sort, direction)}</th>'
             f'<th>{_sort_header("pass_rate", "pass_rate", sort, direction)}</th>'
+            '<th class="r">pass^k</th>'
             "<th>flags</th>"
             f'<th class="r">{_sort_header("cost", "cost", sort, direction)}</th>'
             "<th></th></tr>"

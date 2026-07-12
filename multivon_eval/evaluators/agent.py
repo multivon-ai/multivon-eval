@@ -147,6 +147,7 @@ class ToolArgumentAccuracy(Evaluator):
     Requires case.agent_trace.
     """
     name = "tool_argument_accuracy"
+    uses_llm_judge = True
 
     def __init__(self, threshold: float = 0.7):
         super().__init__(threshold)
@@ -174,15 +175,20 @@ class ToolArgumentAccuracy(Evaluator):
             try:
                 answer = _judge_call(prompt, max_tokens=10)
                 good = _parse_yes_no(answer)
-                results.append(good)
-                reasons.append(f"{'✓' if good else '✗'} {tc.name}({args_str[:60]})")
+                if good is None:
+                    reasons.append(f"? {tc.name}({args_str[:60]}) (unparseable judge reply — excluded from score)")
+                else:
+                    results.append(good)
+                    reasons.append(f"{'✓' if good else '✗'} {tc.name}({args_str[:60]})")
             except JudgeUnavailable:
                 raise
             except Exception as e:
                 results.append(False)
                 reasons.append(f"✗ {tc.name} (error: {e})")
 
-        score = sum(results) / len(results) if results else 0.0
+        if not results:
+            raise JudgeUnavailable("judge returned no parseable Yes/No verdict for any tool call")
+        score = sum(results) / len(results)
         return self._result(score, "\n".join(reasons))
 
 
@@ -193,6 +199,7 @@ class PlanQuality(Evaluator):
     Requires case.agent_trace.
     """
     name = "plan_quality"
+    uses_llm_judge = True
 
     def __init__(self, threshold: float = 0.7, judge: JudgeConfig | None = None):
         super().__init__(threshold)
@@ -222,6 +229,7 @@ class TaskCompletion(Evaluator):
     Assesses the final output against the task goal — not just the process.
     """
     name = "task_completion"
+    uses_llm_judge = True
 
     def __init__(self, threshold: float = 0.7, judge: JudgeConfig | None = None):
         super().__init__(threshold)
@@ -253,6 +261,7 @@ class ToolCallNecessity(Evaluator):
     Requires case.agent_trace.
     """
     name = "tool_call_necessity"
+    uses_llm_judge = True
 
     def __init__(self, threshold: float = 0.7):
         super().__init__(threshold)
@@ -290,8 +299,11 @@ class ToolCallNecessity(Evaluator):
             try:
                 answer = _judge_call(prompt, max_tokens=10)
                 needed = _parse_yes_no(answer)
-                results.append(needed)
-                reasons.append(f"{'✓' if needed else '✗ redundant'} {tc.name}({args_str[:50]})")
+                if needed is None:
+                    reasons.append(f"? {tc.name}({args_str[:50]}) (unparseable judge reply — excluded from score)")
+                else:
+                    results.append(needed)
+                    reasons.append(f"{'✓' if needed else '✗ redundant'} {tc.name}({args_str[:50]})")
             except JudgeUnavailable:
                 raise
             except Exception as e:
@@ -299,7 +311,9 @@ class ToolCallNecessity(Evaluator):
                 reasons.append(f"? {tc.name} (error: {e})")
             prior_calls.append(tc)
 
-        score = sum(results) / len(results) if results else 1.0
+        if not results:
+            raise JudgeUnavailable("judge returned no parseable Yes/No verdict for any tool call")
+        score = sum(results) / len(results)
         return self._result(score, "\n".join(reasons))
 
 
@@ -313,6 +327,7 @@ class TrajectoryEfficiency(Evaluator):
     Requires case.agent_trace.
     """
     name = "trajectory_efficiency"
+    uses_llm_judge = True
 
     def __init__(self, threshold: float = 0.7, judge: JudgeConfig | None = None):
         super().__init__(threshold)
@@ -360,7 +375,12 @@ class TrajectoryEfficiency(Evaluator):
                 # `judge=` is honored consistently across both scoring paths.
                 answer = _judge_call_with(recovery_prompt, judge, max_tokens=10)
                 recovered = _parse_yes_no(answer)
-                if not recovered:
+                if recovered is None:
+                    reasons.append(
+                        f"? Unparseable recovery verdict for {len(failed_tools)} "
+                        f"tool failure(s) — no score adjustment"
+                    )
+                elif not recovered:
                     score = max(0.0, score - 0.2)
                     reasons.append(f"✗ Did not recover well from {len(failed_tools)} tool failure(s)")
                 else:
@@ -390,6 +410,7 @@ class AgentMemoryEval(Evaluator):
       - case.expected_output (optional): expected recalled information
     """
     name = "agent_memory"
+    uses_llm_judge = True
 
     def __init__(self, threshold: float = 0.7, judge: JudgeConfig | None = None):
         super().__init__(threshold)
@@ -426,6 +447,7 @@ class StepFaithfulness(Evaluator):
     Requires case.agent_trace.
     """
     name = "step_faithfulness"
+    uses_llm_judge = True
 
     def __init__(self, threshold: float = 0.7):
         super().__init__(threshold)
@@ -449,14 +471,19 @@ class StepFaithfulness(Evaluator):
             try:
                 answer = _judge_call(prompt, max_tokens=10)
                 faithful = _parse_yes_no(answer)
-                results.append(faithful)
                 thought_preview = step.thought[:60] if step.thought else "(no thought)"
-                reasons.append(f"{'✓' if faithful else '✗'} Step {i}: {thought_preview}")
+                if faithful is None:
+                    reasons.append(f"? Step {i}: {thought_preview} (unparseable judge reply — excluded from score)")
+                else:
+                    results.append(faithful)
+                    reasons.append(f"{'✓' if faithful else '✗'} Step {i}: {thought_preview}")
             except JudgeUnavailable:
                 raise
             except Exception as e:
                 results.append(False)
                 reasons.append(f"✗ Step {i} (error: {e})")
 
-        score = sum(results) / len(results) if results else 0.0
+        if not results:
+            raise JudgeUnavailable("judge returned no parseable Yes/No verdict for any step")
+        score = sum(results) / len(results)
         return self._result(score, f"{sum(results)}/{len(results)} steps faithful\n" + "\n".join(reasons))

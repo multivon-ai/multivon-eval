@@ -274,6 +274,7 @@ class VQAFaithfulness(Evaluator):
     """
 
     name = "vqa_faithfulness"
+    uses_llm_judge = True
 
     def __init__(self, threshold: float | None = None, judge: JudgeConfig | None = None):
         self._explicit_threshold = threshold
@@ -365,6 +366,7 @@ class DocumentGrounding(Evaluator):
     """
 
     name = "document_grounding"
+    uses_llm_judge = True
 
     def __init__(self, threshold: float | None = None, judge: JudgeConfig | None = None):
         self._explicit_threshold = threshold

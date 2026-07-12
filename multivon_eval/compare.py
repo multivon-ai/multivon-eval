@@ -20,10 +20,13 @@ import json
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional, Union
+from typing import Optional, Union, TYPE_CHECKING
 
 from .experiments import mcnemar_test
 from .result import CaseResult, EvalReport, EvalStatus
+
+if TYPE_CHECKING:
+    from .passk import PassKResult
 
 
 _IMPROVED = "improved"
@@ -88,6 +91,10 @@ class ReportDiff:
     added: list[CaseResult] = field(default_factory=list)
     removed: list[CaseResult] = field(default_factory=list)
     mcnemar_p: Optional[float] = None
+    # Populated only when BOTH reports were multi-run. Displayed values-only:
+    # McNemar stays the sole significance test (over paired pass/fail).
+    baseline_pass_hat_k: "Optional[PassKResult]" = None
+    proposal_pass_hat_k: "Optional[PassKResult]" = None
 
     @property
     def pass_rate_delta(self) -> float:
@@ -188,6 +195,14 @@ class ReportDiff:
             f"Flaky:        {self.baseline_flaky} -> {self.proposal_flaky}  "
             f"({_sign_i(self.flaky_delta)})"
         )
+        b_phk, p_phk = self.baseline_pass_hat_k, self.proposal_pass_hat_k
+        if (b_phk is not None and p_phk is not None
+                and b_phk.value is not None and p_phk.value is not None):
+            lines.append(
+                f"pass^{b_phk.k}:       "
+                f"{b_phk.value:.3f} [{b_phk.ci_low:.3f}, {b_phk.ci_high:.3f}] -> "
+                f"{p_phk.value:.3f} [{p_phk.ci_low:.3f}, {p_phk.ci_high:.3f}]"
+            )
         if self.added or self.removed:
             lines.append("")
             if self.added:
@@ -387,6 +402,14 @@ def compare_reports(baseline: EvalReport, proposal: EvalReport) -> ReportDiff:
     else:
         mcnemar_p = None
 
+    # pass^k side-by-side (values only) when both runs were multi-run.
+    # k = the largest k both reports can support without extrapolating.
+    baseline_phk = proposal_phk = None
+    if baseline.runs_per_case > 1 and proposal.runs_per_case > 1:
+        k = min(baseline.runs_per_case, proposal.runs_per_case)
+        baseline_phk = baseline.pass_hat_k(k)
+        proposal_phk = proposal.pass_hat_k(k)
+
     return ReportDiff(
         baseline_name=baseline.suite_name or "baseline",
         proposal_name=proposal.suite_name or "proposal",
@@ -402,6 +425,8 @@ def compare_reports(baseline: EvalReport, proposal: EvalReport) -> ReportDiff:
         added=added,
         removed=removed,
         mcnemar_p=mcnemar_p,
+        baseline_pass_hat_k=baseline_phk,
+        proposal_pass_hat_k=proposal_phk,
     )
 
 

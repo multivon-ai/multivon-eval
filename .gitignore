@@ -20,3 +20,28 @@ check_eval_results.json
 rag_eval_results.json
 rag_eval_results.csv
 *.py,cover
+.coverage
+cov.json
+cov_*.json
+coverage*.json
+notebooks/report.*
+
+# Local analysis artifacts (agent-tooling residue) — never commit
+SECURITY_ANALYSIS_*.json
+SECURITY_*.json
+security_*.json
+gen_security_*.py
+generate_security_report.py
+security_report_gen.py
+
+# Node tooling pulled in by local agent frameworks — this is a Python repo
+node_modules/
+package.json
+package-lock.json
+
+# Agent-swarm / MCP local state
+ruvector.db
+.claude-flow/
+.swarm/
+.mcp.json
+.claude/

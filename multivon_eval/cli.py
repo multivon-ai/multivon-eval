@@ -75,6 +75,60 @@ def cmd_run(args):
         os.environ.pop("MULTIVON_JSON_OUTPUT", None)
 
 
+def cmd_validate(args) -> int:
+    """Grade your graders: run every case's evaluators against its
+    reference output. Never calls the model under test — the eval file is
+    executed with a non-``__main__`` run name, so keep ``suite.run(...)``
+    under ``if __name__ == "__main__":`` and only the suite definition runs.
+    """
+    import runpy
+    from .suite import EvalSuite
+    from .validate import validate_suite
+    from .reporters.terminal import print_validation
+
+    try:
+        ns = runpy.run_path(args.file, run_name="multivon_eval_validate")
+    except Exception as exc:
+        print(f"error: could not execute {args.file}: {exc}", file=sys.stderr)
+        return 2
+
+    suites: list[EvalSuite] = []
+    seen: set[int] = set()
+    for value in ns.values():
+        if isinstance(value, EvalSuite) and id(value) not in seen:
+            seen.add(id(value))
+            suites.append(value)
+    if not suites:
+        print(
+            f"error: no EvalSuite found at module level in {args.file}.\n"
+            f"Define the suite at the top level and guard model runs with "
+            f'if __name__ == "__main__":',
+            file=sys.stderr,
+        )
+        return 2
+
+    reports = [
+        validate_suite(s, include_judges=args.judges, contrast=not args.no_contrast)
+        for s in suites
+    ]
+    for report in reports:
+        print_validation(report)
+
+    if args.json:
+        payload = (
+            reports[0].to_dict() if len(reports) == 1
+            else [r.to_dict() for r in reports]
+        )
+        out = Path(args.json)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        print(f"  JSON validation report saved → {args.json}")
+
+    # UNVALIDATABLE / NO_DISCRIMINATION are warnings, not failures — only a
+    # broken task/grader flips CI red.
+    return 1 if any(not r.passed for r in reports) else 0
+
+
 def cmd_report(args):
     from rich.console import Console
     from rich.table import Table
@@ -836,6 +890,25 @@ def main():
     run_p.add_argument("--html", metavar="PATH", help="Save HTML report to PATH")
     run_p.add_argument("--json", metavar="PATH", help="Save JSON report to PATH")
 
+    # validate — grade your graders (reference-only, never calls the model)
+    validate_p = sub.add_parser(
+        "validate",
+        help="Grade your graders: run every case's graders against its "
+             "reference output",
+    )
+    validate_p.add_argument("file", help="Python eval file defining the suite")
+    validate_p.add_argument(
+        "--judges", action="store_true",
+        help="Also run LLM-judge evaluators against references "
+             "(costs money; spend is printed)",
+    )
+    validate_p.add_argument(
+        "--no-contrast", action="store_true",
+        help="Skip the contrast-twin discrimination check",
+    )
+    validate_p.add_argument("--json", metavar="PATH",
+                            help="Save the validation report as JSON to PATH")
+
     # report
     report_p = sub.add_parser("report", help="Display a saved JSON report")
     report_p.add_argument("file", help="JSON results file")
@@ -1306,6 +1379,8 @@ def _dispatch(args, parser) -> None:
         sys.exit(cmd_init(args))
     elif args.command == "run":
         cmd_run(args)
+    elif args.command == "validate":
+        sys.exit(cmd_validate(args))
     elif args.command == "report":
         cmd_report(args)
     elif args.command == "view":
