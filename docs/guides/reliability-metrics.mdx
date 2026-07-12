@@ -1,14 +1,14 @@
 ---
 title: "pass@k and pass^k"
-description: Capability vs consistency from the same multi-run data — unbiased estimators, cluster-bootstrap CIs, and a CI-lower-bound gate.
+description: Capability vs reliability from the same multi-run data — unbiased estimators, cluster-bootstrap CIs, and a CI-lower-bound gate.
 ---
 
-New in 0.16.0. A single pass rate hides a distinction that matters in production: a task your agent solves *sometimes* and a task it solves *every time* both contribute the same way to `pass_rate`. Two metrics, computed from the `--runs N` data you already have, pull them apart — the framing follows [Anthropic's guidance on agent evals](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents):
+New in 0.16.0 (unreleased — on main). A single pass rate hides a distinction that matters in production: a task your agent solves *sometimes* and a task it solves *every time* both contribute the same way to `pass_rate`. Two metrics, computed from the `--runs N` data you already have, pull them apart — the framing follows [Anthropic's guidance on agent evals](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents):
 
 | Metric | Question it answers | What it measures |
 |--------|--------------------|------------------|
 | **pass@k** | "Does at least one of k trials succeed?" | Capability — can the agent do it at all |
-| **pass^k** | "Do all k trials succeed?" | Consistency — what a user hitting this feature k times experiences |
+| **pass^k** | "Do all k trials succeed?" | Reliability — what a user hitting this feature k times experiences |
 
 A demo selects for pass@k. A production SLA is pass^k. The gap between them is your flakiness, quantified.
 

@@ -43,6 +43,9 @@ Track of what's shipped + what's coming. Updated when a feature lands or moves b
 - [x] Cohen's h effect size in experiment comparison
 - [x] Judge calibration vs human labels (`suite.calibrate()`)
 - [x] Judge reliability check (`JudgeConfig(reliability_check=True)`)
+- [x] pass@k / pass^k reliability metrics — `report.pass_at_k(k)` / `report.pass_hat_k(k)` / `assert_pass_hat_k(k, min_ci_low)` with cluster-bootstrap CIs and honest UNKNOWN (0.16.0, on main — unreleased)
+- [x] Saturation monitor + suite purpose — `report.saturated` / `min_detectable_regression`, `EvalSuite(purpose=...)` (0.16.0, on main — unreleased)
+- [x] Judge UNKNOWN parsing — hedged judge verdicts parse as UNKNOWN, excluded from the QAG denominator and disclosed (0.16.0, on main — unreleased)
 
 ### Operations & integrations
 
@@ -57,6 +60,8 @@ Track of what's shipped + what's coming. Updated when a feature lands or moves b
 - [x] Pytest plugin — `assert_evaluators()` + `pytest11` entry point + `multivon_costs` fixture (since 0.6.0; the `@eval_case` decorator form is still in flight below)
 - [x] `LiteLLMAdapter` — Azure, Bedrock, Vertex AI, 100+ providers via one interface (since 0.6.0; `pip install "multivon-eval[litellm]"`)
 - [x] Agent simulation — `multivon-eval simulate`, persona-driven adaptive multi-turn eval with the "simulated personas" honesty contract (0.12.0)
+- [x] `multivon-eval validate` + `EvalCase.reference_output` — grade the graders against reference outputs before blaming the model (0.16.0, on main — unreleased)
+- [x] `max_error_rate` error budget — gate runs on infrastructure error rate, not just pass rate (0.16.0, on main — unreleased)
 
 ## In flight (not yet shipped)
 

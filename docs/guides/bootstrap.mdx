@@ -231,7 +231,7 @@ print(f"artifacts: {result.artifacts}")
 ## See also
 
 - [Intelligent eval primitives](/guides/intelligent-eval) — full reference for the three primitives the bootstrap composes (`auto_evaluators`, `generate_adversarial_cases`, `validate_adversarial_cases`). Use these directly when you want fine-grained control or want to compose them into your own pipeline.
-- [Synthetic data generation](/guides/synthetic-data) — the higher-level `generate_from_file` / `generate_from_text` helpers, when you want generation without targeting a specific failure mode.
+- [Generate eval cases](/guides/generate) — the higher-level `generate_from_file` / `generate_from_text` helpers, when you want generation without targeting a specific failure mode.
 - [Prompt-drift staleness](/guides/staleness) — the drift report that consumes the `prompt_baseline.json` and provenance stamps bootstrap writes.
 - [Quickstart](/quickstart) — the manual path: write `EvalCase` objects directly.
 - [/eval-bootstrap Claude Code skill](/skills/eval-bootstrap) — the auto-invoking wrapper around this CLI for Claude Code users. Install with `multivon-eval install-skills`.

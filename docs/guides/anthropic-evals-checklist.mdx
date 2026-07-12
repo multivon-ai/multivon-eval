@@ -23,7 +23,7 @@ New warning and report copy uses the post's terms ("40/40 trials passed", "broke
 
 | Recommendation | What executes it | Since |
 |----------------|------------------|-------|
-| Write reference solutions; 0% pass means a broken task, not a bad agent | [`multivon-eval validate`](/guides/validate) — runs every task's graders against its reference output, never calls the model; `report.zero_pass_cases` flags all-trials-failed suspects in every run | 0.16.0 |
+| Write reference solutions; 0% pass means a broken task, not a bad agent | [`multivon-eval validate`](/guides/validate) — runs every task's graders against its reference output, never calls the model; `report.zero_pass_cases` flags all-trials-failed suspects in every run | 0.16.0 (unreleased — on main) |
 | Measure pass@k *and* pass^k under non-determinism | `suite.run(fn, runs=N)` + [`report.pass_at_k(k)` / `report.pass_hat_k(k)`](/guides/reliability-metrics) — unbiased estimators, cluster-bootstrap CIs, `assert_pass_hat_k` gate | 0.16.0 |
 | Graduate saturated capability evals | [Saturation monitor](/guides/statistical-rigor#what-a-100-pass-rate-actually-tells-you) — `report.saturated`, `report.min_detectable_regression`, `EvalSuite(purpose="regression")` | 0.16.0 |
 | Give the judge an "Unknown" way out | [UNKNOWN verdicts](/evaluators/llm-judge#unknown-verdicts) — hedged judge replies excluded from the score denominator and disclosed, never coerced to yes; the [`max_error_rate`](/evaluators/llm-judge#error-budget-max_error_rate) budget keeps judge outages from gating green | 0.16.0 |
@@ -31,4 +31,4 @@ New warning and report copy uses the post's terms ("40/40 trials passed", "broke
 | Use isolated per-dimension judges, not one 1–10 rating | [QAG evaluators](/evaluators/llm-judge) — binary questions per dimension, auditable down to each verdict | shipped |
 | Calibrate the judge against human labels | [`suite.calibrate()`](/guides/statistical-rigor#judge-calibration) + per-(judge × evaluator) calibrated thresholds with provenance | shipped |
 
-The three 0.16.0 features protect the places where evals lie most confidently: the 0% floor (`validate`), the 100% ceiling (saturation monitor), and the single-number middle (pass@k vs pass^k).
+The four 0.16.0 features protect the places where evals lie most confidently: the 0% floor (`validate`), the 100% ceiling (saturation monitor), the single-number middle (pass@k vs pass^k), and the coerced verdict (the judge-UNKNOWN row — hedged judge verdicts parse as UNKNOWN, never as a silent yes).

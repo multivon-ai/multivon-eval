@@ -473,7 +473,7 @@ What ships by default in every report:
 - **Power warning** when your test set is too small to detect the shift you care about
 - **`runs_needed(delta=0.10)` + `min_detectable_effect(n=50)`** for sample-size sizing
 - **Benjamini-Hochberg correction** auto-applied in `exp.compare()` for multi-evaluator runs
-- **Judge calibration** — `suite.calibrate(labeled_pairs)` reports F1 vs human labels per evaluator. Shipped calibration table in [`_calibration_data/v2.json`](multivon_eval/_calibration_data/v2.json) with per-(judge × evaluator) thresholds (F1 0.66–1.00 range)
+- **Judge calibration** — `suite.calibrate(labeled_pairs)` reports F1 vs human labels per evaluator. Shipped calibration table in [`_calibration_data/v2.json`](multivon_eval/_calibration_data/v2.json) with per-(judge × evaluator) thresholds (F1 0.58–1.00 range)
 - **Judge reliability check** — `JudgeConfig(reliability_check=True)` flags non-determinism in the judge itself
 
 **Full reference:** [docs.multivon.ai/guides/statistical-rigor](https://docs.multivon.ai/guides/statistical-rigor).
@@ -597,7 +597,7 @@ pytest tests/ -v
 
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md) for the full shipped + in-flight list. The headline open items: LlamaIndex / CrewAI tracers, LiteLLM adapter, tiered cost optimizer. File an issue if you want one prioritized.
+See [ROADMAP.md](ROADMAP.md) for the full shipped + in-flight list. The headline open items: LlamaIndex / CrewAI tracers, `@eval_case` pytest decorator, multi-LLM bootstrap consultation, tiered cost optimizer. File an issue if you want one prioritized.
 
 ---
 

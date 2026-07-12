@@ -3,7 +3,7 @@ title: "Validate: Grade Your Graders"
 description: Run every task's graders against a known-good reference output. A reference that fails its own graders indicts the eval, not the agent.
 ---
 
-New in 0.16.0. Every eval framework helps you grade your agent; `multivon-eval validate` also grades your eval. [Anthropic's guidance](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents) is blunt about why: a 0% pass rate usually means a broken task or a miscalibrated grader, not an incapable agent. When the CORE-Bench authors ran their own reference solutions through their own harness, only 42% passed — fixing the tasks and graders took it to 95% without touching any model.
+New in 0.16.0 (unreleased — on main). Every eval framework helps you grade your agent; `multivon-eval validate` also grades your eval. [Anthropic's guidance](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents) is blunt about why: a 0% pass rate usually means a broken task or a miscalibrated grader, not an incapable agent. When the CORE-Bench authors ran their own reference solutions through their own harness, only 42% passed — fixing the tasks and graders took it to 95% without touching any model.
 
 The mechanism is the same as a reference solution in a coding benchmark: for every task that carries a known-good output, run the suite's graders against **that output**. If the known-good answer fails, the task is unsolvable or the grader is miscalibrated — either way, the agent is innocent.
 

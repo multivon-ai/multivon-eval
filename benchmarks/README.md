@@ -49,7 +49,7 @@ All CIs above are bootstrap-1000 on F1 with stable RNG seed (see `benchmarks/_ad
 
 **Ground truth:** Human labels (1 = hallucinated, 0 = faithful). Balanced 50/50.
 
-> **In-distribution caveat:** the multivon-eval Hallucination threshold was calibrated against this same HaluEval-QA-100 split (`dataset_hash: halueval-qa-2024-100c` in `_calibration_data/v2.json`). The F1 below is best read as a calibrated-default sanity check, not an out-of-distribution generalization claim. For the held-out figure on HaluEval-Sum, see Benchmark 3.
+> **In-distribution caveat:** the multivon-eval Hallucination threshold was calibrated against this same HaluEval-QA-100 split (`dataset_hash: halueval-qa-2024-100c` in `_calibration_data/v2.json`). The F1 below is best read as a calibrated-default sanity check, not an out-of-distribution generalization claim. For the held-out figure on HaluEval-Sum, see Benchmark 4.
 
 | Evaluator | Judge model | Precision | Recall | F1 (95% bootstrap CI) | Avg latency |
 |-----------|-------------|-----------|--------|-----------------------|-------------|
@@ -171,7 +171,7 @@ print(calibrated_threshold("hallucination", resolve_judge(None)))  # 0.55
 
 **Historical footnote (what 0.9.7 fixed):** before 0.9.7, a bare `Hallucination()` really did evaluate at the init default 0.7, which produced F1 0.852 [0.73–0.94] on this same data. That figure is not held-out — it was the accident of an uncalibrated threshold — and it stays here only as the record of the correction. The defensible cross-distribution F1 is 0.830 [0.70–0.92], **at the calibrated threshold**.
 
-**What this discharges — for real this time:** the contamination criticism on the cross-distribution claim. The Hallucination evaluator was tuned on QA-style short-context cases (Wikipedia-sourced, single-hop QA). We applied that exact evaluator with its calibrated threshold (no re-tuning) to long-context summarization cases. F1 = 0.830, slightly higher than the in-distribution F1 = 0.812 on HaluEval-QA. The threshold generalizes across task families inside HaluEval.
+**What this discharges — for real this time:** the contamination criticism on the cross-distribution claim. The Hallucination evaluator was tuned on QA-style short-context cases (Wikipedia-sourced, single-hop QA). We applied that exact evaluator with its calibrated threshold (no re-tuning) to long-context summarization cases. F1 = 0.830, slightly higher than the in-distribution F1 = 0.804 (0.812 sweep-best, Benchmark 6) on HaluEval-QA. The threshold generalizes across task families inside HaluEval.
 
 **What it still doesn't discharge:** non-HaluEval corpora (TruthfulQA, FaithBench, RAGTruth) and non-Haiku judges on the same cross-distribution test. Both HaluEval-Sum and HaluEval-QA build on CNN/DailyMail-adjacent source documents — there's shared corpus structure across the two splits. The cross-corpus held-out evaluation is on the [public roadmap](https://multivon.ai/roadmap), targeting launch + 2 weeks. The repository will publish the held-out F1 next to the in-distribution F1 once that lands; we won't retire either number.
 

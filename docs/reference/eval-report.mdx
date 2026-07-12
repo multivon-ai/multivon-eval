@@ -29,7 +29,8 @@ for case in report.failed_cases:         # CaseResult objects
 | `failed` | `int` | Cases where at least one evaluator failed. |
 | `errors` | `int` | Cases that errored before scoring (model or judge crash). |
 | `skipped` | `int` | Cases skipped because the case shape didn't fit. |
-| `pass_rate` | `float` | `passed / total` as a fraction. |
+| `pass_rate` | `float` | `passed / evaluated` — errors and skips excluded; read with `error_rate`. |
+| `error_rate` | `float` | `errors / total` — fraction of all cases that errored; the metric `pass_rate` is blind to by design, so read the two together. |
 | `pass_rate_ci(confidence=0.95)` | `tuple[float, float]` | Wilson CI on the pass rate. |
 | `avg_score` | `float` | Mean score across all cases. |
 | `avg_score_ci(confidence=0.95)` | `tuple[float, float]` | CI on the mean score. |
@@ -45,6 +46,13 @@ for case in report.failed_cases:         # CaseResult objects
 | `scores_by_tag()` | `dict[str,float]` | Average score per tag. |
 | `count_by_tag()` | `dict[str,int]` | Case count per tag. |
 | `costs` | `Costs` | Token / call / USD totals. See below. |
+| `pass_at_k(k, confidence=0.95)` | `PassKResult` | pass@k over evaluated cases — "succeeds at least once in k tries". Unbiased combinatorial estimator with a cluster-bootstrap CI; honest UNKNOWN (`value is None`) when `k > runs_per_case`. |
+| `pass_hat_k(k, confidence=0.95)` | `PassKResult` | pass^k over evaluated cases — "succeeds all k tries". Exact hypergeometric estimator (not the upward-biased plug-in) with a cluster-bootstrap CI; UNKNOWN when `k > runs_per_case`. |
+| `assert_pass_hat_k(k, min_ci_low)` | `None` | Raise `EvalGateFailure` when the pass^k CI lower bound falls below `min_ci_low` — or when pass^k is UNKNOWN. CI-friendly gate. |
+| `lottery_cases(k=None)` | `list[CaseResult]` | Cases driving the pass@k / pass^k gap — pass sometimes but never reliably — largest divergence first. `k` defaults to `runs_per_case`. |
+| `zero_pass_cases` | `list[CaseResult]` | Cases that failed every trial — broken-task/grader suspects worth checking with `multivon-eval validate`. |
+| `saturated` | `bool` | True when every evaluated case passed — the suite can no longer detect improvement. |
+| `min_detectable_regression` | `float` | Smallest pass-rate drop the suite can detect at 80% power; 1.0 when nothing evaluated. |
 | `flaky_count` | `int` | Cases where multiple runs disagreed. Requires `runs > 1`. |
 | `stability_score` | `float` | 1.0 when no flakiness; lower when cases disagreed across runs. |
 | `judge_reliability` | `float \| None` | Judge agreement rate when `JudgeConfig.reliability_check` is enabled. |

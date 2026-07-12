@@ -85,7 +85,7 @@ Same suite, sequential, with `set_cache(JudgeCache(...))`:
 | Rep 1 (cold) | 2.9 s | 4 |
 | Rep 2 (hot)  | 0 ms | 0 |
 
-Speedup: **2,271×**. CI re-runs (same git SHA + same dataset) converge to zero LLM calls. `set_cache()` auto-enables caching for every JudgeConfig — no need to thread `cache=True` through every evaluator.
+Speedup: **2,271×** — read that as paid API calls vs local cache hits (4 → 0), expected by construction, not a model-quality claim. CI re-runs (same git SHA + same dataset) converge to zero LLM calls. `set_cache()` auto-enables caching for every JudgeConfig — no need to thread `cache=True` through every evaluator.
 
 ## Where competitors lead
 
@@ -115,4 +115,4 @@ python run_all_benchmarks.py
 
 All datasets are public. Judge model versions are pinned. If a number on this page diverges from what you measure, [open an issue](https://github.com/multivon-ai/multivon-eval/issues) — we'll fix it.
 
-> Comparison numbers reflect each project's public releases as of June 2026. All CIs are Wilson 95% on precision/recall and 1000-resample bootstrap 95% on F1 (seed `20260603`).
+> Comparison numbers reflect each project's public releases as of July 2026. All CIs are Wilson 95% on precision/recall and 1000-resample bootstrap 95% on F1 (seed `20260603`).
