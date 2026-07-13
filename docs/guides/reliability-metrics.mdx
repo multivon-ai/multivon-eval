@@ -3,7 +3,7 @@ title: "pass@k and pass^k"
 description: Capability vs reliability from the same multi-run data — unbiased estimators, cluster-bootstrap CIs, and a CI-lower-bound gate.
 ---
 
-New in 0.16.0 (unreleased — on main). A single pass rate hides a distinction that matters in production: a task your agent solves *sometimes* and a task it solves *every time* both contribute the same way to `pass_rate`. Two metrics, computed from the `--runs N` data you already have, pull them apart — the framing follows [Anthropic's guidance on agent evals](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents):
+New in 0.16.0. A single pass rate hides a distinction that matters in production: a task your agent solves *sometimes* and a task it solves *every time* both contribute the same way to `pass_rate`. Two metrics, computed from the `--runs N` data you already have, pull them apart — the framing follows [Anthropic's guidance on agent evals](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents):
 
 | Metric | Question it answers | What it measures |
 |--------|--------------------|------------------|

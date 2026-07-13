@@ -46,7 +46,7 @@ export JUDGE_MODEL=claude-haiku-4-5
 | `timeout` | `None` = inherit, effective `30` | Request timeout in seconds |
 
 <Note>
-  **Changed in 0.16.0 (unreleased — on main):** `temperature`, `max_tokens`, `timeout`, and `reliability_sample` now default to `None`, meaning "inherit from the global config" — they resolve to the same effective defaults as before. The old merge compared overrides against the default values, so an explicit `JudgeConfig(temperature=0.0)` was silently ignored whenever a nonzero global was configured. Explicit values — including `0.0` — now always win.
+  **Changed in 0.16.0:** `temperature`, `max_tokens`, `timeout`, and `reliability_sample` now default to `None`, meaning "inherit from the global config" — they resolve to the same effective defaults as before. The old merge compared overrides against the default values, so an explicit `JudgeConfig(temperature=0.0)` was silently ignored whenever a nonzero global was configured. Explicit values — including `0.0` — now always win.
 </Note>
 
 The model under test and the judge model can be different providers.

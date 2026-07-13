@@ -82,13 +82,13 @@ Anthropic's [Demystifying evals for AI agents](https://www.anthropic.com/enginee
 | Grade each dimension with an isolated judge | QAG scoring — binary per-dimension questions instead of one 1–10 rating |
 | Calibrate the judge against human labels | `suite.calibrate(labeled_pairs)` + shipped per-(judge × evaluator) thresholds with provenance ([`_calibration_data/v2.json`](multivon_eval/_calibration_data/v2.json)) |
 
-The first three rows and the judge-UNKNOWN row land in 0.16.0 (on `main`, release pending — see [What's new in 0.16.0](#whats-new-in-0160-upcoming)); the other rows are shipped on PyPI today.
+The first three rows and the judge-UNKNOWN row shipped in 0.16.0 (see [What's new in 0.16.0](#whats-new-in-0160)); every row above is on PyPI today.
 
 **Index:**
 [Quickstart](#quickstart--30-seconds-no-api-key) ·
 [Why we exist](#why-we-exist) ·
 [Demystifying evals](#demystifying-evals-operationalized) ·
-[What's new 0.16.0](#whats-new-in-0160-upcoming) ·
+[What's new 0.16.0](#whats-new-in-0160) ·
 [What's new 0.10–0.15](#whats-new-in-010015) ·
 [Ecosystem](#the-multivon-ecosystem) ·
 [Why multivon-eval](#why-multivon-eval) ·
@@ -105,9 +105,9 @@ The first three rows and the judge-UNKNOWN row land in 0.16.0 (on `main`, releas
 [Tests](#tests) ·
 [Roadmap](#roadmap)
 
-## What's new in 0.16.0 (upcoming)
+## What's new in 0.16.0
 
-> Landed on `main`, ships as 0.16.0 — the released package still reports 0.15.2 until the release goes out. Full detail in [CHANGELOG.md](CHANGELOG.md) under *Unreleased*. Built from the same [Demystifying evals](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents) checklist mapped above.
+> Released on PyPI 2026-07-13. Full detail in [CHANGELOG.md](CHANGELOG.md) under *0.16.0*. Built from the same [Demystifying evals](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents) checklist mapped above.
 
 - **pass@k and pass^k, estimated honestly.** The same `--runs N` data answers two different questions: `report.pass_at_k(k)` — "does at least one of k trials pass?" (capability) — and `report.pass_hat_k(k)` — "do all k trials pass?" (reliability: what a user hitting the feature k times experiences). Unbiased combinatorial / exact hypergeometric estimators — never the upward-biased `(c/n)**k` plug-in — with cluster-bootstrap CIs that resample tasks, not trials (trials within a task are correlated; resampling them fakes precision). When `k > runs` the answer is an honest **UNKNOWN** with a rerun hint — the framework does not extrapolate past the data. `report.lottery_cases()` names the tasks driving the pass@k↔pass^k gap; `report.assert_pass_hat_k(k, min_ci_low)` gates CI on the pass^k CI *lower bound* and fails loudly (never silently passes) when the metric is UNKNOWN.
 
