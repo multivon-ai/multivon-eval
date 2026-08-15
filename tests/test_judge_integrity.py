@@ -457,3 +457,54 @@ def test_faithfulness_minority_unknown_disclosed_and_scored():
         )
     assert result.score == pytest.approx(0.5)
     assert "1 claim(s) UNKNOWN" in result.reason
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Reasoning-judge max_tokens floor: a small per-call cap (100 / 512) truncates a
+# reasoning-tier judge mid-think before it emits the verdict. The floor gives it
+# room; non-reasoning judges stay byte-identical.
+# ─────────────────────────────────────────────────────────────────────────────
+
+from multivon_eval.evaluators.llm_judge import (  # noqa: E402
+    _REASONING_MAX_TOKENS_FLOOR, _is_reasoning_model, _with_max_tokens,
+)
+
+
+@pytest.mark.parametrize("model,is_reasoning", [
+    ("gpt-4o-mini", False),
+    ("claude-haiku-4-5-20251001", False),
+    ("GPT-4O", False),
+    ("gpt-5.5", True),
+    ("gpt-5", True),
+    ("o1", True),
+    ("o3-mini", True),
+    ("o4-preview", True),
+    ("O1-PREVIEW", True),
+])
+def test_is_reasoning_model_signal(model, is_reasoning):
+    assert _is_reasoning_model(model) is is_reasoning
+
+
+def test_default_path_max_tokens_unchanged_for_plain_judge():
+    # (a) Normal QAG behavior: the per-call cap passes through byte-identical.
+    cfg = JudgeConfig(provider="openai", model="gpt-4o-mini", max_tokens=1024)
+    assert _with_max_tokens(cfg, 512).max_tokens == 512
+    assert _with_max_tokens(cfg, 100).max_tokens == 100
+    # No per-call override → the config's own max_tokens is kept as-is.
+    assert _with_max_tokens(cfg, None).max_tokens == 1024
+
+
+def test_reasoning_judge_gets_raised_ceiling():
+    # (b) A reasoning-model config gets the higher floor even when the call site
+    # asks for the small QAG caps that would otherwise truncate its reasoning.
+    cfg = JudgeConfig(provider="openai", model="gpt-5.5")
+    assert _with_max_tokens(cfg, 512).max_tokens == _REASONING_MAX_TOKENS_FLOOR
+    assert _with_max_tokens(cfg, 100).max_tokens == _REASONING_MAX_TOKENS_FLOOR
+    assert _REASONING_MAX_TOKENS_FLOOR >= 2048
+
+
+def test_reasoning_floor_never_lowers_a_larger_explicit_request():
+    # A call site (or config) asking for MORE than the floor is respected.
+    cfg = JudgeConfig(provider="openai", model="o3-mini", max_tokens=8000)
+    assert _with_max_tokens(cfg, 8000).max_tokens == 8000
+    assert _with_max_tokens(cfg, None).max_tokens == 8000

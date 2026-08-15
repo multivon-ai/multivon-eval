@@ -28,6 +28,29 @@ from ..judge import JudgeConfig, resolve_judge, make_judge_call
 from ..calibration import calibrated_threshold as _calibrated_threshold
 
 
+# Reasoning-tier judges (gpt-5.x, o-series) spend part of their output-token
+# budget on hidden reasoning BEFORE emitting the QAG verdict. The small
+# per-call caps below (100 for yes/no, 512 for claim extraction) are ample for
+# a plain-text judge but truncate a reasoning judge mid-think, yielding an empty
+# verdict — this drove a 47% error rate in a strong-judge (gpt-5.5) ablation.
+# We floor the effective ceiling for reasoning judges so there is room for both
+# the reasoning and the verdict. Non-reasoning judges are byte-identical: their
+# caps are already at/above nothing we raise, so the per-call value passes
+# through untouched. The floor covers all QAG outputs at negligible extra cost
+# (only reasoning tokens are consumed; the verdict itself stays tiny).
+_REASONING_MAX_TOKENS_FLOOR = 2048
+
+# Same prefix signal the rest of the SDK uses (vision.py, discover.py, auto.py)
+# to distinguish reasoning-tier OpenAI models — a shared convention, not a new
+# brittle regex.
+_REASONING_MODEL_PREFIXES = ("gpt-5", "o1", "o3", "o4")
+
+
+def _is_reasoning_model(model: str) -> bool:
+    m = (model or "").lower()
+    return m.startswith(_REASONING_MODEL_PREFIXES)
+
+
 def _with_max_tokens(judge: JudgeConfig, max_tokens: int | None) -> JudgeConfig:
     """Return a copy of ``judge`` with an optional max_tokens override.
 
@@ -37,13 +60,22 @@ def _with_max_tokens(judge: JudgeConfig, max_tokens: int | None) -> JudgeConfig:
     rebuilt JudgeConfig from a hand-picked subset of fields, which
     silently dropped any field that was added later. Don't do that again
     — copy everything, override only what changes.
+
+    For reasoning-tier judges the effective ceiling is floored at
+    ``_REASONING_MAX_TOKENS_FLOOR`` so hidden reasoning tokens can't
+    truncate the verdict. Non-reasoning judges are unaffected.
     """
+    effective = max_tokens if max_tokens is not None else judge.max_tokens
+    if _is_reasoning_model(judge.model):
+        floor = _REASONING_MAX_TOKENS_FLOOR
+        # Respect an even higher explicit request; only ever raise, never lower.
+        effective = floor if effective is None else max(effective, floor)
     return JudgeConfig(
         provider=judge.provider,
         model=judge.model,
         base_url=judge.base_url,
         temperature=judge.temperature,
-        max_tokens=max_tokens if max_tokens is not None else judge.max_tokens,
+        max_tokens=effective,
         timeout=judge.timeout,
         reliability_check=judge.reliability_check,
         reliability_sample=judge.reliability_sample,
