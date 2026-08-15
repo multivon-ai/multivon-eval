@@ -15,6 +15,7 @@ from __future__ import annotations
 import os
 import socket
 import sys
+import warnings
 
 
 # ── Tier detection ─────────────────────────────────────────────────────────────
@@ -130,6 +131,29 @@ _DEMO_CASES_DATA = [
 ]
 
 
+def _calibration_advisory(caught: list) -> str:
+    """Turn a captured calibration-fallback UserWarning into a demo ⚠ line.
+
+    Preserves the warning's information (the default threshold + drift note),
+    just reformatted to match the demo's other advisory lines. Returns "" when
+    no calibration warning was captured. Any warning is included exactly once.
+    """
+    for w in caught:
+        msg = str(w.message)
+        if "calibrat" in msg.lower() and "uncalibrated" in msg.lower():
+            return (
+                "  ⚠ Uncalibrated judge threshold: no calibration row for this "
+                "judge model,\n"
+                "    falling back to 0.7 (may produce 5-15pp F1 drift on real "
+                "data).\n"
+                "    Demo scores are indicative only — run "
+                "benchmarks/run_threshold_calibration.py\n"
+                "    to add a row, or set the fallback policy to \"strict\" to "
+                "fail closed."
+            )
+    return ""
+
+
 def _run_demo() -> None:
     from multivon_eval import (
         EvalSuite, EvalCase, configure, JudgeConfig,
@@ -148,6 +172,14 @@ def _run_demo() -> None:
     # Tier 1 — always
     suite.add_evaluators(NotEmpty(), WordCount(min_words=5))
 
+    # The calibration fallback warning (no threshold row for this judge model,
+    # common with a freshly pulled local model) is real information, but a raw
+    # Python UserWarning printed above the clean banner reads like a crash.
+    # Capture it here and re-emit it through the demo's own ⚠ advisory channel
+    # (below the banner) with its message intact. Scoped to the demo only — the
+    # global warning policy is untouched for library callers.
+    calibration_advice = ""
+
     # Tier 2 / 3 — LLM judge. Probe the detected backend first so a
     # detected-but-unreachable judge degrades to deterministic-only instead of
     # crashing the "no setup" demo with a traceback.
@@ -157,8 +189,11 @@ def _run_demo() -> None:
         if ok:
             from multivon_eval import Relevance
             configure(cfg)
-            suite.add_evaluators(Relevance())
-            suite.add_check("Response directly answers the customer's question")
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always")
+                suite.add_evaluators(Relevance())
+                suite.add_check("Response directly answers the customer's question")
+            calibration_advice = _calibration_advisory(caught)
         else:
             has_llm = False
 
@@ -201,10 +236,29 @@ def _run_demo() -> None:
         print("    OPENAI_BASE_URL     — any OpenAI-compatible endpoint")
         print("    (or start Ollama on localhost:11434)")
 
+    if calibration_advice:
+        print()
+        print(calibration_advice)
+
     print(f"\n  {_sep}\n")
 
     try:
-        suite.run(_demo_model)
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            suite.run(_demo_model)
+        # A judge whose threshold is resolved lazily at run time (rather than at
+        # prepare time) emits the same calibration warning here; surface it the
+        # same way if it wasn't already shown above.
+        if not calibration_advice:
+            late_advice = _calibration_advisory(caught)
+            if late_advice:
+                print(late_advice)
+        # Re-emit any non-calibration warnings so nothing is silently swallowed.
+        for w in caught:
+            if "calibrat" not in str(w.message).lower():
+                warnings.warn_explicit(
+                    w.message, w.category, w.filename, w.lineno
+                )
     except Exception as exc:
         # The "no setup" demo must never end in a traceback. The liveness probe
         # catches a dead judge up front, but a judge that passed the probe can

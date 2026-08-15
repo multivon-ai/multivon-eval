@@ -4,7 +4,11 @@ All notable changes to `multivon-eval`. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
-(reserved for in-flight work — empty)
+### Fixed
+
+- **`multivon-eval validate` on the shipped `quickstart` template now exits 0.** The scaffolded cases had no `expected_output`/`reference_output`, so `validate eval.py` graded nothing and returned `NOTHING_VALIDATED` (exit 1) — the 0.16.0 flagship command's first contact was a red ✗. The `quickstart` template's first case now ships an `expected_output` that passes all three deterministic graders, so `init -t quickstart && validate eval.py` lands green out of the box.
+- **The `python -m multivon_eval` demo no longer prints a raw `UserWarning` above the banner.** When a local judge (e.g. Ollama) with no calibration row is detected, the uncalibrated-threshold fallback warning was surfaced as a stack-trace-style Python warning ahead of the clean banner. It is now captured (demo-scope only; the global warning policy is untouched) and re-emitted through the demo's own `⚠` advisory channel with its message intact. Non-calibration warnings are re-raised so nothing is silently swallowed.
+- **README disagreement headline is now sourced to the committed benchmark.** The flagship stat cited an unsourceable "56% of cases" figure; it now leads with Cohen's **κ ≈ 0.04** on the binary hallucination verdict and the committed RAGTruth-Sum flip counts (33/100 for both multivon-eval↔DeepEval and multivon-eval↔RAGAS) that trace to the linked `eval-framework-benchmark` RESULTS.md.
 
 ## [0.16.0] — 2026-07-13
 

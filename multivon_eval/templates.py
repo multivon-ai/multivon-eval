@@ -134,7 +134,10 @@ def my_model_fn(input_text: str) -> str:
 
 suite = EvalSuite("quickstart")
 suite.add_cases([
-    EvalCase(input="Hello"),
+    # expected_output lets `multivon-eval validate` grade this case's
+    # reference against the deterministic evaluators (it passes all three),
+    # so `validate eval.py` exits 0 out of the box.
+    EvalCase(input="Hello", expected_output="Hi there! How can I help?"),
     EvalCase(input="What's the weather?"),
     EvalCase(input="Anything else?"),
 ])
