@@ -4,6 +4,12 @@ All notable changes to `multivon-eval`. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+## [0.16.1] — 2026-08-16
+
+A judge-integrity patch. Non-reasoning judges are byte-identical to 0.16.0; if
+you point a `gpt-5.x` or o-series model at the QAG evaluators, this is the
+release that makes it work.
+
 ### Fixed
 
 - **Reasoning-tier judges no longer truncate before emitting the QAG verdict.** The judge calls hardcoded small per-call token caps (100 for yes/no, 512 for claim extraction) — ample for a plain-text judge, but a reasoning-tier model (gpt-5.x, o-series) spends part of its output budget on hidden reasoning *before* the verdict, so these caps cut it off mid-think and returned an empty verdict. This drove a 47% error rate in a strong-judge (gpt-5.5) ablation. The effective ceiling is now floored at 2048 tokens for reasoning-tier judges (detected via the same `gpt-5`/`o1`/`o3`/`o4` prefix signal the rest of the SDK already uses), leaving room for both reasoning and verdict at negligible extra cost. Non-reasoning judges (gpt-4o-mini, haiku, etc.) are byte-identical — their per-call cap passes through untouched, and an explicit larger request is never lowered. The QAG prompt and parser are unchanged.

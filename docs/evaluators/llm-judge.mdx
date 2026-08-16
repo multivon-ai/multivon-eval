@@ -49,6 +49,18 @@ export JUDGE_MODEL=claude-haiku-4-5
   **Changed in 0.16.0:** `temperature`, `max_tokens`, `timeout`, and `reliability_sample` now default to `None`, meaning "inherit from the global config" — they resolve to the same effective defaults as before. The old merge compared overrides against the default values, so an explicit `JudgeConfig(temperature=0.0)` was silently ignored whenever a nonzero global was configured. Explicit values — including `0.0` — now always win.
 </Note>
 
+<Note>
+  **Fixed in 0.16.1 — reasoning-tier judges.** The QAG evaluators used small
+  per-call caps (100 tokens for a yes/no verdict, 512 for claim extraction).
+  That is plenty for a plain-text judge, but a reasoning model spends part of
+  its output budget thinking *before* it answers, so those caps cut it off
+  mid-thought and it returned an empty verdict. We measured a 47% error rate
+  running gpt-5.5 as the judge. The per-call ceiling is now floored at 2048
+  tokens when the judge model is reasoning-tier (`gpt-5`/`o1`/`o3`/`o4`
+  prefixes). Every other judge is unaffected — its cap passes through
+  untouched, and an explicit larger `max_tokens` is never lowered.
+</Note>
+
 The model under test and the judge model can be different providers.
 
 ### Local and self-hosted models
