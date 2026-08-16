@@ -39,7 +39,9 @@ class ToolCallAccuracy(Evaluator):
 
     Checks:
     - Were all expected tools called?
-    - Were they called in the correct order (if ``require_order``)?
+    - Were they called in the correct order (if ``require_order``)? Order is
+      checked as a subsequence: extra calls interleaved among the expected
+      ones do not break the match, a reordering does.
     - Were any unexpected tools called?
 
     Scoring:
@@ -106,10 +108,19 @@ class ToolCallAccuracy(Evaluator):
             )
 
         if self.require_order:
-            # Ordered match
-            matches = sum(1 for a, e in zip(actual_calls, expected) if a == e)
+            # Ordered match is a subsequence test, not a positional one: the
+            # agent is allowed to take extra steps around the expected ones.
+            # Positional zip would score a correct-order run with one extra
+            # leading call the same 0.0 as a completely reversed one.
+            remaining = list(expected)
+            consumed = []
+            for a in actual_calls:
+                if remaining and a == remaining[0]:
+                    remaining.pop(0)
+                    consumed.append(a)
+            matches = len(consumed)
             score = matches / len(expected)
-            missing = [e for e in expected if e not in actual_calls]
+            missing = remaining
             unexpected = [a for a in actual_calls if a not in expected]
         else:
             # Unordered: fraction of expected tools that were called

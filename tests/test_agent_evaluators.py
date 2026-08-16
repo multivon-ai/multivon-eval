@@ -81,7 +81,24 @@ class TestToolCallAccuracy:
         case = make_case(steps=steps, expected_tool_calls=["search_weather", "summarize"])
         result = ToolCallAccuracy(require_order=True).evaluate(case, "done")
         assert not result.passed
-        assert result.score == 0.0
+        # Subsequence scoring: "search_weather" is in order relative to the
+        # expected pair, "summarize" is not, so exactly one of two matches.
+        assert result.score == 0.5
+
+    def test_ordered_case_tolerates_extra_calls_around_expected_ones(self):
+        """Order is a subsequence test. An agent that calls the expected tools
+        in the right order still scores 1.0 when it takes extra steps around
+        them — only a reordering costs it."""
+        steps = [
+            AgentStep(tool_calls=[ToolCall(name="check_cache")]),
+            AgentStep(tool_calls=[ToolCall(name="search_weather")]),
+            AgentStep(tool_calls=[ToolCall(name="log_result")]),
+            AgentStep(tool_calls=[ToolCall(name="summarize")]),
+        ]
+        case = make_case(steps=steps, expected_tool_calls=["search_weather", "summarize"])
+        result = ToolCallAccuracy(require_order=True).evaluate(case, "done")
+        assert result.score == 1.0
+        assert result.passed
 
     # ── Codex D16 cycle 5 ISSUE 1: penalize_unexpected ─────────────
 
