@@ -10,7 +10,7 @@ When the agent is helping you build an LLM product, it can:
 - Score a RAG output for hallucination without you writing the scaffolding
 - Generate an adversarial PDF on demand to test your document AI
 - Run the current 17-family PDF Hell suite against a model and analyse the results
-- Produce a hash-chained audit pack for procurement diligence
+- Produce a self-verifying audit pack with a SHA-256 file manifest
 - Discover the full evaluation capability catalog as JSON
 - Generate cases from source text, ingest runtime traces, and compare two saved runs
 
@@ -31,6 +31,13 @@ pip install multivon-mcp
 ```
 
 The bare install pulls `multivon-eval`, `pdfhell`, and the MCP SDK. Provider SDKs (`anthropic`, `openai`, `google-genai`) come along — bring your own API key in env.
+
+<Note>
+The current 0.3.2 package predates MCP Python SDK 2.0. Until the next
+multivon-mcp release publishes its `mcp&lt;2` constraint, install with
+`pip install "mcp&lt;2" multivon-mcp` to avoid resolving the incompatible 2.0
+server API.
+</Note>
 
 <Tip>
 For one-off use without installing, `uvx multivon-mcp` works zero-setup.

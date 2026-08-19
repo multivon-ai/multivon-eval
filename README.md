@@ -7,9 +7,11 @@
 [![Tests](https://github.com/multivon-ai/multivon-eval/actions/workflows/test.yml/badge.svg)](https://github.com/multivon-ai/multivon-eval/actions/workflows/test.yml)
 [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/multivon-ai/multivon-eval/blob/main/notebooks/quickstart.ipynb)
 
-**[Docs](https://docs.multivon.ai)** · [Website](https://multivon.ai) · [PyPI](https://pypi.org/project/multivon-eval) · [Changelog](CHANGELOG.md) · [Benchmark vs DeepEval + RAGAS](https://github.com/multivon-ai/eval-framework-benchmark)
+**[Docs](https://docs.multivon.ai/)** · [Website](https://multivon.ai) · [PyPI](https://pypi.org/project/multivon-eval) · [Changelog](CHANGELOG.md) · [Benchmarks](benchmarks/README.md)
 
-**AI evaluation for teams that ship models to production.** The popular eval frameworks agree on the binary hallucination verdict barely above chance — Cohen's **κ ≈ 0.04** — same items, same judge, same seed ([raw data + code](https://github.com/multivon-ai/eval-framework-benchmark)). multivon-eval is the framework that measures itself first.
+**Build reliable evaluations for LLM applications and agents.** Start with deterministic checks, add calibrated LLM judges where they help, inspect failures locally, and gate regressions in CI. No hosted account required.
+
+> **Current release: 0.16.1 — August 16, 2026.** Supports Python 3.10–3.14. See [what changed](#current-release--0161) or the complete [changelog](CHANGELOG.md).
 
 ## Quickstart — 30 seconds, no API key
 
@@ -32,7 +34,7 @@ suite.add_evaluators(NotEmpty(), Contains(["4"]))
 if __name__ == "__main__":  # guard so `multivon-eval validate` never runs your model at import time
     report = suite.run(lambda prompt: "2+2 = 4", runs=5)  # swap the lambda for your model fn
     print(report.pass_rate, report.pass_rate_ci())  # 1.0, 95% CI [0.21, 1.0] — one task, and the CI says so
-    print(report.pass_hat_k(3))                     # P(a task passes all 3 of 3 trials), with CI
+    print(report.pass_hat_k(3))                     # P(a task passes all 3 sampled trials), with CI
 ```
 
 The `quickstart` template sticks to deterministic evaluators (`NotEmpty`, `Contains`, `WordCount`), so the first run needs no API key at all. The "no API key" promise is scoped to that template: the `python -m multivon_eval` demo will emit LLM-judge scores too if it detects a key or a local server (Ollama on `:11434`, LM Studio on `:1234`, or `OPENAI_BASE_URL`), so a running local model can show judge output under this banner. The template stays deterministic-only regardless.
@@ -54,7 +56,7 @@ LLM-judge evaluators auto-activate when `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, o
 
 ### Why we exist
 
-**The eval tools don't agree with each other.** We ran the three popular ones (multivon-eval, DeepEval, RAGAS) over the same data with the same labels. On a simple yes/no hallucination call, agreement is barely above chance — Cohen's **κ ≈ 0.04**. On the 100-item RAGTruth-Sum headline, multivon-eval and DeepEval disagree on 33, and so do multivon-eval and RAGAS. So when your CI gate flips after you switch frameworks, that's the tool arguing with itself, not your model getting worse. Raw data and code: [eval-framework-benchmark](https://github.com/multivon-ai/eval-framework-benchmark).
+**Evaluation is measurement, and measurements need validation.** Different graders can reach different verdicts on the same output. multivon-eval therefore exposes judge reasons, calibration provenance, uncertainty, infrastructure errors, and comparison statistics instead of reducing every run to one unexplained score. The repository includes the [benchmark code, datasets, and raw results](benchmarks/README.md) used for its published evaluator claims.
 
 **We test ourselves the hard way.** We calibrate the Hallucination evaluator on one dataset (HaluEval-QA), then score it on a different one (HaluEval-Sum, n=60) without re-tuning. It gets **F1 0.830 [0.70–0.92]**. On the in-distribution comparison, our worst case (CI lower bound 0.71) still beats DeepEval's best case (upper bound 0.68): F1 0.804 [0.71–0.88] vs 0.586 [0.48–0.68]. Full method and raw counts: [`benchmarks/README.md`](benchmarks/README.md) Benchmark 4.
 
@@ -82,15 +84,14 @@ Anthropic's [Demystifying evals for AI agents](https://www.anthropic.com/enginee
 | Grade each dimension with an isolated judge | QAG scoring — binary per-dimension questions instead of one 1–10 rating |
 | Calibrate the judge against human labels | `suite.calibrate(labeled_pairs)` + shipped per-(judge × evaluator) thresholds with provenance ([`_calibration_data/v2.json`](multivon_eval/_calibration_data/v2.json)) |
 
-The first three rows and the judge-UNKNOWN row shipped in 0.16.0 (see [What's new in 0.16.0](#whats-new-in-0160)); every row above is on PyPI today.
+The first three rows and the judge-UNKNOWN row shipped in 0.16.0 (see the [0.16.0 changelog](CHANGELOG.md#0160--2026-07-13)); every row above is on PyPI today.
 
 **Index:**
 [Quickstart](#quickstart--30-seconds-no-api-key) ·
 [Why we exist](#why-we-exist) ·
 [Demystifying evals](#demystifying-evals-operationalized) ·
-[What's new 0.16.1](#whats-new-in-0161) ·
-[What's new 0.16.0](#whats-new-in-0160) ·
-[What's new 0.10–0.15](#whats-new-in-010015) ·
+[Current release](#current-release--0161) ·
+[Earlier releases](#earlier-release-highlights) ·
 [Ecosystem](#the-multivon-ecosystem) ·
 [Why multivon-eval](#why-multivon-eval) ·
 [Install](#install) ·
@@ -106,16 +107,19 @@ The first three rows and the judge-UNKNOWN row shipped in 0.16.0 (see [What's ne
 [Tests](#tests) ·
 [Roadmap](#roadmap)
 
-## What's new in 0.16.1
+## Current release — 0.16.1
 
 > Released on PyPI 2026-08-16. Full detail in [CHANGELOG.md](CHANGELOG.md) under *0.16.1*.
 
 - **Reasoning-tier judge calls get enough output budget to reach a verdict.** `gpt-5.x` and o-series judges now receive a 2,048-token minimum while non-reasoning judges keep their previous limits.
 - **The shipped quickstart validates cleanly.** `multivon-eval init -t quickstart && multivon-eval validate eval.py` now exercises a real reference output and exits 0.
 - **Cleaner local demo output.** Missing calibration for a local judge is shown as a concise demo advisory instead of a raw Python warning above the banner.
-- **The disagreement headline is reproducible.** It now cites the committed benchmark's Cohen's κ and flip counts instead of an unsourced percentage.
+## Earlier release highlights
 
-## What's new in 0.16.0
+<details>
+<summary><strong>0.16.0 and selected 0.9–0.15 milestones</strong></summary>
+
+### 0.16.0 — July 13, 2026
 
 > Released on PyPI 2026-07-13. Full detail in [CHANGELOG.md](CHANGELOG.md) under *0.16.0*. Built from the same [Demystifying evals](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents) checklist mapped above.
 
@@ -127,7 +131,7 @@ The first three rows and the judge-UNKNOWN row shipped in 0.16.0 (see [What's ne
 
 - **Judge integrity.** Hedged judge replies ("I cannot say yes or no…") no longer parse as YES — they are UNKNOWN, excluded from the QAG score denominator and disclosed in the reason; judge exceptions surface as `JUDGE_ERROR` / `EVALUATOR_ERROR` statuses instead of laundering into 0.0 quality scores; and a new `max_error_rate=` budget on the CI gate stops 90 judge errors + 10 passes from gating green (raises `EvalGateFailure`: "Eval gate INDETERMINATE"). Unset, a `fail_threshold` gate still warns loudly on stderr at ≥ 10% errors.
 
-## What's new in 0.10–0.15
+### 0.10–0.15
 
 - **Prompt-drift staleness + case provenance (0.10.0).** Your code changes; your eval cases quietly rot. `multivon-eval staleness` diffs a committed `prompt_baseline.json` against a live scan of every prompt call site and names which prompts changed since your cases were written: `CHANGED` (before/after fingerprints, plus the cases bound to that prompt), `REMOVED`, `ADDED`, and `UNKNOWN` for dynamic prompts it refuses to guess at. `staleness stamp` binds cases to call sites. `--fail-on changed,removed` gates CI. Every report opens with a determinacy headline ("N of M call sites statically resolvable") and ends with a blind-spots footer listing what static analysis cannot see.
 
@@ -147,10 +151,7 @@ The first three rows and the judge-UNKNOWN row shipped in 0.16.0 (see [What's ne
 
 - **`view --dir` fix for Python 3.10/3.11 (0.15.1).** The index renderer used f-strings with quotes and backslashes inside the `{}` expression, which is valid on 3.12+ but a `SyntaxError` on 3.10/3.11 — so `view` broke on the lower half of the supported range (the package minimum is 3.10). A fresh-install check on the CI matrix caught it; the nested markup is now a module constant and `view --dir` works across every supported version.
 
-<details>
-<summary><strong>What's new in 0.9.x (older)</strong></summary>
-
-### What's new in 0.9.x
+### 0.9.x and earlier
 
 - **`multivon-eval install-skills`** (new in 0.9.8) — one-command installer for the three bundled Claude Code skills (`eval-bootstrap`, `eval-audit`, `eval-explain`). The wheel ships them under `multivon_eval/_skills/`; this CLI symlinks them into `~/.claude/skills/` so `pip install -U multivon-eval` automatically propagates SKILL.md edits.
 
@@ -188,7 +189,7 @@ The first three rows and the judge-UNKNOWN row shipped in 0.16.0 (see [What's ne
   - `generate_adversarial_cases(seed, mode, n)` — LLM-generated stress cases across 10 named failure modes (`ungrounded_claim`, `jailbreak`, `prompt_injection_direct/indirect`, `tool_injection`, `pii_leakage_invitation`, etc.).
   - `validate_adversarial_cases(cases, baseline, n_shots=3)` — N-shot judge-noise filter. Validated +0.80 mean failure-rate separation between weak vs strong baselines.
 
-- **Reproducible head-to-head** — multivon-eval **F1 0.804 [0.71–0.88]** vs DeepEval **F1 0.586 [0.48–0.68]** on HaluEval-QA, same N=100, same labels, same judge family. The lower bound of our CI clears DeepEval's upper bound. RAGAS errored on the same input. Run it yourself: [eval-framework-benchmark](https://github.com/multivon-ai/eval-framework-benchmark).
+- **Reproducible head-to-head** — multivon-eval **F1 0.804 [0.71–0.88]** vs DeepEval **F1 0.586 [0.48–0.68]** on HaluEval-QA, N=100. Run it from the public [`benchmarks/`](benchmarks/) directory; scope and judge differences are disclosed there.
 
 ### Carried forward from 0.7.x
 
@@ -202,7 +203,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the complete release history.
 
 ## The Multivon ecosystem
 
-Five public + one early-access package, all built on a shared evaluation engine:
+Four public packages plus one closed early-access product, built around the same evaluation engine:
 
 | Repo | What it is |
 |---|---|
@@ -210,7 +211,6 @@ Five public + one early-access package, all built on a shared evaluation engine:
 | [pdfhell](https://github.com/multivon-ai/pdfhell) | Adversarial PDFs that break AI document readers — procedural ground truth, not LLM-as-judge |
 | [multivon-mcp](https://github.com/multivon-ai/multivon-mcp) | MCP server exposing 22 evaluation tools to Claude / Cursor / Cline / OpenCode |
 | [eval-action](https://github.com/multivon-ai/eval-action) | GitHub Action — run a suite on every PR, post a comment, gate the merge on regressions |
-| [eval-framework-benchmark](https://github.com/multivon-ai/eval-framework-benchmark) | Reproducible head-to-head benchmark vs DeepEval + RAGAS |
 | multivon-guard *(early access)*⁺ | Local proxy that catches LLM coding agents leaking secrets / PII before the request hits the wire. [`hello@multivon.ai`](mailto:hello@multivon.ai). |
 
 ⁺ multivon-guard is a closed early-access product, not open source — listed for completeness, no public repo yet.
@@ -223,7 +223,7 @@ Five public + one early-access package, all built on a shared evaluation engine:
 | To call evals from Cursor / Cline / Claude Desktop mid-edit | [multivon-mcp](https://github.com/multivon-ai/multivon-mcp) |
 | To gate every PR on eval regressions automatically | [eval-action](https://github.com/multivon-ai/eval-action) |
 | Adversarial PDF benchmarking with code-based ground truth | [pdfhell](https://github.com/multivon-ai/pdfhell) |
-| To see how multivon-eval stacks up against DeepEval / RAGAS | [eval-framework-benchmark](https://github.com/multivon-ai/eval-framework-benchmark) |
+| To inspect the framework comparison and its disclosure | [multivon.ai/benchmark](https://multivon.ai/benchmark) |
 | Frontier-model capability studies on a research-grade harness | [Inspect AI](https://inspect.aisi.org.uk/) (UK AI Security Institute) — the reference research harness; if you're publishing model-capability results, start there |
 | Tracing dashboards / production observability | [Arize Phoenix](https://phoenix.arize.com/) or [LangSmith](https://www.langchain.com/langsmith) — observability platforms. They trace, we gate — use one *with* multivon-eval, not instead of it |
 | Quick agent-trajectory matching inside LangChain, no statistics needed | [agentevals](https://github.com/langchain-ai/agentevals) — trajectory matchers without CIs or significance tests; lighter if that's all you need |
@@ -284,27 +284,9 @@ report = suite.run(support_bot)
 
 ## Why multivon-eval
 
-The question every team eventually hits: did this change make the model better or worse?
+The question every team eventually hits is: did this change make the model better, worse, or merely different within the noise?
 
-| Feature | multivon-eval | DeepEval | RAGAS | Promptfoo |
-|---|:---:|:---:|:---:|:---:|
-| Plain-English checks (`add_check`) | ✓ | — | — | — |
-| Multi-run + flakiness detection | ✓ | — | — | — |
-| CI on every report (Wilson + bootstrap) | ✓ | — | — | — |
-| Multiple-comparison correction (BH) | ✓ | — | — | — |
-| Power warning + dataset size guidance | ✓ | — | — | — |
-| Judge calibration against human labels | ✓ | — | — | — |
-| QAG scoring (binary questions, not 1-10) | ✓ | — | — | — |
-| Agent-native evaluators (8 metrics) | ✓ | ✓ | partial | — |
-| LangChain / LangSmith integration | ✓ | ✓ | ✓ | partial |
-| Compliance audit trail (EU AI Act / NIST) | ✓ | — | — | — |
-| Local PII detection (zero API calls) | ✓ | partial | — | — |
-| HTML reports (self-contained, shareable) | ✓ | — | — | — |
-| Local-first, no account needed | ✓ | ✓ | ✓ | ✓ |
-| Synthetic data generation | ✓ | ✓ | ✓ | — |
-| Open source (Apache 2.0) | ✓ | ✓ | ✓ | ✓ |
-
-> Comparison based on each project's public documentation (last reviewed 2026-07-13; revisit every minor release). Inspect AI, Phoenix/LangSmith, and agentevals are different categories — research harness, observability platforms, trajectory matchers — so they're routed in [When NOT to use multivon-eval](#when-not-to-use-multivon-eval) rather than scored in this table. We host these benchmarks open: see [`benchmarks/`](benchmarks/) for code + datasets and [`benchmarks/results/`](benchmarks/results/) for the raw output JSON. Found something wrong? [Open an issue](https://github.com/multivon-ai/multivon-eval/issues) — we'll fix it.
+multivon-eval is a good fit when you want evaluation to live beside the code, run without a hosted account, and produce evidence that can be inspected after CI finishes. It combines deterministic checks, calibrated judge-backed evaluators, agent and conversation grading, uncertainty estimates, and local compliance records in one report. If you primarily need research orchestration or production tracing, use the purpose-built tools listed in [When NOT to use multivon-eval](#when-not-to-use-multivon-eval).
 
 ### Numbers, not adjectives
 
@@ -354,9 +336,9 @@ Cache speedup on the rep-1→rep-2 transition: **2,271×** — read that as "pai
 |---|---|---|
 | **QAG scoring** | Binary yes/no questions instead of 1-10 ratings | Eliminates scale ambiguity, fully auditable — every score traces to specific questions that passed or failed |
 | **Plain-English checks** | `suite.add_check("Response explains the return policy")` | No evaluator class to pick, no prompt to craft. Questions auto-generated; pin them for reproducible CI |
-| **Bootstrap CLI** | `multivon-eval bootstrap` (new in 0.8.0) | Cold-start from product description + traces → tuned suite in 60s |
+| **Bootstrap CLI** | `multivon-eval bootstrap` | Cold-start from product description + traces → a runnable, inspectable starter suite |
 | **Agent-native** | Tool-call accuracy, plan quality, step faithfulness, task completion | Works with traces from any framework (LangChain, LlamaIndex, OpenAI Agents SDK, custom) |
-| **Four tiers** | Deterministic / LLM-judge / agent-trace / conversation | Mix freely; pay for LLM calls only where they matter |
+| **Seven evaluator groups** | Deterministic, LLM-judge, agent-trace, compliance, conversation, multimodal, consistency | Mix freely; pay for LLM calls only where they matter |
 | **Reliability + flakiness** | `suite.run(runs=5)` + pass@k / pass^k + statistical significance | Detect cases that pass sometimes and fail others; tells you regressions from noise; pass^k reports what a user hitting the feature k times experiences |
 | **Statistical rigor** | Wilson CIs, bootstrap, p10/p50/p90, power warnings, BH correction | NAACL 2025: single-run eval scores are unreliable. CIs ship by default |
 | **No cold-start** | `generate_from_file("docs/faq.md")` synthesises cases | No labeled data required to start |
@@ -505,7 +487,7 @@ pairs = generate_hallucination_pairs(my_docs, n=20)
 
 CLI: `multivon-eval generate --from docs/faq.md --n 20 --task qa --output cases.jsonl`.
 
-For more sophisticated cold-start, the **`multivon-eval bootstrap`** CLI composes generation + heuristic anchoring + N-shot judge-noise filtering into one command — see [What's new in 0.9.x](#whats-new-in-09x) above for the full flag set (including 0.9.4's `--judge-base-url` and 0.9.0's `--validate`) and the [bootstrap guide](https://docs.multivon.ai/guides/bootstrap). Run `multivon-eval bootstrap --help` for the canonical flag reference.
+For a more sophisticated cold start, the **`multivon-eval bootstrap`** CLI composes generation, heuristic anchoring, and optional N-shot judge-noise filtering into one command. See the [bootstrap guide](https://docs.multivon.ai/guides/bootstrap), or run `multivon-eval bootstrap --help` for the canonical flags.
 
 ---
 
@@ -591,11 +573,14 @@ EvalSuite.run(model_fn)
 
 | File | What it shows |
 |------|--------------|
-| [`basic_eval.py`](examples/basic_eval.py) | Deterministic evaluators only — zero API cost, instant sanity check |
-| [`rag_eval.py`](examples/rag_eval.py) | Faithfulness + hallucination for RAG pipelines |
-| [`ci_eval.py`](examples/ci_eval.py) | CI/CD integration — `fail_threshold` exits 1 on regression |
-| [`check_eval.py`](examples/check_eval.py) | `add_check()` — write criteria in English, no evaluator class needed |
-| [`agent_eval.py`](examples/agent_eval.py) | Agent tool call accuracy with `ManualTracer` — surfaces flaky tool selection |
+| [`01_rag_insurance_faithfulness.py`](examples/01_rag_insurance_faithfulness.py) | RAG faithfulness with a captured report and terminal output |
+| [`02_contract_pdfhell_trap.py`](examples/02_contract_pdfhell_trap.py) | Document-AI evaluation against an adversarial PDF |
+| [`03_support_qa_multi_evaluator.py`](examples/03_support_qa_multi_evaluator.py) | Support QA graded across multiple dimensions |
+| [`04_pii_medical_records.py`](examples/04_pii_medical_records.py) | Offline PII detection over synthetic medical records |
+| [`05_staleness_drift.py`](examples/05_staleness_drift.py) | Prompt-fingerprint drift and case provenance |
+| [`06_simulate_personas.py`](examples/06_simulate_personas.py) | Adaptive multi-turn persona simulation |
+
+The first four include committed JSON and terminal-output artifacts. See [`examples/README.md`](examples/README.md) for prerequisites, exact commands, and the smaller API-focused examples.
 
 ---
 

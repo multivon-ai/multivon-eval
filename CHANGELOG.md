@@ -4,6 +4,13 @@ All notable changes to `multivon-eval`. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+### Documentation
+
+- Reworked the README around the current 0.16.1 release, moved older release
+  notes into a clearly labeled history section, replaced private benchmark
+  links with the public in-repository evidence, and refreshed the examples,
+  evaluator categories, ecosystem count, and MCP client guidance.
+
 ### Fixed
 
 - **`ToolCallAccuracy(require_order=True)` no longer zeroes a correctly-ordered run that took extra steps.** Ordered matching paired expected against actual positionally (`zip`), so an agent that called the expected tools in the right order but preceded them with one extra call scored 0.0 — the same score as an agent that called them in reverse. The two failures were indistinguishable, and the common case (an agent takes a preparatory step) was graded as total failure. Order is now checked as a subsequence: extra calls interleaved among the expected ones do not break the match, a reordering still does. A reversed-order run now scores partial credit rather than 0.0 and still fails the threshold. Unordered mode, `penalize_unexpected`, and the `expected_tool_calls=[]` assertion are unchanged.

@@ -170,14 +170,20 @@ Score an output against your own list of yes/no quality checks. Each criterion i
 
 ### `eval_tool_call_accuracy`
 
-Deterministic agent tool-call correctness — name match plus optional argument-dict comparison. **No LLM judge.**
+Deterministic agent tool-call correctness. The released 0.3.2 protocol supports
+single-call name and optional argument-dict comparison. The additive trace mode
+below is on `multivon-mcp` main and will ship in its next release. **No LLM judge.**
 
 | Arg | Type | Default |
 |---|---|---|
-| `expected_tool` | `str` | required |
-| `actual_tool` | `str` | required |
+| `expected_tool` | `str` | required in single-call mode |
+| `actual_tool` | `str` | required in single-call mode |
 | `expected_arguments` | `dict` | `None` |
 | `actual_arguments` | `dict` | `None` |
+| `expected_tool_calls` | `list[str]` | required in trace mode; `[]` asserts no calls |
+| `agent_trace` | `list[dict]` | canonical steps returned by `eval_ingest_trace` |
+| `require_order` | `bool` | `False` |
+| `penalize_unexpected` | `bool` | `False` |
 
 ## Multimodal
 
@@ -233,7 +239,9 @@ Generate one adversarial PDF + its answer key for inspection.
 
 ### `eval_audit_pack`
 
-Build a hash-chained, procurement-ready ZIP from a pdfhell run. **No API calls.**
+Build a procurement-ready ZIP with a SHA-256 manifest over every bundled file.
+Anchor the manifest hash outside the ZIP for evidence against deliberate
+rewriting. **No API calls.**
 
 | Arg | Type | Default |
 |---|---|---|
@@ -279,7 +287,7 @@ Normalize a JSON-friendly runtime trace into an `EvalCase` payload containing
 
 ## Why these 22 (not all 44)
 
-`eval_discover` returns the full 44-evaluator catalog so the agent can always introspect everything. The 19 directly exposed are the ones agents actually call mid-edit:
+`eval_discover` returns the full 44-evaluator catalog so the agent can always introspect everything. The 22 directly exposed are the ones agents actually call mid-edit:
 
 - RAG generation (faithfulness, hallucination, relevance, answer_accuracy)
 - RAG retrieval (context_precision, context_recall)

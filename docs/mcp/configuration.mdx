@@ -28,7 +28,15 @@ Restart Claude. The 22 tools appear in the tool drawer; ask Claude `"use multivo
 
 ## Claude Code
 
-The same `claude_desktop_config.json` is read by Claude Code. If you prefer per-project scope, add an `.mcp.json` to the project root:
+Claude Code does not read `claude_desktop_config.json`. Add the server with the
+CLI and verify the saved configuration:
+
+```bash
+claude mcp add --transport stdio --scope user multivon -- multivon-mcp
+claude mcp get multivon
+```
+
+Use `--scope project` to create a shareable `.mcp.json` in the project root:
 
 ```json
 {
@@ -40,11 +48,12 @@ The same `claude_desktop_config.json` is read by Claude Code. If you prefer per-
 }
 ```
 
-API keys then come from the shell environment, not the config — useful for keeping secrets out of the repo.
+API keys can come from the shell environment. Claude Code also supports
+`${VAR}` expansion inside `.mcp.json`; do not commit literal keys.
 
 ## Cursor
 
-`cursor.json` or via **Settings → MCP**:
+`.cursor/mcp.json` or via **Settings → MCP**:
 
 ```json
 {
@@ -58,7 +67,8 @@ API keys then come from the shell environment, not the config — useful for kee
 
 ## Cline / OpenCode / any MCP-compatible agent
 
-Same shape — point at the `multivon-mcp` console script. All MCP clients speak stdio.
+Use the client's local stdio-server configuration and point its command at
+`multivon-mcp`:
 
 ```json
 {
@@ -73,7 +83,7 @@ Same shape — point at the `multivon-mcp` console script. All MCP clients speak
 ## Local development & debugging
 
 ```bash
-mcp dev multivon_mcp.server
+mcp dev multivon_mcp/server.py
 ```
 
 This opens the MCP Inspector UI in your browser. You can call any tool by name, see the JSON schemas, and watch the request/response trace. Useful when you're debugging tool selection in an agent — drive it manually first to confirm the inputs / outputs match what you expect.

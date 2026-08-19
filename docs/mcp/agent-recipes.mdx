@@ -74,7 +74,7 @@ Pair this with `eval_g_eval` when you want a semantic score on top — *was the 
 
 1. Agent calls `pdfhell_run(model="anthropic:claude-sonnet-4-6", suite="mini-v4-sample")` — returns a full report dict with `pass_rate`, per-trap CIs, per-case details, suite hash.
 2. Agent inspects the report, notes any trap family below threshold (e.g. `footnote_override: 0.7`), and surfaces the specific case IDs that failed.
-3. If the run JSON was written to disk, the agent calls `eval_audit_pack(run_json_path, cases_dir, output_zip_path)` to build the hash-chained ZIP. The manifest in the response confirms suite hash + file count.
+3. If the run JSON was written to disk, the agent calls `eval_audit_pack(run_json_path, cases_dir, output_zip_path)` to build the self-verifying ZIP. The SHA-256 manifest in the response confirms suite hash + file count; anchor the manifest hash outside the ZIP when deliberate rewriting is in scope.
 
 ```
 Pass rate: 0.88 (150/170) on mini-v4-sample. Per-trap:
@@ -130,13 +130,15 @@ This is the loop the marquee /eval scenario was already gesturing at — now it'
 
 1. Agent dumps its trace as a JSON dict (supported shapes: LangGraph, OpenAI Agents SDK, or canonical manual format).
 2. Calls `eval_ingest_trace(trace_json=<dict>, framework="langgraph")`.
-3. Receives an `EvalCase` payload with input, steps, and tool calls. It can persist
-   that payload for the SDK's trace evaluators or use the direct
-   `eval_tool_call_accuracy` MCP tool for a known expected/actual call pair.
+3. Receives an `EvalCase` payload with input, expected calls, and normalized steps.
+4. On `multivon-mcp` main (shipping in the next release), passes the returned
+   `agent_trace` and `expected_tool_calls` directly to
+   `eval_tool_call_accuracy`. With released 0.3.2, persist the payload for the
+   SDK's trace evaluators or use the MCP tool's single expected/actual-call mode.
 
 ## Discovering tools mid-session
 
-If the agent isn't sure which evaluator to use, it can call `eval_discover` to dump the full catalog. The response includes every shipped evaluator, its tier (`deterministic` / `llm_judge_qag` / `agent_trace` / `compliance` / `safety` / `multimodal` / `consistency`), the import path for direct SDK use, and which `(evaluator, judge_model)` pairs have shipped calibration data.
+If the agent isn't sure which evaluator to use, it can call `eval_discover` to dump the full catalog. The response includes every shipped evaluator, its category (`deterministic` / `llm_judge_qag` / `agent_trace` / `compliance` / `conversation` / `multimodal` / `consistency`), the import path for direct SDK use, and which `(evaluator, judge_model)` pairs have shipped calibration data.
 
 For agents that don't speak MCP, the same catalog is available via the CLI:
 `multivon-eval discover` and `pdfhell discover` (add `--compact` to either for

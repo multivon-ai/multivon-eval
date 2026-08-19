@@ -42,6 +42,28 @@ def test_readme_commands_match_cli_contract() -> None:
     assert "baseline" in _help("staleness")
 
 
+def test_readme_leads_with_current_release_and_public_surfaces() -> None:
+    readme = _read("README.md")
+    assert f"Current release: {multivon_eval.__version__}" in readme
+    assert "Current release — 0.16.1" in readme
+    assert "August 16, 2026" in readme
+    assert "eval-framework-benchmark" not in readme
+    assert "Four public packages plus one closed early-access product" in readme
+
+
+def test_readme_relative_links_resolve() -> None:
+    readme = _read("README.md")
+    links = re.findall(r"\[[^\]]*\]\(([^)]+)\)", readme)
+    missing = []
+    for href in links:
+        if href.startswith(("http://", "https://", "mailto:", "#")):
+            continue
+        relative = href.split("#", 1)[0]
+        if relative and not (ROOT / relative).exists():
+            missing.append(href)
+    assert not missing, f"README links missing local targets: {missing}"
+
+
 def test_quickstart_imports_every_used_evaluator() -> None:
     quickstart = _read("docs/quickstart.mdx")
     manual_block = quickstart.split("## Option B", 1)[1].split(
