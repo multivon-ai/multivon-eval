@@ -1,68 +1,81 @@
 ---
 title: "Quickstart"
-description: "Install pdfhell and run your first adversarial PDF benchmark in 30 seconds."
+description: "Install PDF Hell 0.6.1 and run a reproducible adversarial document benchmark."
 ---
 
-PDF Hell is an adversarial benchmark for AI document readers. Every test case is a PDF generated *from code*, so the correct answer is exactly known — no LLM judges another LLM.
+PDF Hell stress-tests AI document readers with PDFs generated from code. The
+generator chooses the answer before drawing each document, so scoring uses
+procedural ground truth rather than an LLM judge.
 
-## Install
+## Install and authenticate
 
 ```bash
 pip install pdfhell
+export GOOGLE_API_KEY=...
 ```
 
-The bare install pulls `multivon-eval` (the engine), `reportlab` (PDF generation), `pypdf`, and the three frontier-provider SDKs (`anthropic`, `openai`, `google-genai`). No GPU required, no provider extras to remember.
+You can also run without a permanent install by replacing `pdfhell` with
+`uvx pdfhell`. Use the environment variable for your chosen provider:
+`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or `GOOGLE_API_KEY`.
 
-If you use [uv](https://docs.astral.sh/uv/), skip the install — `uvx pdfhell <cmd>` works zero-setup.
-
-## Set an API key
-
-PDF Hell sends each PDF to a vision-capable model. Bring your own key for at least one of:
+## Run a suite
 
 ```bash
-export ANTHROPIC_API_KEY=sk-ant-...
-export OPENAI_API_KEY=sk-proj-...
-export GOOGLE_API_KEY=AIza...
+# Three-case wiring check
+uvx pdfhell run --model google:gemini-2.5-flash --suite smoke
+
+# Current 17-family sample: 170 cases
+uvx pdfhell run --model google:gemini-2.5-flash --suite mini-v4-sample
+
+# Full current suite: 510 cases
+uvx pdfhell run --model google:gemini-2.5-flash --suite mini-v4
 ```
 
-## Run the smoke suite (3 cases, ~10 seconds)
+The runner materializes missing cases, sends each PDF to the selected model,
+and writes a JSON report under `runs/`. Use `--out`, `--junit`,
+`--audit-pack`, and `--fail-threshold` to make those artifacts explicit.
+
+## Inspect one trap
 
 ```bash
-pdfhell run --model google:gemini-2.5-flash --suite smoke
+pdfhell list-traps
+pdfhell make --trap unicode_confusable_total --seed 7001
 ```
 
-You should see something like:
+The same family and seed reproduce the same PDF and answer key.
 
-```
-PDF Hell smoke suite — n=3
-model: google:gemini-2.5-flash
-pass: 3/3  (100.0%)
-refused: 0.0%
+## Isolate visual reading
 
-per-trap pass rate:
-  footnote_override               pass=100%  fell-for-trap=0%
-  hidden_ocr_mismatch             pass=100%  fell-for-trap=0%
-  split_table_across_pages        pass=100%  fell-for-trap=0%
-```
-
-The smoke suite is one case per trap family. The full mini suite is 30 cases (10 per family) — same command, `--suite mini`.
-
-## Try a specific trap
-
-Generate one PDF and inspect it visually:
+Provider PDF APIs may use the embedded text layer, rendered pixels, or both.
+Pixels-only mode rasterizes locally and sends PNG pages instead:
 
 ```bash
-pdfhell make --trap hidden_ocr_mismatch --seed 42
-open ./cases/hidden_ocr_mismatch-0042.pdf
+pip install 'pdfhell[pixels]'
+pdfhell run --model anthropic:claude-haiku-4-5 --suite smoke --pixels
 ```
 
-Open the PDF — you'll see what looks like a normal invoice. The trap is invisible: a second copy of the total amount is written into the PDF's text content stream using PDF render mode 3 (placed in the text stream but never rasterised). A vision model reads the visible amount; a text-extraction pipeline reads the hidden one.
+The default is 150 DPI; override it with `--dpi`. Reports record the modality,
+DPI, and pdfium build. Do not compare PDF and pixels-only scores as though they
+were the same experiment.
 
-Every case JSON (`cases/<case_id>.json`) carries the expected answer, the forbidden answer (the value the trap was specifically designed to elicit), and a description of the failure mode.
+<Warning>
+Use PDF Hell 0.6.1 or newer for `zero_width_space_split` and
+`unicode_confusable_total`. Earlier generators could render visible replacement
+glyphs, so old results for those two families are not comparable with current
+runs.
+</Warning>
 
-## What's next
+## Discover new traps
 
-- See the **[Trap families](/pdfhell/trap-families)** reference to understand what each trap tests.
-- Wire pdfhell into your CI with the **[CI integration](/pdfhell/ci-integration)** guide.
-- Full **[CLI reference](/pdfhell/cli-reference)**.
-- The **[FAQ](/pdfhell/faq)** covers methodology questions (test leakage, prompt sensitivity, statistical power).
+The optional research package provides the budgeted autoresearch loop used to
+propose and validate new families:
+
+```bash
+pip install 'pdfhell[research]>=0.5.4'
+python -m pdfhell.research.loop --budget 50 --max-candidates 200
+python -m pdfhell.research.report
+python -m pdfhell.research.curate --promotion-plan
+```
+
+Start with `mini-v4-sample` for routine comparisons and use `mini-v4` when you
+need tighter per-family estimates. Always retain the suite hash from the report.

@@ -85,34 +85,44 @@ The deploy never happens. You investigate and find the 256-token chunks split mi
 
 ```python
 from multivon_eval import EvalSuite, EvalCase
-from multivon_eval.evaluators import ToolCallAccuracy, PlanQuality, TaskCompletion
+from multivon_eval.evaluators import (
+    ToolArgumentAccuracy,
+    ToolCallAccuracy,
+    PlanQuality,
+    TaskCompletion,
+)
 
 suite = EvalSuite("Coding Agent Eval")
 
 suite.add_cases([
     EvalCase(
         input="Fetch the profile for user ID 42",
-        expected_tool_calls=[{"tool": "get_user", "args": {"id": 42}}],
+        expected_tool_calls=["get_user"],
     ),
     EvalCase(
         input="Send a Slack message to #general saying the deploy succeeded",
-        expected_tool_calls=[{"tool": "slack_send", "args": {"channel": "#general"}}],
+        expected_tool_calls=["slack_send"],
     ),
     EvalCase(
         input="Query the database for all orders placed today",
-        expected_tool_calls=[{"tool": "db_query", "args": {"filter": "today"}}],
+        expected_tool_calls=["db_query"],
     ),
     EvalCase(
         input="Create a GitHub PR from branch feature/auth to main",
-        expected_tool_calls=[{"tool": "gh_pr_create", "args": {"head": "feature/auth", "base": "main"}}],
+        expected_tool_calls=["gh_pr_create"],
     ),
     EvalCase(
         input="Schedule a 30-minute meeting with alice@company.com tomorrow at 2pm",
-        expected_tool_calls=[{"tool": "calendar_create", "args": {"duration": 30}}],
+        expected_tool_calls=["calendar_create"],
     ),
 ])
 
-suite.add_evaluators(ToolCallAccuracy(), PlanQuality(), TaskCompletion())
+suite.add_evaluators(
+    ToolCallAccuracy(),
+    ToolArgumentAccuracy(),
+    PlanQuality(),
+    TaskCompletion(),
+)
 
 # Run 5 times to surface non-determinism
 report = suite.run(coding_agent, runs=5, verbose=True)
@@ -124,6 +134,11 @@ for cr in report.case_results:
     if cr.is_flaky:
         print(f"  FLAKY: {cr.case_input[:50]} ({cr.pass_count}/{cr.runs} passed)")
 ```
+
+`expected_tool_calls` contains tool names, not argument dictionaries.
+`coding_agent` must return or be wrapped to attach its actual `agent_trace`;
+`ToolArgumentAccuracy` judges the arguments recorded in those tool calls against
+the task.
 
 **Output:**
 ```

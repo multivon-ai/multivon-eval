@@ -1952,7 +1952,7 @@ def cmd_discover(args) -> int:
 
     Same shape exposed by multivon-mcp's eval_discover tool — provided as a CLI
     so agents that don't speak MCP (or shell scripts, or CI gates) can pipe
-    ``multivon-eval discover --json | jq ...`` to plan a run.
+    ``multivon-eval discover | jq ...`` to plan a run.
     """
     import inspect
     import multivon_eval

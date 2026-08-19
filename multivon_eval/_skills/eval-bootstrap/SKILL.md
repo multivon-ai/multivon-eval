@@ -73,10 +73,11 @@ Do NOT auto-invoke if:
        --judge-model <sensible_default> \
        --pii-policy redact
    ```
-   The bootstrap CLI emits four files: `eval_suite.py` (runnable),
+   The bootstrap CLI emits four files in the output directory: `eval_suite.py` (runnable),
    `seed_cases.jsonl` (30 adversarial cases), `thresholds.yaml`
    (calibrated from traces), `DISCOVERY_REPORT.md` (rationale for
-   each evaluator).
+   each evaluator). It also writes `prompt_baseline.json` at the
+   repository root for staleness checks.
 5. **Rewrite `stub_model`** — `eval_suite.py` ships with a placeholder
    `stub_model()` function. Replace it with a real call into the
    project's model — read 1-2 of the project's existing LLM call sites
@@ -144,6 +145,7 @@ Confirm the bootstrap worked by:
 ```bash
 ls eval-bootstrap/
 # expect: eval_suite.py  seed_cases.jsonl  thresholds.yaml  DISCOVERY_REPORT.md
+test -f prompt_baseline.json
 python eval-bootstrap/eval_suite.py --runs 1
 ```
 

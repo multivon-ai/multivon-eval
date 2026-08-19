@@ -224,8 +224,9 @@ three different behaviors, formalized in
     Requires `agent_trace`; skips if missing. Default scoring is
     *fraction of expected tools called*. Two modifiers tune the strictness:
 
-    - `require_order=True` — positional match instead of set match. Use when call
-      order matters (auth before query, validate before commit).
+    - `require_order=True` — ordered-subsequence match instead of unordered set
+      match. Use when order matters (auth before query, validate before commit);
+      unrelated calls may still appear between the expected calls.
     - `penalize_unexpected=True` — `score = matched / (expected ∪ unexpected)`,
       so every extra tool drags the score down. Use for negative cases like *"the
       agent must NOT call `refund_order` on an already-refunded order"* where

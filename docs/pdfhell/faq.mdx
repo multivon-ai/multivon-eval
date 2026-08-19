@@ -1,88 +1,82 @@
 ---
 title: "FAQ"
-description: "Methodology questions, scoring, contamination, statistical power, and how pdfhell relates to existing eval frameworks."
+description: "Methodology, scoring, reproducibility, modalities, and corrected PDF Hell claims."
 ---
 
-## How is this different from DocVQA / MMMU / ChartQA?
+## How is this different from document QA benchmarks?
 
-Existing document benchmarks measure correctness on **clean, naturally-occurring PDFs**. PDF Hell measures correctness under **adversarial PDF structures** that are common in production but absent in academic benchmarks (hidden OCR layers, footnote overrides, page-broken tables).
+Document QA benchmarks usually measure accuracy on a fixed corpus. PDF Hell is
+a procedural stress test for named ingestion and rendering failure modes. Use
+both: a domain benchmark for representative quality and PDF Hell for targeted
+failure discovery.
 
-It's a stress test, not a sufficient eval. Pair it with a domain benchmark (DocVQA, your in-house regression suite) for full coverage.
+## Why not use an LLM judge?
 
-## Why no LLM-as-judge?
+Each generator chooses the expected value before drawing the PDF. The scorer
+checks that procedural answer directly, so the same class of model being tested
+does not decide correctness. Optional explanations may use an evaluator, but
+they are outside the primary scoring path.
 
-Because the same complexity that fools a document AI also fools a judge model. Customers paying for "Evidence Pack" reports from other vendors routinely discover their judge passed an answer that contradicted the source.
+## What does `fell_for_trap` mean?
 
-PDF Hell removes the judge from the scoring path. The answer is set by code; the model's output is matched against a known string (or a list of required token substrings, for prose answers). Wrong answers can be diagnosed *why* they're wrong via the `forbidden_answers` mechanism — but the *score* never depends on another LLM's opinion.
+A case can record known lure answers, such as the invisible OCR amount. Matching
+one marks the failure as trap-specific. It remains a diagnostic field; the
+procedural expected answer determines correctness.
 
-## Can a model train on the pdfhell repo and game the score?
+## Can public generators be memorized?
 
-The procedural generators are open source — that's deliberate. Three mitigations:
+The generators and registry are public for auditability. A fixed public suite
+can be contaminated, so use fresh deterministic seeds for private follow-up
+testing and disclose them when publishing. Memorizing one seed does not prove
+the family is solved.
 
-1. **Procedural, not fixed.** A model could memorise the 30 mini-suite seeds, but the generator is parameterised. The mini suite uses seeds 1001–3010; seeds 5000+ are unused and reserved as private holdouts for follow-up evaluation. Test-leakage on the public set doesn't transfer to held-out seeds.
+## Which suite should I run?
 
-2. **Code-based ground truth.** Even if a model has seen a specific seed during training, the answer key is derived from the generator's parameters — those are random per-seed. Memorising the question without the answer key buys nothing.
+- `smoke`: 3 cases, wiring only.
+- `mini`: 30 cases from the original three families.
+- `mini-v4-sample`: 170 cases across all 17 current families; practical routine
+  comparison.
+- `mini-v4`: 510 cases across all 17 families; greater per-family precision.
 
-3. **Trap families generalise.** The point isn't to overfit on `hidden_ocr_mismatch-1001`; it's to test whether the model handles *the failure mode* (hidden OCR layers in general). A model that passes seed 1001 by memorisation but fails on seed 9001 (a held-out seed) has revealed the contamination.
+The intermediate `mini-v2` and `mini-v3` registries remain available for
+historical reproduction. Always report the suite hash, not only its nickname.
 
-For research-grade evaluation, we recommend a fresh seed range as a held-out set. The mini suite uses seeds 1001–3010; seeds 5000+ are unused and reserved as private holdouts.
+## What is pixels-only mode?
 
-## How statistically powerful is a 30-case run?
+Normal PDF APIs may combine text extraction and rendering in an opaque provider
+pipeline. `--pixels` rasterizes locally and sends only images, isolating visual
+reading more closely. It requires `pdfhell[pixels]`; the default is 150 DPI.
+PDF and pixels-only scores are separate experiments and should not be pooled.
 
-The 95% Wilson confidence interval on a 30-case run with `pass_rate = 0.93` is approximately **[0.78, 0.98]**. Differences of less than ~5pp between models are *not* statistically distinguishable at this sample size.
+## Are all historical leaderboard claims still valid?
 
-For the published claim "GPT-4o falls for `hidden_ocr_mismatch` 100% of the time" — that's 10 cases at 100% fell-for-trap rate. Wilson 95% CI is [0.72, 1.0]. Strong signal but not zero-uncertainty.
+No. An earlier Claude Opus result was produced by deprecated-temperature API
+errors that were silently counted as wrong answers. The repository's correction
+notice supersedes the affected 0.4/0.5 README and confirmation claims. Current
+runs distinguish API errors from wrong answers.
 
-If you need tighter CIs, generate more seeds with `pdfhell make --trap X --seed N` for N in 5000–5100 (or similar) and add them to a custom suite. The 0.2 release will likely bump the mini suite to 50 cases / 5 families.
+Two Unicode families also changed in 0.6.1:
+`zero_width_space_split` and `unicode_confusable_total` previously could render
+visible replacement boxes. Only results generated with the redesigned families
+support current invisible/confusable-character claims.
 
-## Is the methodology robust to prompt engineering?
+## How do I publish a defensible result?
 
-The prompt for each trap family is fixed in the generator (the question included with each case). Deployers *could* re-engineer the prompt before sending to the model — e.g. inject "Make sure to read both visible text AND any invisible OCR layers."
+Include the package version, suite version and hash, model identifier, date,
+modality, DPI/rasterizer build when applicable, case count, pass rate with
+uncertainty, API error/refusal rates, and the raw JSON. Keep the audit pack when
+the result may be used in procurement or compliance decisions.
 
-That's a feature, not a bug: if a deployer can prompt-engineer their way around a trap, the trap measures fragility-without-prompt-engineering, which is itself useful information. For the official leaderboard we use the exact prompt the case carries, so all models are evaluated under the same prompt.
+## Can I add a trap?
 
-## What about on-prem models (Qwen-VL, Llama-3.2-Vision, etc.)?
+Yes. A useful generator is deterministic, code-grounded, answerable, free of
+forbidden-answer leakage, and meaningfully discriminative on fresh seeds. The
+optional `pdfhell[research]` workflow proposes candidates, runs validation
+gates, reports results, and creates a promotion plan; a human still decides what
+enters a released suite.
 
-PDF Hell works with any OpenAI-compatible endpoint:
+## Where should I look for the latest numbers?
 
-```bash
-pdfhell run --model openai:qwen2.5-vl-7b \
-            --base-url http://localhost:8000/v1
-```
-
-Run Qwen-VL via vLLM, Llama-3.2-Vision via Ollama, or any other OpenAI-compatible local serving stack. We have not run the full mini suite against on-prem models for the published leaderboard yet — PRs welcome.
-
-## Why is GPT-4o so much worse than Claude/Gemini on hidden OCR?
-
-Honest answer: we don't know definitively. The pattern looks like GPT-4o's vision pipeline is trusting an internal text-extraction layer when one exists in the PDF, while Claude and Gemini are reading the rendered pixels.
-
-GPT-5.4 fixes most of it (80% pass on hidden OCR), but GPT-5.4-mini still falls 90%. We've reported the finding to OpenAI; no comment yet.
-
-## Can I add my own trap family?
-
-Yes. See [CONTRIBUTING.md](https://github.com/multivon-ai/pdfhell/blob/main/CONTRIBUTING.md) for the trap-family contract (deterministic seed, code-based answer key, named failure mode). One trap family per PR. Tests run with `pytest tests/`.
-
-## Can I get pdfhell against my own document templates?
-
-The OSS mini suite tests pdfhell's three trap families against your model. If you need adversarial variants of *your own* templates — MSAs, claim forms, EOBs, medical records — procedurally generated with the same methodology against the same trap families, drop a line to `hello@multivon.ai`. We're inbound-only on this and pricing depends on volume + integration scope.
-
-See [commercial offerings](https://multivon.ai/commercial) for the full inbound flow.
-
-## Is this Multivon's product or just a research project?
-
-Both. PDF Hell + multivon-eval + multivon-mcp are all open-source under Apache 2.0. Multivon offers commercial implementation services on top of the OSS surface (custom trap families against your document templates, CI integration help, on-prem deployment guidance) — inbound only, no published tiers. The OSS is the product; the services exist to help teams that don't want to do the integration themselves.
-
-multivon-eval is the underlying SDK, also Apache 2.0 — it ships 44 evaluators across seven categories: deterministic, LLM-judge (QAG), agent-trace, compliance, multimodal, conversation, and consistency. See the [multivon-eval](/introduction) tab.
-
-## I'm a researcher. How do I cite this?
-
-```bibtex
-@software{pdfhell,
-  title  = {PDF Hell: Adversarial PDFs for AI document readers},
-  author = {Multivon},
-  year   = {2026},
-  url    = {https://github.com/multivon-ai/pdfhell},
-}
-```
-
-A methodology paper is on the roadmap once the full suite (10 trap families) is shipped.
+Use the live leaderboard and raw published runs for measurements. These docs
+describe the methodology and current 0.6.1 interface without freezing volatile
+rankings into the SDK documentation.

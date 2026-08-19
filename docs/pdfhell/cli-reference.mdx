@@ -1,168 +1,103 @@
 ---
 title: "CLI reference"
-description: "Every pdfhell subcommand and flag."
+description: "PDF Hell 0.6.1 commands, suites, modalities, and output controls."
 ---
 
-`pdfhell` is a single binary installed by `pip install pdfhell` (or via `uvx pdfhell …`). All subcommands are non-interactive — designed for CI and scripting.
+Install with `pip install pdfhell`, or prefix commands with `uvx`. Every
+subcommand is non-interactive and exposes its current options through `--help`.
 
 ## `pdfhell list-traps`
 
-Print every available trap family on stdout, one per line.
+Print the 17 registered trap-family names, one per line.
 
 ```bash
-$ pdfhell list-traps
-hidden_ocr_mismatch
-footnote_override
-split_table_across_pages
+pdfhell list-traps
+```
+
+## `pdfhell discover`
+
+Emit the capability catalog as JSON for agents and automation.
+
+```bash
+pdfhell discover
+pdfhell discover --compact
 ```
 
 ## `pdfhell make`
 
-Generate one trap PDF + its case JSON for inspection.
+Generate one PDF and its case JSON.
 
 ```bash
-pdfhell make --trap <family> --seed <int> [--out <dir>]
+pdfhell make --trap hidden_ocr_mismatch --seed 7001 --out cases
 ```
 
-| Flag | Default | Notes |
-|---|---|---|
-| `--trap` | required | One of the family names from `pdfhell list-traps`. |
-| `--seed` | required | Integer seed. Same seed → byte-identical PDF + identical answer key. |
-| `--out` | `./cases` | Output directory. Created if missing. |
-
-Writes `<case_id>.pdf` and `<case_id>.json` to `--out`. The JSON includes the expected answer, forbidden answers (trap-caught failure modes), and metadata.
+`--trap` and `--seed` identify the deterministic case. `--out` defaults to
+`./cases`.
 
 ## `pdfhell build`
 
-Materialise a named suite to disk.
+Materialize a named suite without running a model.
 
 ```bash
-pdfhell build --suite <smoke|mini> --out <dir>
+pdfhell build --suite mini-v4-sample --out cases/mini-v4-sample
 ```
 
-| Flag | Default | Notes |
-|---|---|---|
-| `--suite` | `mini` | `smoke` (3 cases) or `mini` (30 cases). |
-| `--out` | `./cases/<suite>` | Output directory. |
+Available suites are `smoke`, `mini`, `mini-v2`, `mini-v3`, `mini-v4`, and
+`mini-v4-sample`.
 
-Used by `pdfhell run` automatically on first use — you rarely need to call this directly.
-
-## `pdfhell run` — main entry point
-
-Evaluate a vision model against a suite.
+## `pdfhell run`
 
 ```bash
-pdfhell run --model <provider>:<model>
-            [--suite smoke|mini]
-            [--cases-dir <dir>]
-            [--workers <n>]
-            [--out <path>]
-            [--junit <path>]
-            [--audit-pack <path>]
-            [--fail-threshold <0.0-1.0>]
-            [--quiet]
+pdfhell run \
+  --model anthropic:claude-haiku-4-5 \
+  --suite mini-v4-sample \
+  --workers 4 \
+  --out runs/haiku.json \
+  --junit runs/haiku.xml \
+  --audit-pack runs/haiku-audit.zip \
+  --fail-threshold 0.80
 ```
 
-| Flag | Default | Notes |
+| Flag | Default | Meaning |
 |---|---|---|
-| `--model` | required | `provider:model`. Providers: `anthropic`, `openai`, `google`. Examples: `anthropic:claude-sonnet-4-6`, `openai:gpt-4o`, `google:gemini-2.5-flash`. |
-| `--suite` | `mini` | `smoke` or `mini`. |
-| `--cases-dir` | `./cases/<suite>` | Built on first use if missing. |
-| `--workers` | `4` | Parallel API requests. |
-| `--out` | `runs/<suite>-<model>.json` | Full report JSON. |
-| `--junit` | _(none)_ | Optional JUnit XML for CI dashboards (GitHub Actions, GitLab CI, Jenkins). |
-| `--audit-pack` | _(none)_ | Optional hash-chained ZIP: PDFs + answer keys + run JSON + JUnit + SHA-256 manifest + README. The artifact procurement teams need. |
-| `--fail-threshold` | _(none)_ | Float in `[0.0, 1.0]`. Exits non-zero if `pass_rate` is below this — for CI gates. |
-| `--quiet` | `false` | Suppress per-case progress; print summary only. |
+| `--model` | required | Provider/model spec such as `openai:gpt-4o`. |
+| `--suite` | `mini` | One of the six registered suite names. |
+| `--cases-dir` | suite-specific path | Use already materialized case files. |
+| `--workers` | `4` | Parallel provider requests. |
+| `--pixels` | off | Rasterize locally and send PNG pages only. |
+| `--dpi` | `150` | Raster resolution for `--pixels`. |
+| `--quiet` | off | Suppress progress output. |
+| `--out` | generated under `runs/` | JSON report path. |
+| `--junit` | unset | Optional JUnit XML path. |
+| `--audit-pack` | unset | Optional hash-chained evidence ZIP. |
+| `--fail-threshold` | unset | Exit nonzero when pass rate is below this value. |
 
-API key comes from environment variables (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`). pdfhell never reads them from disk or asks for them interactively.
+Pixels-only mode requires `pip install 'pdfhell[pixels]'`. The report records
+the modality, DPI, and pdfium build so it cannot be mistaken for a PDF-input
+run.
+
+Provider credentials come from `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or
+`GOOGLE_API_KEY`, according to the model prefix.
 
 ## `pdfhell report`
 
-Print a saved run's summary.
+Print the summary and per-family breakdown from an existing run JSON without
+calling the provider again.
 
 ```bash
-pdfhell report runs/mini-anthropic-claude-sonnet-4-6.json
+pdfhell report runs/haiku.json
 ```
 
-Useful for re-rendering a previous run's headline without re-running the model.
+The report surfaces API errors separately. Treat a high error rate as an
+invalid experiment, not as model failure.
 
-## Exit codes
+## Exit behavior
 
-| Code | Meaning |
-|---|---|
-| `0` | Run completed; if `--fail-threshold` was set, the threshold was met. |
-| `1` | Run completed but `pass_rate` was below `--fail-threshold`. CI should treat as failure. |
-| `2` | Bad arguments (unknown suite, unknown trap, missing required flag). |
+- Successful generation/reporting exits 0.
+- `run` exits nonzero when `--fail-threshold` is set and the measured pass rate
+  is lower.
+- Invalid flags, missing credentials, malformed cases, and provider failures
+  produce errors rather than a passing gate.
 
-## Output format
-
-The `--out` JSON has this shape:
-
-```json
-{
-  "model": "anthropic:claude-sonnet-4-6",
-  "suite": "mini",
-  "n": 30,
-  "pass_rate": 0.967,
-  "refused_rate": 0.0,
-  "per_trap_pass": {
-    "hidden_ocr_mismatch": 1.0,
-    "footnote_override": 0.9,
-    "split_table_across_pages": 1.0
-  },
-  "per_trap_fell_for_trap": { },
-  "cases": [
-    {
-      "case_id": "hidden_ocr_mismatch-1001",
-      "trap_family": "hidden_ocr_mismatch",
-      "correct": true,
-      "fell_for_trap": false,
-      "refused": false,
-      "expected": "$1,234.56",
-      "model_output": "$1,234.56",
-      "matched_expected": true,
-      "matched_forbidden": [],
-      "failure_mode": ""
-    }
-  ]
-}
-```
-
-`per_trap_fell_for_trap` is the diagnostic signal: a model that's getting only 60% on a trap family but `fell_for_trap=0.6` is consistently caught by the *designed* failure mode (the trap is working). A model at 60% with `fell_for_trap=0` is failing by hallucinating *something else* — different bug, different fix.
-
-## `pdfhell discover`
-
-Emit pdfhell's machine-readable capability catalog as JSON to stdout. The same shape an agent gets via the multivon-mcp `eval_discover` tool — provided as a CLI so agents that don't speak MCP (Claude Code via Bash, shell scripts, CI gates planning a run) can pipe `pdfhell discover --json | jq ...`.
-
-```bash
-pdfhell discover                # pretty-printed
-pdfhell discover --compact      # single-line JSON for piping
-```
-
-Output shape:
-
-```json
-{
-  "package": "pdfhell",
-  "version": "0.1.3",
-  "traps": [
-    {"name": "hidden_ocr_mismatch", "example_question": "…", "example_expected_answer": "$18,900.25"},
-    …
-  ],
-  "suites": [
-    {"name": "smoke", "version": "smoke-v1", "suite_hash": "8cb2f6ab", "total_cases": 3, "trap_seeds": {…}},
-    {"name": "mini",  "version": "mini-v1",  "suite_hash": "8ad87b8d", "total_cases": 30, "trap_seeds": {…}}
-  ]
-}
-```
-
-Use this when an agent needs to plan a run (e.g. "list the trap families before I call pdfhell_run") without round-tripping through MCP.
-
-## Scoring notes
-
-`pdfhell` uses contains-match scoring (whitespace-tolerant, case-insensitive, with trailing-punctuation strip). One nuance worth knowing:
-
-**Currency-prefix tolerance.** When the expected answer starts with a currency symbol (`$`, `€`, `£`, `¥`, `₹`) immediately before a digit, the matcher accepts the answer with or without the symbol. So `expected = "$780,803.18"` matches a model output of either `"$780,803.18"` or `"780,803.18"`. This avoids false negatives on the split-table trap, where models often omit the `$` even when the table column header includes it. Symmetric: an `expected = "780,803.18"` (no prefix) matches a model output of `"$780,803.18"` too.
-
-Known limitation: short numeric-only answers can substring-match longer numbers (`"18"` matches `"1875"`). Pad your expected answers with the surrounding context (e.g. `"$18.00"` rather than `"18"`) if you need stricter matching.
+Use `pdfhell <command> --help` as the authoritative installed-version
+reference.

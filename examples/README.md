@@ -1,19 +1,19 @@
 # multivon-eval examples
 
-Four reproducible case studies. Each script is self-contained — no shared
+Six focused case studies. Each script is self-contained — no shared
 utilities, no relative imports. Run with `python <name>.py` after setting the
 required environment variables.
 
 ```bash
 pip install multivon-eval pdfhell
 
-# Anthropic key needed for the LLM-judge examples (1 and 3)
+# Anthropic key needed for the LLM-judge examples (1, 3, and 6)
 export ANTHROPIC_API_KEY=sk-ant-...
 
 # OpenAI key needed for the contract / vision example (2)
 export OPENAI_API_KEY=sk-proj-...
 
-# 4 needs no key — runs entirely offline (regex)
+# 4 and 5 need no key — they run entirely offline
 ```
 
 | # | Script                                          | Evaluators                                            | API needed                | Cost     |
@@ -25,11 +25,16 @@ export OPENAI_API_KEY=sk-proj-...
 | 5 | `05_staleness_drift.py`                         | `staleness` (baseline → stamp → CHANGED → CI gate)    | none — static analysis    | $0      |
 | 6 | `06_simulate_personas.py`                       | `simulate`, conversation evaluators, goal judge       | Anthropic claude-haiku-4-5 | <$0.05  |
 
-Each script:
+Examples 1–4 are reproducible scored runs. Each one:
 
 - Exits 0 on overall pass, exits 1 if any case fails its threshold (mirror real CI gates).
 - Saves a full results JSON next to the script as `<name>_output.json`.
 - Prints clean, terminal-friendly output you can paste into a PR.
 
-The captured outputs from a real run are saved as `0X_output.txt` next to each
-script — these are exactly what the multivon.ai /examples page renders.
+Their captured outputs are saved as `0X_output.txt` next to each script — these
+are exactly what the multivon.ai `/examples` page renders.
+
+Example 5 demonstrates the complete staleness lifecycle and intentionally exits
+0 after showing the nested CI gate's exit code. Example 6 runs an adaptive
+persona simulation and gates on goal completion; it prints its report but does
+not create a results JSON or a captured output file.

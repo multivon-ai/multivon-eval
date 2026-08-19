@@ -41,7 +41,7 @@ The skill runs the bootstrap CLI in a fresh terminal the user can inspect, reads
     Uses `PRODUCT.md`, `OVERVIEW.md`, or the top-level `README.md` as the product description. Falls back to asking you for two or three sentences if none exist.
   </Step>
   <Step title="Run bootstrap">
-    Executes `multivon-eval bootstrap` with the detected provider as `--judge-provider`, a sensible default model, and `--pii-policy redact`. The CLI emits four artifacts: `eval_suite.py`, `seed_cases.jsonl`, `thresholds.yaml`, `DISCOVERY_REPORT.md`.
+    Executes `multivon-eval bootstrap` with the detected provider as `--judge-provider`, a sensible default model, and `--pii-policy redact`. The CLI writes four artifacts to the output directory (`eval_suite.py`, `seed_cases.jsonl`, `thresholds.yaml`, and `DISCOVERY_REPORT.md`) plus `prompt_baseline.json` at the repository root.
   </Step>
   <Step title="Rewrite stub_model">
     The generated `eval_suite.py` ships with a placeholder `stub_model()`. The skill reads one or two existing LLM call sites in your repo and rewrites `stub_model` to use the same client setup — no reinvention.

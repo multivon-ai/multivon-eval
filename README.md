@@ -88,6 +88,7 @@ The first three rows and the judge-UNKNOWN row shipped in 0.16.0 (see [What's ne
 [Quickstart](#quickstart--30-seconds-no-api-key) ·
 [Why we exist](#why-we-exist) ·
 [Demystifying evals](#demystifying-evals-operationalized) ·
+[What's new 0.16.1](#whats-new-in-0161) ·
 [What's new 0.16.0](#whats-new-in-0160) ·
 [What's new 0.10–0.15](#whats-new-in-010015) ·
 [Ecosystem](#the-multivon-ecosystem) ·
@@ -104,6 +105,15 @@ The first three rows and the judge-UNKNOWN row shipped in 0.16.0 (see [What's ne
 [Examples](#examples) ·
 [Tests](#tests) ·
 [Roadmap](#roadmap)
+
+## What's new in 0.16.1
+
+> Released on PyPI 2026-08-16. Full detail in [CHANGELOG.md](CHANGELOG.md) under *0.16.1*.
+
+- **Reasoning-tier judge calls get enough output budget to reach a verdict.** `gpt-5.x` and o-series judges now receive a 2,048-token minimum while non-reasoning judges keep their previous limits.
+- **The shipped quickstart validates cleanly.** `multivon-eval init -t quickstart && multivon-eval validate eval.py` now exercises a real reference output and exits 0.
+- **Cleaner local demo output.** Missing calibration for a local judge is shown as a concise demo advisory instead of a raw Python warning above the banner.
+- **The disagreement headline is reproducible.** It now cites the committed benchmark's Cohen's κ and flip counts instead of an unsourced percentage.
 
 ## What's new in 0.16.0
 
@@ -349,7 +359,7 @@ Cache speedup on the rep-1→rep-2 transition: **2,271×** — read that as "pai
 | **Four tiers** | Deterministic / LLM-judge / agent-trace / conversation | Mix freely; pay for LLM calls only where they matter |
 | **Reliability + flakiness** | `suite.run(runs=5)` + pass@k / pass^k + statistical significance | Detect cases that pass sometimes and fail others; tells you regressions from noise; pass^k reports what a user hitting the feature k times experiences |
 | **Statistical rigor** | Wilson CIs, bootstrap, p10/p50/p90, power warnings, BH correction | NAACL 2025: single-run eval scores are unreliable. CIs ship by default |
-| **No cold-start** | `generate_from_file("docs/")` synthesises cases | No labeled data required to start |
+| **No cold-start** | `generate_from_file("docs/faq.md")` synthesises cases | No labeled data required to start |
 | **Local-first compliance** | `PIIEvaluator` + `SchemaEvaluator` + `ComplianceReporter` | Hash-chained audit trails, EU AI Act / NIST AI RMF mappings, `EvalSuite.eu_ai_act_high_risk()` factory |
 | **Experiment tracking** | `Experiment.record(report)` + `compare(a, b)` | p-values, CIs, McNemar across runs |
 | **Cache** | `set_cache(JudgeCache(...))` — once | Reruns are free by construction (4 judge calls → 0; measured 2,271× on rep-2), identical scores guaranteed |
@@ -416,7 +426,7 @@ Agent cases use `agent_trace=[AgentStep(...)]` + `expected_tool_calls=[...]`. Co
 
 In the vocabulary of Anthropic's [evals post](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents): an `EvalCase` is a *task*, each of `runs=N` is a *trial*, an `Evaluator` is a *grader*, and `agent_trace` is the *transcript* — see the [mapping table](#demystifying-evals-operationalized) above.
 
-> **ToolCallAccuracy three-shape semantics** (0.9.0): `expected_tool_calls=None` skips the case (no expectation set), `expected_tool_calls=[]` asserts "no tools should have been called" (and a non-empty trace fails), and `expected_tool_calls=[...]` checks the trace contains the named calls in order. The skip variant is treated as `skipped-pass` in the report, not `0.0` — see the [`integrations/`](multivon_eval/integrations/) tracers (`LangGraphTracer`, `OpenAIAgentsTracer`, `ManualTracer`) for how each tracer populates `agent_trace`.
+> **ToolCallAccuracy three-shape semantics** (0.9.0): `expected_tool_calls=None` skips the case (no expectation set), `expected_tool_calls=[]` asserts "no tools should have been called" (and a non-empty trace fails), and `expected_tool_calls=[...]` checks which named calls appear. Matching is unordered by default; `require_order=True` requires the expected names to appear as an ordered subsequence, so unrelated calls may occur between them. The skip variant is treated as `skipped-pass` in the report, not `0.0` — see the [`integrations/`](multivon_eval/integrations/) tracers (`LangGraphTracer`, `OpenAIAgentsTracer`, `ManualTracer`) for how each tracer populates `agent_trace`.
 
 ### Evaluators — 44 across 7 tiers
 
@@ -525,10 +535,10 @@ multivon-eval init -t <template> -d <dir>     # scaffold a starter eval suite (t
 multivon-eval run eval.py                     # execute an eval file
 multivon-eval validate eval.py                # grade your graders: run evaluators against each task's reference output — exits 1 on BROKEN_TASK_OR_GRADER (0.16.0)
 multivon-eval report results.json             # print a saved JSON report
-multivon-eval view results.json [--open]      # render the JSON as an HTML dashboard
+multivon-eval view results.json               # render the JSON and open the HTML dashboard (add --no-browser to suppress opening)
 multivon-eval view --dir runs/                # browse a folder of reports — sortable index, open any, diff two
 multivon-eval compare a.json b.json           # diff two reports, McNemar + BH-corrected per-evaluator deltas
-multivon-eval generate --from docs/ --n 20    # synthetic case generation from a file/dir
+multivon-eval generate --from docs/faq.md --n 20    # synthetic case generation from a file
 multivon-eval generate --mutate cases.jsonl   # deterministic robustness mutations (also --template/--axes, --contrast)
 multivon-eval assess traces.jsonl             # free preflight: trace count, completeness, near-dups, PII — before you spend
 multivon-eval bootstrap --product PRODUCT.md --traces TRACES.jsonl   # cold-start a tuned suite
@@ -536,7 +546,9 @@ multivon-eval doctor [--json]                 # preflight: API keys, local judge
 multivon-eval install-skills [--dry-run] [--force]    # symlink the three Claude Code skills
 multivon-eval experiments list | history <name> | compare <run_a> <run_b>
 multivon-eval attribution scan <repo> | diff <base> <head>   # Phase 1 prompt-fingerprint diff
-multivon-eval staleness . [baseline|stamp]    # which prompts changed since your cases were authored — drift report / bless a baseline / bind cases to call sites
+multivon-eval staleness .                     # report prompt changes since the baseline
+multivon-eval staleness baseline .            # create or update prompt_baseline.json
+multivon-eval staleness stamp --cases cases.jsonl --site 'app.py::answer.system' --all  # bind cases to a prompt call site
 multivon-eval simulate --model-cmd model.py --personas p.jsonl   # persona-driven adaptive multi-turn eval, scored by the conversation evaluators
 ```
 

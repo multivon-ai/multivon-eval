@@ -3,7 +3,7 @@ title: "Tool reference"
 description: "Every multivon-mcp tool, its arguments, and the JSON shape it returns."
 ---
 
-multivon-mcp exposes **19 tools** to the agent. Each returns a JSON-friendly dict — typically `{"score": float, "passed": bool, "reason": str, "threshold": float, "evaluator": str}` — so the agent can branch on the result programmatically.
+multivon-mcp 0.3.2 exposes **22 tools** to the agent. Each returns a JSON-friendly dict — typically `{"score": float, "passed": bool, "reason": str, "threshold": float, "evaluator": str}` — so the agent can branch on the result programmatically.
 
 The agent normally calls `eval_discover` first to plan its strategy, then specific tools as needed.
 
@@ -216,7 +216,7 @@ Run the pdfhell adversarial-PDF benchmark against a vision model. Returns pass r
 | Arg | Type | Default |
 |---|---|---|
 | `model` | `str` | required (`provider:model`) |
-| `suite` | `str` | `"mini"` (also `"smoke"`) |
+| `suite` | `str` | `"mini"`; also `smoke`, `mini-v2`, `mini-v3`, `mini-v4`, `mini-v4-sample` |
 | `workers` | `int` | `4` |
 
 ### `pdfhell_make`
@@ -225,7 +225,7 @@ Generate one adversarial PDF + its answer key for inspection.
 
 | Arg | Type | Default |
 |---|---|---|
-| `trap` | `str` | required (`"hidden_ocr_mismatch"`, `"footnote_override"`, `"split_table_across_pages"`) |
+| `trap` | `str` | required; call `eval_discover` for the current 17-family list |
 | `seed` | `int` | required |
 | `return_pdf_bytes` | `bool` | `False` |
 
@@ -241,7 +241,43 @@ Build a hash-chained, procurement-ready ZIP from a pdfhell run. **No API calls.*
 | `cases_dir` | `str` | required |
 | `output_zip_path` | `str` | required |
 
-## Why these 19 (not all 44)
+## Agent workflows
+
+### `eval_compare_runs`
+
+Compare two saved `EvalReport` JSON files by case. Returns pass-rate and
+average-score deltas, regressions, improvements, McNemar p-value, and pairing
+counts. **No model call.**
+
+| Arg | Type | Default |
+|---|---|---|
+| `baseline_json_path` | `str` | required |
+| `new_json_path` | `str` | required |
+
+### `eval_generate_cases`
+
+Generate grounded synthetic cases from raw source text. This calls the selected
+judge model and returns dictionaries ready for `EvalCase(**case)` or JSONL.
+
+| Arg | Type | Default |
+|---|---|---|
+| `from_text` | `str` | required |
+| `n` | `int` | `10` |
+| `task` | `str` | `"qa"`; also `"summarization"`, `"hallucination"` |
+| `judge_model` | `str` | `"anthropic:claude-haiku-4-5"` |
+
+### `eval_ingest_trace`
+
+Normalize a JSON-friendly runtime trace into an `EvalCase` payload containing
+`agent_trace`. Accepts canonical steps, plus serialized OpenAI Agents
+`new_items`.
+
+| Arg | Type | Default |
+|---|---|---|
+| `trace_json` | `dict` | required; must include `input` |
+| `framework` | `str` | `"langgraph"`; also `"openai_agents"`, `"manual"` |
+
+## Why these 22 (not all 44)
 
 `eval_discover` returns the full 44-evaluator catalog so the agent can always introspect everything. The 19 directly exposed are the ones agents actually call mid-edit:
 
@@ -252,8 +288,9 @@ Build a hash-chained, procurement-ready ZIP from a pdfhell run. **No API calls.*
 - Flexible (g_eval, custom_rubric) for user-defined rubrics
 - Multimodal (vqa_faithfulness, document_grounding)
 - Agent traces (tool_call_accuracy)
-- Document AI (pdfhell_run, pdfhell_make)
+- Document AI (`pdfhell_run`, `pdfhell_make`)
 - Audit (eval_audit_pack) — for procurement
 - Discovery (eval_discover) — meta-capability for planning
+- Agent workflows (`eval_compare_runs`, `eval_generate_cases`, `eval_ingest_trace`)
 
 Exposing all 44 would bloat the agent's context window and overwhelm tool-selection. If you need an evaluator that's not directly exposed, the agent can still use `multivon-eval` as a library — `eval_discover` returns the import paths.

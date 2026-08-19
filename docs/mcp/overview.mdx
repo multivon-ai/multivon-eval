@@ -3,15 +3,16 @@ title: "multivon-mcp"
 description: "MCP server that gives AI coding agents direct access to the multivon-eval and pdfhell evaluation surface."
 ---
 
-`multivon-mcp` is a [Model Context Protocol](https://modelcontextprotocol.io) server that exposes 19 evaluation tools to any MCP-compatible agent — Claude Desktop, Claude Code, Cursor, Cline, OpenCode. The agent calls them by name; no copy-paste, no `python -c "..."`, no asking the agent to figure out the SDK calls.
+`multivon-mcp` 0.3.2 is a [Model Context Protocol](https://modelcontextprotocol.io) server that exposes 22 evaluation tools to any MCP-compatible agent — Claude Desktop, Claude Code, Cursor, Cline, OpenCode. The agent calls them by name; no copy-paste, no `python -c "..."`, no asking the agent to figure out the SDK calls.
 
 When the agent is helping you build an LLM product, it can:
 
 - Score a RAG output for hallucination without you writing the scaffolding
 - Generate an adversarial PDF on demand to test your document AI
-- Run the full pdfhell mini-suite against a model and analyse the results
+- Run the current 17-family PDF Hell suite against a model and analyse the results
 - Produce a hash-chained audit pack for procurement diligence
 - Discover the full evaluation capability catalog as JSON
+- Generate cases from source text, ingest runtime traces, and compare two saved runs
 
 ## Why an MCP server (not just a CLI)
 
