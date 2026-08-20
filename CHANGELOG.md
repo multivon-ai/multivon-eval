@@ -6,12 +6,32 @@ All notable changes to `multivon-eval`. The format follows [Keep a Changelog](ht
 
 ### Documentation
 
-- Reworked the README around the current 0.16.1 release, moved older release
-  notes into a clearly labeled history section, replaced private benchmark
-  links with the public in-repository evidence, and refreshed the examples,
-  evaluator categories, ecosystem count, and MCP client guidance.
+- Reworked the README into a shorter orientation path: quickstart, product
+  differences, workflow selection, core concepts, evidence, and links to the
+  exhaustive docs. Detailed release history, benchmark tables, and command
+  reference no longer compete with first-run guidance.
+
+### Changed
+
+- Updated package metadata to the SPDX license format supported by modern
+  setuptools, removing the deprecation warning from fresh wheel builds.
 
 ### Fixed
+
+- **Failed gates now produce a non-zero process exit as documented.**
+  `EvalGateFailure` intentionally inherits from both `Exception` and
+  `SystemExit`, but its constructor only initialized the first base. An
+  uncaught gate failure therefore carried `SystemExit.code=None` and Python
+  exited 0, allowing a failed quality, error-rate, or budget gate to leave CI
+  green. It now retains normal `Exception` catchability while uncaught failures
+  print the existing clean message and exit 1. A subprocess regression test
+  covers the actual shell contract.
+- Judge-availability warnings no longer truncate the actionable setup hint in
+  the middle of a word. They show the complete first error and point to
+  `multivon-eval doctor` for diagnosis.
+- The offline quickstart now supplies references for all three cases, so
+  `multivon-eval validate eval.py` meaningfully validates the whole starter
+  suite rather than one case and two `UNVALIDATABLE` placeholders.
 
 - **`ToolCallAccuracy(require_order=True)` no longer zeroes a correctly-ordered run that took extra steps.** Ordered matching paired expected against actual positionally (`zip`), so an agent that called the expected tools in the right order but preceded them with one extra call scored 0.0 — the same score as an agent that called them in reverse. The two failures were indistinguishable, and the common case (an agent takes a preparatory step) was graded as total failure. Order is now checked as a subsequence: extra calls interleaved among the expected ones do not break the match, a reordering still does. A reversed-order run now scores partial credit rather than 0.0 and still fails the threshold. Unordered mode, `penalize_unexpected`, and the `expected_tool_calls=[]` assertion are unchanged.
 

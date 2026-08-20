@@ -138,8 +138,14 @@ suite.add_cases([
     # reference against the deterministic evaluators (it passes all three),
     # so `validate eval.py` exits 0 out of the box.
     EvalCase(input="Hello", expected_output="Hi there! How can I help?"),
-    EvalCase(input="What's the weather?"),
-    EvalCase(input="Anything else?"),
+    EvalCase(
+        input="What's the weather?",
+        expected_output="I can't fetch live weather, but I can suggest a service.",
+    ),
+    EvalCase(
+        input="Anything else?",
+        expected_output="I'm not sure how to help with that yet.",
+    ),
 ])
 suite.add_evaluators(
     NotEmpty(),

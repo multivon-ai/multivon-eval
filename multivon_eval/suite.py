@@ -521,11 +521,13 @@ class EvalSuite:
                     "(no detail)",
                 )
                 import sys as _sys
+                first_line = first_judge_err.splitlines()[0]
                 _sys.stderr.write(
                     f"\n  ⚠ judge availability: {judge_err_count}/{report.total} case(s) "
                     f"hit a judge error. The pass-rate above does NOT reflect quality.\n"
-                    f"    First error: {first_judge_err[:200]}\n"
-                    f"    Fix the judge configuration before trusting these results.\n\n"
+                    f"    First error: {first_line}\n"
+                    f"    Run `multivon-eval doctor` or fix the configured "
+                    f"credentials/provider before trusting these results.\n\n"
                 )
                 _sys.stderr.flush()
 

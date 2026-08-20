@@ -97,7 +97,14 @@ class EvalGateFailure(Exception, SystemExit):
     """
     def __init__(self, message: str, pass_rate: float | None = None,
                  threshold: float | None = None) -> None:
-        super().__init__(message)
+        # ``Exception.__init__`` (the first base in the MRO) populates
+        # ``args`` but does not initialise ``SystemExit.code``.  An uncaught
+        # instance therefore used to terminate Python with status 0 — exactly
+        # the opposite of what a CI gate promises.  Keep the Exception
+        # catchability while explicitly giving SystemExit a non-empty code;
+        # Python prints the message without a traceback and exits 1.
+        Exception.__init__(self, message)
+        self.code = message
         self.pass_rate = pass_rate
         self.threshold = threshold
 

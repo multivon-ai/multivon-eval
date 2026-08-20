@@ -371,3 +371,26 @@ def test_assert_budget_with_no_limits_is_noop():
     very expensive run. Defensive — users opt in per dimension."""
     report = _stub_report(total_cost_usd=10_000.0, total_tokens=10**9)
     report.assert_budget()  # should not raise
+
+
+def test_uncaught_eval_gate_failure_exits_one_without_traceback():
+    """The shell/CI contract matters more than in-process catchability."""
+    import subprocess
+    import sys
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "from multivon_eval import EvalGateFailure; "
+                "raise EvalGateFailure('quality gate failed', 0.5, 0.8)"
+            ),
+        ],
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 1
+    assert result.stderr.strip() == "quality gate failed"
+    assert "Traceback" not in result.stderr

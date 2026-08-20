@@ -49,6 +49,10 @@ def test_readme_leads_with_current_release_and_public_surfaces() -> None:
     assert "August 16, 2026" in readme
     assert "eval-framework-benchmark" not in readme
     assert "Four public packages plus one closed early-access product" in readme
+    assert len(readme.splitlines()) < 350
+    assert readme.index("## Start in 30 seconds") < readme.index("## Why teams choose it")
+    assert readme.index("## Why teams choose it") < readme.index("## Pick your path")
+    assert "## Earlier release highlights" not in readme
 
 
 def test_readme_relative_links_resolve() -> None:
@@ -74,6 +78,20 @@ def test_quickstart_imports_every_used_evaluator() -> None:
         if line.startswith("from multivon_eval import")
     )
     assert "Faithfulness" in import_line
+
+
+def test_scaffolded_quickstart_validates_every_case() -> None:
+    from multivon_eval.templates import TEMPLATES
+
+    source = TEMPLATES["quickstart"]["eval.py"]
+    assert source.count("expected_output=") == 3
+
+
+def test_doctor_exit_codes_are_explained() -> None:
+    docs = _read("README.md") + _read("docs/quickstart.mdx")
+    assert "exits 0" in docs
+    assert "2 when it finds warnings" in docs
+    assert "1 when it finds an error" in docs
 
 
 def test_evaluator_count_claim_matches_public_catalog() -> None:

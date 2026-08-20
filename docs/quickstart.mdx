@@ -50,6 +50,16 @@ Runs a self-contained customer-support eval; the deterministic tier needs no API
 pip install multivon-eval
 ```
 
+Check the installation without contacting a provider:
+
+```bash
+multivon-eval doctor --no-ping --json
+```
+
+`doctor` exits 0 when every check is clean, 2 when it finds warnings (for
+example, no optional provider key), and 1 when it finds an error. An exit code
+of 2 is diagnostic and does not mean the package failed to install.
+
 For LLM-judge evaluators, add your API key:
 
 ```bash
