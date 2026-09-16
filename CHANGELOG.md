@@ -4,7 +4,23 @@ All notable changes to `multivon-eval`. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+## [0.18.0] — 2026-09-17
+
+### Statistical comparisons
+
+- Use an exact McNemar test for small discordant samples, returning 1.0 for
+  balanced directions; retain a continuity-corrected approximation above 100
+  discordances. Reject missing outcomes and clarify that non-significance does
+  not establish equivalence.
+
 ### Evidence foundations
+
+- Identified reports with all trials removed cannot supply paired significance.
+  Recorded grader/engine/calibration drift and changed repeat counts also block
+  paired significance. Opaque callback dependencies remain outside this check.
+- Tool-call accuracy distinguishes missing traces from observed empty traces;
+  missing observations cannot prove no tools were called, while an explicitly
+  empty trace fails when tools were required.
 
 - Add versioned, content-addressed datasets with explicit case IDs, revisions,
   source groups, split assignment checks, and immutable snapshots.

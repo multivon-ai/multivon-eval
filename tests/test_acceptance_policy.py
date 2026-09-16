@@ -214,7 +214,7 @@ def test_documented_policy_example(tmp_path, monkeypatch):
     assert namespace["decision"].decision == "accept"
 
 
-@pytest.mark.parametrize("mutation", ["id", "output", "tags", "lost_run", "duplicate_run"])
+@pytest.mark.parametrize("mutation", ["id", "output", "tags", "lost_run", "duplicate_run", "all_trials"])
 def test_detached_headers_or_lost_trials_cannot_pass(mutation):
     report = EvalSuite("integrity").add_case(EvalCase("x", "yes")).add_evaluator(ExactMatch()).run(
         lambda _: "yes", runs=2, verbose=False)
@@ -225,6 +225,8 @@ def test_detached_headers_or_lost_trials_cannot_pass(mutation):
         result.actual_output = "edited"
     elif mutation == "tags":
         result.tags = ["different"]
+    elif mutation == "all_trials":
+        result.trials = ()
     elif mutation == "lost_run":
         result.trials = result.trials[:1]
     else:
@@ -232,3 +234,25 @@ def test_detached_headers_or_lost_trials_cannot_pass(mutation):
     assert policy().evaluate(report).decision == "indeterminate"
     from multivon_eval import compare_reports
     assert compare_reports(report, report).mcnemar_p is None
+
+
+def test_missing_trace_cannot_establish_no_forbidden_tools():
+    from multivon_eval import ToolCallAccuracy
+    case = EvalCase("Do not call tools", expected_tool_calls=[])
+    missing = ToolCallAccuracy().evaluate(case, "done")
+    assert missing.metadata["skipped"] and not missing.passed
+    case.agent_trace = []
+    observed_empty = ToolCallAccuracy().evaluate(case, "done")
+    assert observed_empty.passed and not observed_empty.metadata.get("skipped")
+
+
+def test_recorded_grader_and_repeat_configuration_must_match():
+    from multivon_eval import compare_reports
+    cases = [EvalCase("x", "yes")]
+    base = EvalSuite("one").add_cases(cases).add_evaluator(ExactMatch()).run(lambda _: "yes", verbose=False)
+    repeats = EvalSuite("two").add_cases(cases).add_evaluator(ExactMatch()).run(lambda _: "yes", runs=2, verbose=False)
+    assert compare_reports(base, repeats).mcnemar_p is None
+    changed = EvalSuite("three").add_cases(cases).add_evaluator(ExactMatch(threshold=0.7)).run(lambda _: "yes", verbose=False)
+    result = compare_reports(base, changed)
+    assert result.mcnemar_p is None
+    assert any("evaluator configuration" in issue for issue in result.identity_issues)

@@ -466,38 +466,30 @@ def benjamini_hochberg(p_values: list[float], alpha: float = 0.05) -> list[float
 
 
 def mcnemar_test(results_a: list[bool], results_b: list[bool]) -> float:
-    """
-    McNemar's test for paired binary model comparison.
+    """Two-sided paired test of equal marginal pass probabilities.
 
-    More powerful than two-proportion z-test when comparing two models on the
-    same test cases — it only uses discordant pairs (cases where A and B
-    disagree), which is all the statistical information in a paired comparison.
-
-    Uses Edwards' continuity correction for small samples.
-
-    Args:
-        results_a: List of bool pass/fail for model A (one per case).
-        results_b: List of bool pass/fail for model B (same cases, same order).
-
-    Returns:
-        Two-tailed p-value. p < 0.05 means the models differ significantly.
-        p ≥ 0.05 means you cannot distinguish them on this dataset.
-
-    Example:
-        from multivon_eval import mcnemar_test
-        p = mcnemar_test(
-            [r.passed for cr in report_a.case_results for r in cr.results],
-            [r.passed for cr in report_b.case_results for r in cr.results],
-        )
+    Uses the exact binomial test for at most 100 discordant pairs; above
+    that, a continuity-corrected chi-square approximation. Equal directional
+    counts return 1.0. A large p-value is not evidence of equivalence.
+    Missing/error outcomes must be removed as pairs before calling this
+    function, and correlated variants must not be treated as independent.
     """
     if len(results_a) != len(results_b):
         raise ValueError("results_a and results_b must have the same length")
-    b = sum(1 for a, r in zip(results_a, results_b) if a and not r)      # A-pass, B-fail
-    c = sum(1 for a, r in zip(results_a, results_b) if not a and r)      # A-fail, B-pass
-    if b + c == 0:
+    if any(value not in (True, False) for value in [*results_a, *results_b]):
+        raise ValueError("McNemar requires binary outcomes, without missing values")
+    b = sum(1 for a, r in zip(results_a, results_b) if a and not r)
+    c = sum(1 for a, r in zip(results_a, results_b) if not a and r)
+    discordant = b + c
+    if discordant == 0 or b == c:
         return 1.0
-    stat = (abs(b - c) - 1) ** 2 / (b + c)  # Edwards' continuity correction
-    return 2 * (1 - _norm_cdf(math.sqrt(stat)))
+    if discordant <= 100:
+        # The null is Binomial(discordant, 1/2); integer arithmetic avoids
+        # underflow in the small-sample exact tail. Verified against SciPy.
+        tail = sum(math.comb(discordant, k) for k in range(min(b, c) + 1))
+        return min(1.0, 2 * tail / (2 ** discordant))
+    statistic = max(0, abs(b - c) - 1) ** 2 / discordant
+    return math.erfc(math.sqrt(statistic / 2))
 
 
 def bayesian_interval(

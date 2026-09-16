@@ -83,6 +83,9 @@ class ToolCallAccuracy(Evaluator):
                 "Requires case.expected_tool_calls — set it (or [] to assert no tools) to enable ToolCallAccuracy.",
             )
 
+        if case.agent_trace is None:
+            return self._skipped("Requires a measured agent_trace; use [] for an observed empty trace.")
+
         actual_calls = [
             tc.name
             for step in (case.agent_trace or [])
@@ -99,12 +102,6 @@ class ToolCallAccuracy(Evaluator):
             return self._result(
                 0.0,
                 f"Unexpected tool calls — expected none, got: {actual_calls}",
-            )
-
-        # Real expectation but no trace — we can't compute anything meaningful.
-        if not case.agent_trace:
-            return self._skipped(
-                "Requires case.agent_trace to evaluate expected_tool_calls.",
             )
 
         if self.require_order:

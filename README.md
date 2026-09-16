@@ -16,14 +16,14 @@ No hosted account is required.
 [Documentation](https://docs.multivon.ai/) · [Examples](examples/README.md) ·
 [Benchmarks](benchmarks/README.md) · [Changelog](CHANGELOG.md)
 
-**Current release: 0.17.0 — September 17, 2026.** Python 3.10+, Apache 2.0.
-[Migration notes](docs/guides/migration-0-17.mdx).
+**Current release: 0.18.0 — September 17, 2026.** Python 3.10+, Apache 2.0.
+[Migration notes](docs/guides/migration-0-18.mdx).
 
-On the development branch, [case manifests and trial evidence](docs/guides/versioned-evidence.mdx)
+[Case manifests and trial evidence](docs/guides/versioned-evidence.mdx)
 support safer comparisons and regrading. Use Hugging Face for dataset operations,
 [Inspect for execution](docs/guides/inspect-integration.mdx), and Multivon's
 [acceptance policies](docs/guides/acceptance-policies.mdx) for required checks and
-task slices. These additions are not yet in PyPI 0.17.0. The
+task slices. These features ship in 0.18.0. The
 [implementation program](plans/industrial-evaluation.md) tracks unfinished work;
 [reuse decisions](plans/reuse-decisions.md) keep the integration boundaries explicit.
 
@@ -201,15 +201,18 @@ multivon-eval doctor --no-ping --json          # check configuration offline
 `doctor` exits 0 when clean, 2 when it finds warnings, and 1 when it finds an error.
 Use `multivon-eval --help` for all commands.
 
-## Current release — 0.17.0
+## Current release — 0.18.0
 
-- Skipped graders no longer count as passes or inflate quality averages.
-- Active quality gates reject errors and incomplete coverage by default.
-- Refusal prefixes cannot bypass grounding checks; ambiguous verdicts stay UNKNOWN.
-- Comparisons distinguish infrastructure recovery from quality improvement.
-- Judge timeouts reach providers; reliability samples bypass cached verdicts.
+- Reuse Hugging Face Datasets for loading; retain versioned case manifests and source groups.
+- Retain individual outputs, grader results, retries and traces for inspection and regrading.
+- Use Inspect for execution, native provider logs and crash recovery.
+- Apply required-check, coverage and slice contracts with accept/reject/indeterminate decisions.
+- Block paired significance when identity, retained trials or recorded grader settings are incompatible.
+- Preserve missing trace observations and use exact small-sample McNemar tests.
 
-See [migration notes](docs/guides/migration-0-17.mdx) and the [changelog](CHANGELOG.md).
+See [migration notes](docs/guides/migration-0-18.mdx), the [worked document study](benchmarks/industrial/DOCUMENT_RESULTS.md),
+and the [changelog](CHANGELOG.md). This release does not complete provider accounting,
+opaque callback compatibility, customer validation or the remaining industrial program.
 
 ## Related tools and contributing
 

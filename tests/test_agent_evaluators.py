@@ -64,8 +64,8 @@ class TestToolCallAccuracy:
 
     def test_empty_steps_fail(self):
         result = ToolCallAccuracy().evaluate(make_case(steps=[] , expected_tool_calls=["search_weather"]), "done")
-        assert not result.passed and result.metadata.get("skipped")
-        assert result.reason.startswith("[skipped]")
+        assert not result.passed and not result.metadata.get("skipped")
+        assert result.score == 0.0
 
 
     def test_no_tool_calls_still_records_failure_when_expected(self):

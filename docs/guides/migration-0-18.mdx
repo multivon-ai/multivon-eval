@@ -1,0 +1,91 @@
+---
+title: Migrating to 0.18
+description: Retain trial evidence, reuse dataset and execution tools, and apply explicit acceptance contracts.
+---
+
+Version 0.18.0 adds evidence-preserving reports, dataset and execution adapters,
+and explicit acceptance policies. Existing suite construction still works.
+Comparison gates are stricter because matching prompt text alone cannot show
+that cases, context, labels and recorded grader settings remained comparable.
+
+## Upgrade and choose optional integrations
+
+```bash
+pip install --upgrade "multivon-eval==0.18.0"
+# Only when you use these integrations:
+pip install "multivon-eval[datasets,inspect]==0.18.0"
+```
+
+Hugging Face Datasets owns loading, storage and streaming. `CaseManifest` records
+Multivon's case identity and split provenance; it is not a new dataset platform.
+Inspect owns scheduling, native provider logs, viewing and recovery. Read the
+[versioned evidence](./versioned-evidence) and [Inspect](./inspect-integration) guides.
+
+## Regenerate baselines for gated comparisons
+
+New runs retain `case_id`, a case digest and immutable per-trial records. Supply
+stable IDs and `source_id` when multiple variants come from the same document or
+task. Changed context, labels or other case content changes the digest.
+
+Old reports remain readable for diagnostics. They cannot provide verified pairing
+by inventing identifiers or reconstructing missing observations. The explicit
+`--allow-legacy-identity` comparison override trusts legacy prompt matching; it is
+not evidence recovery and cannot repair modern reports whose trials were removed.
+
+Changed repeat counts or recorded grader, engine or calibration settings also
+block paired significance. Suite names and case order can change without changing
+the measured task. Full compatibility of opaque callbacks, helper dependencies
+and external services is still outside the recorded contract.
+
+## Make required checks explicit
+
+The legacy `fail_threshold` gate evaluates overall case quality. For release
+requirements, use an `AcceptancePolicy` with required checks, minimum measured
+coverage, sample counts and tag slices. A skipped required check cannot disappear
+inside an otherwise passing case.
+
+```python
+from multivon_eval import AcceptancePolicy, CheckRequirement
+
+policy = AcceptancePolicy((CheckRequirement("exact_match", min_cases=20),))
+# After saving a full report:
+# decision = policy.evaluate(report)
+# decision.assert_accepted()
+```
+
+The JSON/CLI result uses `accept` (exit 0), `reject` (1), and `indeterminate` (2).
+A known quality failure can reject even if other evidence is incomplete. Policies
+count repeated trials within a case; they do not treat repeats as new independent
+cases. The default considers all recorded attempts. Select `final_attempt` only
+for an explicitly recoverable workflow with independent state assertions.
+
+## Missing traces and statistical tests
+
+`ToolCallAccuracy` now distinguishes `agent_trace=None` (missing observation)
+from `agent_trace=[]` (observed no steps). Missing traces are skipped even when
+the expected tool list is empty. An observed empty trace fails if a tool was
+required. Callers must preserve this distinction through their adapters.
+
+Small discordant samples use an exact two-sided McNemar test; above 100
+discordances the test uses a continuity-corrected approximation. Balanced
+directions return 1.0. A large p-value does not establish equivalence; source
+variants can violate independence and need grouped analysis.
+
+## Companion tools and evidence limits
+
+The eval-action v2 branch consumes the same JSON acceptance policy and requires
+an actual synchronous `model_fn` in the suite module. Its `INDETERMINATE` verdict
+is a blocking exit 2 unless explicitly configured as report-only. Regenerate
+reports from older action versions, which evaluated a placeholder target.
+
+The multivon-mcp 0.4 branch adds `eval_acceptance_report`; skipped/error results
+carry `measured: false` and null `score`/`passed`. Update clients that assume every
+response contains an ordinary binary verdict. Check each companion's release
+notes before choosing a version.
+
+Native suite trials retain outputs and grader results, but complete provider
+requests and per-trial usage still require instrumentation. Inspect-native logs
+retain their own provider evidence; direct SDK judge calls outside Inspect may
+not be included in its budgets. Keep original logs alongside imported reports.
+The [document workflow study](./document-workflows) records these limitations and
+negative results. It does not establish a model ranking or customer acceptance.

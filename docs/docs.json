@@ -13,7 +13,13 @@
     "dark": "#5b21b6"
   },
   "contextual": {
-    "options": ["assistant", "mcp", "add-mcp", "cursor", "vscode"]
+    "options": [
+      "assistant",
+      "mcp",
+      "add-mcp",
+      "cursor",
+      "vscode"
+    ]
   },
   "topbarLinks": [
     {
@@ -44,7 +50,12 @@
         "groups": [
           {
             "group": "Getting Started",
-            "pages": ["introduction", "quickstart", "guides/task-success", "why-multivon-eval"]
+            "pages": [
+              "introduction",
+              "quickstart",
+              "guides/task-success",
+              "why-multivon-eval"
+            ]
           },
           {
             "group": "Evaluators",
@@ -78,6 +89,7 @@
               "guides/intelligent-eval",
               "guides/statistical-rigor",
               "guides/reliability-metrics",
+              "guides/migration-0-18",
               "guides/migration-0-17",
               "guides/validate",
               "guides/reliability",

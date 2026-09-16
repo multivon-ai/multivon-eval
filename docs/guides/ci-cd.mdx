@@ -36,8 +36,8 @@ report = suite.run(
 </Warning>
 
 A case with one measured check and another skipped check still counts as evaluated.
-The built-in gate blocks wholly skipped cases; enforce per-check coverage separately
-when every evaluator is required.
+The built-in gate blocks wholly skipped cases. Use an [acceptance policy](./acceptance-policies)
+for required checks and per-slice coverage.
 
 ## GitHub Actions
 
@@ -77,6 +77,17 @@ jobs:
             eval_results.json
             eval_results.html
 ```
+
+## Apply a saved release contract
+
+```bash
+multivon-eval gate eval_results.json --policy evals/acceptance.json --output decision.json
+```
+
+This uses the same versioned policy as the eval-action v2 branch and
+`eval_acceptance_report` in the multivon-mcp 0.4 branch. Check the companion
+release notes for availability. The policy returns accept/reject/indeterminate
+with exit codes 0/1/2; it does not require a baseline or a p-value.
 
 ## Compare against a baseline
 

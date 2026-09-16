@@ -376,6 +376,21 @@ def compare_reports(baseline: EvalReport, proposal: EvalReport, *,
         baseline.case_results, proposal.case_results
     )
     identity_issues.extend(baseline.evidence_issues + proposal.evidence_issues)
+    if baseline.runs_per_case != proposal.runs_per_case:
+        identity_issues.append("Runs per case changed; repeated-run decisions are not comparable")
+    if baseline.suite_lock is not None and proposal.suite_lock is not None:
+        from dataclasses import asdict
+        from .case_manifest import canonical_json
+        b_lock, p_lock = baseline.suite_lock, proposal.suite_lock
+        b_checks = sorted(canonical_json(asdict(e)) for e in b_lock.evaluators)
+        p_checks = sorted(canonical_json(asdict(e)) for e in p_lock.evaluators)
+        if b_checks != p_checks:
+            identity_issues.append("Recorded evaluator configuration changed between runs")
+        if b_lock.library_version != p_lock.library_version:
+            identity_issues.append("Evaluation engine version changed between runs")
+        if b_lock.calibration_version != p_lock.calibration_version:
+            identity_issues.append("Calibration version changed between runs")
+
 
     paired_diffs: list[CaseDiff] = []
     for b_cr, p_cr in paired_pairs:

@@ -20,6 +20,7 @@ from multivon_eval import (
 )
 from multivon_eval.compare import _cli, _pair_by_input
 from multivon_eval.result import CaseResult
+from multivon_eval.trials import attach_trial, capture_case
 
 
 def _case(
@@ -31,7 +32,7 @@ def _case(
     pass_count: int = -1,
 ) -> CaseResult:
     case_id, case_digest = EvalCase(inp).identity()
-    return CaseResult(
+    result = CaseResult(
         case_input=inp,
         actual_output="ok",
         results=[EvalResult("e", score, passed)],
@@ -41,6 +42,9 @@ def _case(
         case_id=case_id,
         case_digest=case_digest,
     )
+    attach_trial(result, capture_case(EvalCase(inp)))
+    result.trials = tuple(result.trials[0].with_position(attempt=1, run_index=i + 1) for i in range(runs))
+    return result
 
 
 def _report(name: str, cases: list[CaseResult]) -> EvalReport:
