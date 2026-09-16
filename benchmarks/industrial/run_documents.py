@@ -8,7 +8,7 @@ from importlib.metadata import version
 from pathlib import Path
 
 from inspect_ai import eval as inspect_eval
-from inspect_ai.model import ModelCost
+from inspect_ai.model import ModelCost, ModelInfo, set_model_info
 
 from multivon_eval import AcceptancePolicy, CaseManifest, CheckRequirement
 from multivon_eval.integrations.inspect import from_inspect_log
@@ -24,6 +24,8 @@ def run(root: Path, output: Path, model: str) -> dict:
     manifest = CaseManifest.load(root / "manifest.json")
     output.mkdir(parents=True, exist_ok=False)
     price_in, price_out = MODELS[model]
+    if model == "mockllm/model":
+        set_model_info(model, ModelInfo())
     logs = inspect_eval(
         f"{Path(__file__).with_name('document_task.py').resolve()}@document_ledger",
         task_args={"root": str(root.resolve()), "database": str((output / "ledger.sqlite").resolve())},
