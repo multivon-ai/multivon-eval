@@ -1,0 +1,153 @@
+---
+title: Fit on development reviews, evaluate held-out sources
+description: Reuse scikit-learn and SciPy to analyze saved grader scores without new model calls.
+---
+
+**Development preview on `main`; not included in PyPI 0.18.0.** Install the
+checkout with `pip install -e '.[review]'`. The extra supplies scikit-learn and
+SciPy; core evaluation does not require them.
+
+This workflow connects [Label Studio reviews](/guides/review-labels) to the
+original saved grader scores. It selects an empirical threshold and reports
+held-out false accepts and false rejects. It does not calibrate probabilities,
+authenticate reviewers, or automatically approve an application release.
+
+## Freeze source-disjoint splits
+
+Assign all variants and repeated trials from one document, session or task
+instance to the same `source_id`. Freeze a manifest before threshold selection.
+Use existing upstream split assignments when appropriate; otherwise use an
+established splitter such as scikit-learn's
+[GroupShuffleSplit](https://scikit-learn.org/stable/modules/generated/sklearn.model_selection.GroupShuffleSplit.html).
+
+```python
+from sklearn.model_selection import GroupShuffleSplit
+from multivon_eval import CaseManifest
+
+# cases: your EvalCase objects, with explicit case_id and source_id.
+# Define them before fitting or inspecting held-out results.
+groups = [case.source_id for case in cases]
+splitter = GroupShuffleSplit(n_splits=1, test_size=0.3, random_state=42)
+development, held_out = next(splitter.split(cases, groups=groups))
+manifest = CaseManifest("frozen review protocol", cases, splits={
+    "development": [cases[i].case_id for i in development],
+    "held_out": [cases[i].case_id for i in held_out],
+})
+manifest.save("review-manifest.json")
+```
+
+Run each split separately with the same grader configuration. Export each report
+for review with the same rubric and review procedure. Keep the original task
+files and raw annotation exports. Missing source IDs, overlapping assignments,
+changed case definitions, and report/task mismatches block this workflow.
+A content hash cannot discover that two differently named sources contain the
+same real document; source provenance still needs review.
+
+## Join reviews to saved scores
+
+```python
+import json
+from pathlib import Path
+from multivon_eval import EvalReport
+from multivon_eval.integrations.label_studio import import_review_annotations
+from multivon_eval.review_calibration import collect_reviewed_scores
+
+def read(path):
+    return json.loads(Path(path).read_text())
+
+def reviewed_split(split):
+    report = EvalReport.from_dict(read(f"{split}-report.json"))
+    tasks = read(f"{split}-tasks.json")
+    reviews = import_review_annotations(read(f"{split}-export.json"), tasks,
+                                        reviewer_kind="human")
+    return collect_reviewed_scores(report, tasks, reviews, manifest,
+        split=split, reviewer_kind="human", min_reviewers=2)
+
+development_scores = reviewed_split("development")
+held_out_scores = reviewed_split("held_out")
+```
+
+Use `model` or `synthetic` instead of `human` when that describes the labels.
+Two IDs alone do not establish two independent reviewers. The artifact retains
+annotations, their explanations, review coverage, and exact trial references.
+An error or skipped grader has no measurable score; unresolved review labels
+remain unknown. No model or judge is called during this join.
+
+## Select a threshold on development evidence only
+
+```python
+from multivon_eval.review_calibration import fit_review_threshold
+
+fit = fit_review_threshold(development_scores,
+    false_accept_cost=5, false_reject_cost=1)
+Path("frozen-fit.json").write_text(json.dumps(fit.to_dict(), indent=2))
+```
+
+The costs above are illustrative. Choose the relative consequences for your
+workflow before inspecting held-out outcomes. The fit requires complete
+measurement/review coverage and both accepted and rejected development labels.
+
+The implementation uses scikit-learn's
+[ROC thresholds](https://scikit-learn.org/stable/modules/generated/sklearn.metrics.roc_curve.html).
+It minimizes empirical weighted error cost, giving each source equal total
+weight across its variants and repeats. Higher scores mean better quality;
+acceptance uses `score >= threshold`. Ties choose the highest threshold. If
+rejecting everything minimizes that development objective, the artifact records
+`rule="reject_all"` and `threshold=null` explicitly.
+
+This is threshold selection on supplied labels, not a new learning algorithm.
+Development risk is an in-sample estimate. Class proportions, error costs and
+the selected sources determine the fit; it need not transfer to production.
+Keep the reviewed development artifact alongside the fit so it can be reproduced.
+
+## Evaluate the frozen threshold
+
+```python
+from multivon_eval.review_calibration import evaluate_review_threshold
+
+analysis = evaluate_review_threshold(fit, held_out_scores, confidence=0.95)
+Path("held-out-analysis.json").write_text(json.dumps(analysis, indent=2))
+```
+
+Evaluation rejects changed manifests, rubrics, recorded grader configurations,
+review procedures, or overlap with development sources/cases/trials. It never
+refits. Opaque grader dependencies and undisclosed reuse of a holdout cannot be
+detected from these artifacts. Repeatedly choosing changes after inspecting the
+same holdout invalidates its interpretation as a fresh test.
+
+The output includes:
+
+- Trial counts, measured coverage, false accepts and false rejects. These
+  descriptive rates count trials; they do not supply an independence-based
+  per-trial confidence interval.
+- Source counts and exact SciPy
+  [Clopper–Pearson intervals](https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats._result_classes.BinomTestResult.proportion_ci.html)
+  for **at least one error per source**. False-accept analysis uses completely
+  measured/reviewed sources containing at least one rejected reference output;
+  false-reject analysis uses those containing at least one accepted output.
+- Per-tag slices and per-trial decisions linked to review keys and trial digests,
+  so individual false accepts can be investigated in the retained evidence.
+- Explicit missing-review and measurement coverage. A partially reviewed source
+  is excluded from that analysis's source interval, with the exclusion visible
+  in the complete-source count. Such missingness can bias the measured subset.
+
+Intervals assume independent sampled sources and describe this source-event
+endpoint, not the per-trial error rate. Slice intervals are marginal and are not
+adjusted for multiple comparisons. More repeats cannot create more independent
+sources. `status="complete"` means coverage and both label classes are present;
+it is not a quality approval. Apply an independently chosen acceptance policy
+to your application and validate that its criteria match the actual task.
+
+## Run the offline demonstration
+
+```bash
+python examples/calibrate_reviewed_scores.py --output-dir review-calibration-demo
+```
+
+The example uses explicitly synthetic labels and invented scores. It selects a
+threshold from three development sources and evaluates three different held-out
+sources, with two variants and two repeats per source. One held-out source
+contains false accepts: 1/3 sources, with a 95% source-event interval of about
+0.008–0.906. There are 12 held-out trials; repeating them does not narrow the
+source-level interval. This demonstrates the workflow and its uncertainty, not
+the accuracy of a real judge or any independent human validation.

@@ -10,7 +10,10 @@ from pathlib import Path
 
 from multivon_eval import EvalReport
 from multivon_eval.integrations.label_studio import (
-    LABEL_CONFIG, export_review_tasks, import_review_annotations, reconcile_reviews,
+    LABEL_CONFIG,
+    export_review_tasks,
+    import_review_annotations,
+    reconcile_reviews,
 )
 
 

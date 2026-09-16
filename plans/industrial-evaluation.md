@@ -21,7 +21,7 @@ Gymnasium at their established boundaries.
 | R02 | Complete immutable trial evidence and regrading | All outputs, traces, grader results, retries/errors, effective requests, usage retained across sync/async/parallel paths; saved output regrading makes no target calls | In progress: per-run/retry snapshots and regrading implemented; provider requests, usage, interrupted attempts and execution configuration remain |
 | R03 | Resumable execution and resource controls | Kill/restart experiment preserves completed work; checkpoint compatibility, cancellation, bounded concurrency, deadlines and budget accounting; explicit policy for ambiguous side effects | In progress: Inspect SIGKILL/recovery experiment preserves completed work and rejects duplicate-write control; full compatibility, cancellation/deadline/budget validation remains |
 | R04 | Acceptance policies | Required-check coverage, critical invariants, per-slice thresholds, sample requirements, quality/error/indeterminate distinctions and machine-readable decisions verified | Delivered in 0.18.0: policy/CLI, failure-path tests and frozen document-workflow policy; task/domain validity tracked separately |
-| R05 | Review and calibration | Label import/export, review disagreements, development-only fitting, held-out evaluation, uncertainty/false-accept reporting and no leakage verified | In progress: Label Studio native JSON bridge and SDK validation; deployed review UI, saved-score fitting and held-out analysis remain |
+| R05 | Review and calibration | Label import/export, review disagreements, development-only fitting, held-out evaluation, uncertainty/false-accept reporting and no leakage verified | Development preview: native Label Studio server/browser round trip and saved-score development/held-out source analysis validated with synthetic fixtures; mobile/accessibility limits documented; independent task-label validity remains under R17 |
 | R06 | Trace interoperability | OpenTelemetry ingestion/export, documented schema/version handling, actual round trips with supported companion integrations | Pending |
 | R07 | Task/environment/outcome interfaces | Setup/reset/action/observation/cleanup, isolated repeated episodes, real end-state assertions, forbidden side effects, partial failures and recovery cases | Pending |
 | R08 | Failure investigation UI | Trial comparison, evidence references, slices, review, case promotion, local security and accessibility; rendered desktop/mobile verification | Pending |
@@ -157,3 +157,16 @@ hash actual selected content and retain development evidence. Historical runtime
 packs were not regenerated or retroactively validated. Core Python 3.12 checks:
 1,604 passed, 4 skipped; focused Python 3.10 checks: 70 passed, 1 optional SDK skip;
 63 MDX pages compiled. Deployed review UI and held-out saved-score analysis remain.
+
+
+2026-09-17 saved-review analysis checkpoint: reuse scikit-learn ROC thresholds
+for source-balanced development error cost and SciPy exact intervals for held-out
+source-error events. Frozen manifests and review/grader contracts reject leakage
+and drift; missing labels/scores cannot fit or silently count as measured. The
+12-trial synthetic holdout still has only three source groups. Local Label
+Studio 1.23.0 server import/export and desktop browser submission passed; two
+annotations remain synthetic and ten unreviewed tasks stay incomplete. Mobile
+UI overflow and one non-blocking browser error are disclosed in
+benchmarks/industrial/REVIEW_WORKFLOW_VALIDATION.md. The latest focused checks
+passed 60 tests on Python 3.12, 59 on Python 3.10 (one optional SDK skip), and
+64 MDX pages compiled. No API inference spend or new PyPI release at this checkpoint.

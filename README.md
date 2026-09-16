@@ -64,7 +64,9 @@ Start your own suite by [defining task success](docs/guides/task-success.mdx).
 
 For development builds, the [Label Studio review bridge](docs/guides/review-labels.mdx)
 exchanges saved text/trace trials and preserves review disagreements and missing
-coverage. This preview is not included in PyPI 0.18.0.
+coverage. [Saved-score calibration](docs/guides/review-calibration.mdx) reuses
+scikit-learn and SciPy for development fitting and held-out source analysis.
+These previews are not included in PyPI 0.18.0.
 
 ## A real workflow example
 

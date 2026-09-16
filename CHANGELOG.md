@@ -18,6 +18,12 @@ All notable changes to `multivon-eval`. The format follows [Keep a Changelog](ht
 
 ### Review interoperability
 
+- Add optional saved-score threshold analysis using scikit-learn ROC candidates
+  and SciPy exact source-event intervals. Freeze source-disjoint manifest splits,
+  bind review/grader contracts, fit only development data, and retain held-out
+  error cases, tag slices and missing-review coverage. Repeats cannot increase
+  the independent-source denominator. Threshold fits are not release approvals.
+
 - Add a dependency-free Label Studio JSON bridge for saved text/trace trials.
   Bind labels to the original output and rubric; preserve reviewer provenance,
   Unknown/cancelled annotations, omitted-task coverage and disagreements.

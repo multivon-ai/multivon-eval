@@ -4,6 +4,8 @@ Label Studio owns annotation UI, users and storage. This adapter binds exported
 reviews to immutable trial evidence; it does not authenticate reviewers or turn
 model annotations into human ground truth.
 """
+# JSON payload shape errors use ValueError consistently at the import boundary.
+# ruff: noqa: TRY004
 from __future__ import annotations
 
 from collections import Counter, defaultdict
@@ -26,10 +28,13 @@ LABEL_CONFIG = """<View>
   <Header value="Output"/><Text name="output" value="$output"/>
   <Header value="Execution error, if recorded"/>
   <Text name="execution_error" value="$execution_error"/>
-  <Choices name="verdict" toName="output" choice="single" required="true">
+  <Header value="Verdict"/>
+  <Choices name="verdict" toName="output" choice="single-radio" required="true">
     <Choice value="Accept"/><Choice value="Reject"/><Choice value="Unknown"/>
   </Choices>
-  <TextArea name="review_reason" toName="output" required="true"
+  <Header value="Decision rationale"/>
+  <TextArea name="review_reason" toName="output" required="true" rows="3"
+            maxSubmissions="1" editable="true" showSubmitButton="false"
             placeholder="Explain your decision and any missing evidence"/>
 </View>"""
 

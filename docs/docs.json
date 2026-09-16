@@ -103,6 +103,7 @@
               "guides/acceptance-policies",
               "guides/inspect-integration",
               "guides/review-labels",
+              "guides/review-calibration",
               "guides/document-workflows",
               "guides/input-quality",
               "guides/ci-cd",

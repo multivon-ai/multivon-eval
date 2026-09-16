@@ -5,8 +5,12 @@ description: Reuse an annotation platform while binding every review to the outp
 
 **Development preview on `main`; not included in PyPI 0.18.0.** The JSON
 adapter has no extra runtime dependencies. Its configuration and generated
-annotations were checked with Label Studio SDK 2.1.1; a deployed-server UI
-round trip has not yet been validated.
+annotations were checked with Label Studio SDK 2.1.1 and a local Label Studio
+Community 1.23.0 server. A desktop browser submission exported and re-imported
+successfully using synthetic labels. Use a desktop browser: the tested native
+UI overflowed a 390-pixel mobile viewport. See the
+[validation record](https://github.com/multivon-ai/multivon-eval/blob/main/benchmarks/industrial/REVIEW_WORKFLOW_VALIDATION.md)
+for the observed browser error and limits; this is not a full accessibility audit.
 
 Use [Label Studio](https://labelstud.io/guide/) for annotation, users, storage
 and project management. Use [Inspect View](https://inspect.aisi.org.uk/log-viewer.html)
@@ -100,8 +104,8 @@ people or independent sources.
 
 `suite.calibrate()` measures agreement by running graders again; it does not
 fit thresholds or preserve this annotation provenance automatically. The
-saved-score threshold-fitting and held-out analysis workflow is still being
-implemented. Do not present the existing historical threshold packs as evidence
+[saved-score threshold-fitting and held-out analysis workflow](/guides/review-calibration)
+is also available as a development preview, using scikit-learn and SciPy. Do not present the existing historical threshold packs as evidence
 that a grader meets your task's acceptance criteria.
 
 The runnable checkout example supports export and import without any model API

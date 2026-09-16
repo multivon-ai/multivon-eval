@@ -5,8 +5,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from benchmarks import run_threshold_calibration as sweep
 from benchmarks import run_calibration_v2 as candidate
+from benchmarks import run_threshold_calibration as sweep
 
 
 def test_upstream_download_failure_never_becomes_a_fixture(monkeypatch):
