@@ -108,7 +108,8 @@ customer validation or completion of all execution, review and modality features
   Python 3.10 and 3.12 at release.
 - MCP 0.4.0: 23 tools, including acceptance from saved reports; original skip/error
   metadata and identity warnings preserved; actual stdio protocol validated.
-- eval-action 2.0.0: real target execution in separate revision processes,
+- eval-action 2.0.1 implementation (local, pending workflow-scoped Git credential):
+  real target execution in separate revision processes,
   fail-closed evidence/configuration gates, engine reuse and pinned dependency.
   Container smoke exercised head and Git baseline from the mounted workspace.
 - Raw study evidence is downloadable from the 0.18.0 GitHub release. Its checksum
@@ -118,3 +119,8 @@ These deliveries do not establish full callback/provider compatibility, customer
 usefulness, an independently reviewed dataset, a moat or SoTA performance. The
 industrial program remains active for review/calibration, OTel, environment and
 multimodal evidence interfaces, world-model experiments and subsequent delivery.
+
+Action publication status correction: GitHub rejected the workflow update and
+all associated refs. The prematurely created release was hidden as a draft,
+and its old-default-branch tag removed. The implementation and Docker tests
+are valid; publication is pending, not complete.

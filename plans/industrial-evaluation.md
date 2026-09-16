@@ -31,7 +31,7 @@ Gymnasium at their established boundaries.
 | R12 | FOSS extension/stability contract | Public plugin/environment protocols, versioned report schemas, optional heavy dependencies, contributor fixtures, compatibility matrix and release checks | Pending |
 | R13 | Industrial workflow and experiments | Document-to-ledger task, independent assertions, failures/benign controls, matched-budget baselines, held-out splits, actual provider runs, costs and uncertainty; results critique | In progress: CORD/pdfhell study completed with 39 held-out sources, two models, native recovery and explicit task-mapping critique; customer-domain contract validation remains |
 | R14 | Research contribution/popularization | Related-work comparison, bounded novelty statement, reproducibility bundle, diagrams when useful, worked demo and evidence-led website narrative | Pending |
-| R15 | Associated projects | multivon-mcp, pdfhell, eval-action compatibility and relevant integrations; cross-project end-to-end tests, docs/README, versions and releases as applicable | Foundation delivery: pdfhell 0.6.2, MCP 0.4.0 and action 2.0.0 published; actual MCP stdio and Docker/Git baseline tests passed; later adapters remain tied to R06/R09 |
+| R15 | Associated projects | multivon-mcp, pdfhell, eval-action compatibility and relevant integrations; cross-project end-to-end tests, docs/README, versions and releases as applicable | Foundation delivery: pdfhell 0.6.2 and MCP 0.4.0 published; action implementation tested locally but its push awaits a GitHub credential with workflow scope; later adapters remain tied to R06/R09 |
 | R16 | Library/docs/site delivery | Cohesive API/migrations, runnable docs, visual website checks, supported-Python tests, packaging, verified pushes/releases, no overstated claims | Pending |
 | R17 | Industrial/customer validity | User-provided target or permissioned real-world cases; independently reviewed usefulness. Synthetic demonstration alone cannot prove production value or demand | Awaiting target; other work proceeds |
 
@@ -124,8 +124,8 @@ Documents/Multivon/document-ledger-2026-09-17. This does not complete customer
 validation, broader execution controls, review tooling or the remaining program.
 
 2026-09-17 release checkpoint: published multivon-eval 0.18.0, pdfhell 0.6.2,
-multivon-mcp 0.4.0 and eval-action 2.0.0; verified PyPI artifact hashes and Git
-releases. The action now runs actual application revisions and fails closed on
+multivon-mcp 0.4.0; verified PyPI artifact hashes and Git releases. The tested
+eval-action release remains local because GitHub rejected its workflow-file push. The action now runs actual application revisions and fails closed on
 missing evidence. MCP retains measurement/identity status and reuses acceptance
 policies. Core tests: 1,559 passed on Python 3.12, 1,558 on 3.10 with expected
 optional skips; 62 MDX pages compiled. Companion tests: 87 action tests on each
@@ -138,3 +138,11 @@ asset, verified its original per-file checksums and GitHub SHA-256 digest, and
 reproduced the frozen analysis offline. Public dataset attribution is retained.
 This completes the raw-artifact gap for this study; no new model inference or
 claims of independent customer/human validation were added.
+
+Release correction: the saved Git token lacks workflow scope and the connected
+GitHub app also rejects this write. The action push (including tags) was rejected.
+The release API had created v2.0.0 at the old default branch; that release was
+returned to draft and the accidental tag removed. No action v2 is claimed as
+published. Local 2.0.1 also fixes remote-only PR base refs and has 89 passing
+tests. User input is pending for Git credential capability; independent work
+continues. Core/library and MCP releases are unaffected.
