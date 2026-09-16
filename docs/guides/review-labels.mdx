@@ -1,0 +1,115 @@
+---
+title: Review saved trials with Label Studio
+description: Reuse an annotation platform while binding every review to the output and rubric actually reviewed.
+---
+
+**Development preview on `main`; not included in PyPI 0.18.0.** The JSON
+adapter has no extra runtime dependencies. Its configuration and generated
+annotations were checked with Label Studio SDK 2.1.1; a deployed-server UI
+round trip has not yet been validated.
+
+Use [Label Studio](https://labelstud.io/guide/) for annotation, users, storage
+and project management. Use [Inspect View](https://inspect.aisi.org.uk/log-viewer.html)
+for native conversations and media. Multivon binds labels to immutable saved
+trials and reports review coverage and disagreements.
+
+## Export the evidence to review
+
+Start from a report containing retained trials. Define acceptance instructions
+before collecting labels. The rubric should explain valid alternate answers,
+what constitutes a consequential failure, and when the reviewer must choose
+Unknown. This template displays text and traces; it does not display original
+images, PDF pages, audio or video. Review those in an appropriate media project
+before making a grounded verdict.
+
+```python
+import json
+from pathlib import Path
+from multivon_eval import EvalReport
+from multivon_eval.integrations.label_studio import LABEL_CONFIG, export_review_tasks
+
+report = EvalReport.from_dict(json.loads(Path("report.json").read_text()))
+tasks = export_review_tasks(
+    report,
+    "exact_match",
+    rubric="Accept answers that preserve the required amount and currency. "
+           "Reject a wrong value. Choose Unknown if the evidence is insufficient.",
+)
+Path("review-tasks.json").write_text(json.dumps(tasks, indent=2))
+Path("label-config.xml").write_text(LABEL_CONFIG)
+```
+
+Keep `review-tasks.json` unchanged as the import contract. Paste
+`label-config.xml` into a Label Studio project's labeling configuration and
+[import the JSON tasks](https://labelstud.io/guide/tasks.html). Each task holds
+one saved trial. The template hides the existing grader's score and pass/fail
+verdict, while showing the input, reference, context, output, observed trace,
+and execution error. Configure the same frozen instructions for all reviewers.
+
+A content digest detects accidental changes; it is not a signature or an access
+control. Secure the original files and the Label Studio deployment according
+to your organization's data rules. Task exports contain application evidence.
+
+## Import completed reviews
+
+Export the project in Label Studio's **full JSON** format. Other export formats
+can omit the original data or annotation provenance. Label Studio may omit
+unannotated tasks by default; reconciliation retains their missing-review status
+using the original task list. See its [export documentation](https://labelstud.io/guide/export).
+
+```python
+from multivon_eval.integrations.label_studio import (
+    import_review_annotations, reconcile_reviews,
+)
+
+exported = json.loads(Path("label-studio-export.json").read_text())
+reviews = import_review_annotations(exported, tasks, reviewer_kind="human")
+result = reconcile_reviews(tasks, reviews, min_reviewers=2, reviewer_kind="human")
+Path("reviews.json").write_text(json.dumps([r.to_dict() for r in reviews], indent=2))
+Path("review-coverage.json").write_text(json.dumps(result, indent=2))
+```
+
+`reviewer_kind` must describe the actual source: `human`, `model` or `synthetic`.
+An exported user ID does not establish independent human review. Keep the raw
+Label Studio export, reviewer assignment procedure and provenance alongside
+these derived artifacts. Automated fixtures must use `synthetic`.
+
+- **Consensus:** the required number of distinct reviewer IDs all supply the
+  same measured label.
+- **Disagreement:** measured labels conflict; no automatic majority vote
+  manufactures a reference answer.
+- **Incomplete:** too few reviews, an Unknown/cancelled review, or no completed
+  annotations. Predictions and drafts do not count.
+
+Multiple annotations from the same reviewer require explicit adjudication.
+Preserve the history and document the chosen final annotation in your review
+process; do not delete disagreement simply to improve agreement statistics.
+Changed output, rubric, context or trace cannot reuse an old label. A recorded
+model execution error cannot be imported as accepted output quality.
+
+## From reviews to judge validation
+
+A reviewer consensus is evidence about the reviewed output, not a production
+acceptance decision or proof of label correctness. Inspect false accepts and
+false rejects against those labels, including unresolved-review coverage.
+Keep related documents, variants and repeated trials in the same source group.
+Choose thresholds only on development data; freeze them before evaluating a
+held-out source split. Reuse scikit-learn for grouped splitting and established
+statistical tools for uncertainty. Do not count repeated trials as independent
+people or independent sources.
+
+`suite.calibrate()` measures agreement by running graders again; it does not
+fit thresholds or preserve this annotation provenance automatically. The
+saved-score threshold-fitting and held-out analysis workflow is still being
+implemented. Do not present the existing historical threshold packs as evidence
+that a grader meets your task's acceptance criteria.
+
+The runnable checkout example supports export and import without any model API
+calls:
+
+```bash
+python examples/review_saved_trials.py export report.json \
+  --evaluator exact_match --rubric-file rubric.txt --output-dir review-project
+python examples/review_saved_trials.py import review-project/tasks.json exported.json \
+  --reviewer-kind human --min-reviewers 2 --output-dir reconciled-reviews
+```

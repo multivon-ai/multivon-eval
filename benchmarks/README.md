@@ -253,7 +253,7 @@ Comparing evaluator scores alone does not establish correctness. HaluEval’s QA
 
 **Dataset:** HaluEval QA (100 cases), HaluEval Summarization (60 cases), curated relevance golden set (40 cases). Labels: 50/50 faithful/hallucinated for each split.
 
-**Task:** Sweep thresholds 0.30–0.90 in 0.05 steps. Find the threshold that maximises F1 against human labels for each (evaluator, judge) pair. Results are baked into the library and apply automatically: since 0.9.7, evaluators resolve their judge at `evaluate()` time and look up the calibrated threshold for the resolved (evaluator, judge) pair — with or without an explicit `JudgeConfig`. (Pre-0.9.7 releases leaked the init-time default 0.7 when no `JudgeConfig` was passed; see the historical footnote in **Benchmark 4**.) An explicit `threshold=` always wins, and an (evaluator, judge) pair with no calibration row warns loudly and falls back to 0.7. The same rules apply to `Faithfulness()` and `Relevance()`.
+**Task:** Sweep thresholds 0.30–0.90 in 0.05 steps. Find the threshold that maximises F1 against dataset labels for each (evaluator, judge) pair. Results are baked into the library and apply automatically: since 0.9.7, evaluators resolve their judge at `evaluate()` time and look up the calibrated threshold for the resolved (evaluator, judge) pair — with or without an explicit `JudgeConfig`. (Pre-0.9.7 releases leaked the init-time default 0.7 when no `JudgeConfig` was passed; see the historical footnote in **Benchmark 4**.) An explicit `threshold=` always wins, and an (evaluator, judge) pair with no calibration row warns loudly and falls back to 0.7. The same rules apply to `Faithfulness()` and `Relevance()`.
 
 ```python
 from multivon_eval import Hallucination, JudgeConfig

@@ -2,7 +2,10 @@
 Threshold calibration benchmark.
 
 For each evaluator × judge combination, sweeps threshold values from 0.30 to 0.90
-and finds the threshold that maximises F1 against human-labeled ground truth.
+and finds a development threshold that maximises F1 against dataset labels.
+HaluEval task subsets pair references with generated hallucinations; these are
+not independently human-adjudicated labels. This legacy sweep has no held-out
+evaluation. Errors abort the sweep rather than supplying fabricated scores.
 
 Datasets:
   hallucination — HaluEval QA (100 cases, 50/50 faithful/hallucinated)
@@ -18,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import sys
 import time
@@ -35,47 +39,46 @@ DEFAULT_JUDGES = [
     "openai/gpt-4o-mini",
 ]
 
+HALUEVAL_REVISION = "b7253db3cdaa0ab2c382f92b26b390109174f77e"
+
 THRESHOLD_RANGE = [round(t, 2) for t in [x / 100 for x in range(30, 95, 5)]]
 
 
 # ── Datasets ──────────────────────────────────────────────────────────────────
 
-def _load_halueval_qa(n: int = 50) -> list[dict]:
-    url = "https://raw.githubusercontent.com/RUCAIBox/HaluEval/main/data/qa_data.json"
-    try:
-        with urllib.request.urlopen(url, timeout=15) as r:
-            lines = r.read().decode().strip().splitlines()
-        data = [json.loads(l) for l in lines if l.strip()][:n]
-    except Exception:
-        data = _HALUEVAL_QA_FALLBACK[:n]
+def _halueval_rows(filename: str, n: int, required: tuple[str, ...]) -> list[dict]:
+    if type(n) is not int or n < 1:
+        raise ValueError("Source count must be a positive integer")
+    url = f"https://raw.githubusercontent.com/RUCAIBox/HaluEval/{HALUEVAL_REVISION}/data/{filename}"
+    # A failed download must not silently replace the named benchmark with fixtures.
+    with urllib.request.urlopen(url, timeout=30) as response:
+        data = [json.loads(line) for line in response.read().decode().splitlines() if line.strip()][:n]
+    if len(data) != n or any(not isinstance(row, dict) or any(
+            not isinstance(row.get(key), str) or not row[key].strip() for key in required) for row in data):
+        raise ValueError("HaluEval selection is incomplete or has missing scoring fields")
+    return data
 
+
+def _load_halueval_qa(n: int = 50) -> list[dict]:
+    data = _halueval_rows("qa_data.json", n,
+                         ("knowledge", "question", "right_answer", "hallucinated_answer"))
     cases = []
-    for item in data:
-        ctx = item.get("knowledge", item.get("context", ""))
-        q = item.get("question", "")
-        cases.append({"question": q, "context": ctx,
-                      "output": item.get("right_answer", ""), "label": 0})
-        cases.append({"question": q, "context": ctx,
-                      "output": item.get("hallucinated_answer", ""), "label": 1})
+    for index, item in enumerate(data):
+        for field, label in (("right_answer", 0), ("hallucinated_answer", 1)):
+            cases.append({"question": item["question"], "context": item["knowledge"],
+                          "output": item[field], "label": label,
+                          "source_id": f"halueval-qa:{HALUEVAL_REVISION}:{index}"})
     return cases
 
 
 def _load_halueval_summ(n: int = 30) -> list[dict]:
-    url = "https://raw.githubusercontent.com/RUCAIBox/HaluEval/main/data/summarization_data.json"
-    try:
-        with urllib.request.urlopen(url, timeout=15) as r:
-            lines = r.read().decode().strip().splitlines()
-        data = [json.loads(l) for l in lines if l.strip()][:n]
-    except Exception:
-        data = _HALUEVAL_SUMM_FALLBACK[:n]
-
+    data = _halueval_rows("summarization_data.json", n,
+                         ("document", "right_summary", "hallucinated_summary"))
     cases = []
-    for item in data:
-        doc = item.get("document", item.get("context", ""))
-        cases.append({"document": doc,
-                      "output": item.get("right_summary", ""), "label": 0})
-        cases.append({"document": doc,
-                      "output": item.get("hallucinated_summary", ""), "label": 1})
+    for index, item in enumerate(data):
+        for field, label in (("right_summary", 0), ("hallucinated_summary", 1)):
+            cases.append({"document": item["document"], "output": item[field], "label": label,
+                          "source_id": f"halueval-summ:{HALUEVAL_REVISION}:{index}"})
     return cases
 
 
@@ -87,38 +90,53 @@ def _load_relevance_golden() -> list[dict]:
 
 # ── Evaluation ────────────────────────────────────────────────────────────────
 
+def _valid_score(score) -> float:
+    if type(score) not in (float, int) or not math.isfinite(score) or not 0 <= score <= 1:
+        raise ValueError("Calibration requires a finite score between zero and one")
+    return float(score)
+
+
+def _measured_score(result) -> float:
+    if result.metadata.get("skipped"):
+        raise ValueError("Skipped measurements cannot calibrate a threshold")
+    return _valid_score(result.score)
+
+
 def _score_hallucination(item: dict, ev) -> float:
     from multivon_eval import EvalCase
     case = EvalCase(input=item["question"], context=item["context"])
     result = ev.evaluate(case, item["output"])
-    return result.score
+    return _measured_score(result)
 
 
 def _score_faithfulness(item: dict, ev) -> float:
     from multivon_eval import EvalCase
     case = EvalCase(input="Summarize the following document.", context=item["document"])
     result = ev.evaluate(case, item["output"])
-    return result.score
+    return _measured_score(result)
 
 
 def _score_relevance(item: dict, ev) -> float:
     from multivon_eval import EvalCase
     case = EvalCase(input=item["question"])
     result = ev.evaluate(case, item["output"])
-    return result.score
+    return _measured_score(result)
 
 
 def _collect_scores(items: list[dict], score_fn, ev, workers: int = 4) -> list[tuple[float, int]]:
+    if not items or any(type(item.get("label")) is not int or item["label"] not in (0, 1) for item in items):
+        raise ValueError("Calibration requires nonempty binary-labeled data")
     results = [None] * len(items)
     with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = {pool.submit(score_fn, item, ev): i for i, item in enumerate(items)}
         for fut in as_completed(futures):
             i = futures[fut]
             try:
-                results[i] = (fut.result(), items[i]["label"])
+                results[i] = (_valid_score(fut.result()), items[i]["label"])
             except Exception as exc:
-                print(f"  [warn] eval error on item {i}: {exc}", file=sys.stderr)
-                results[i] = (0.5, items[i]["label"])
+                for pending in futures:
+                    pending.cancel()
+                raise RuntimeError(f"Calibration aborted: item {i} has no valid measurement") from exc
     return [r for r in results if r is not None]
 
 
@@ -143,14 +161,19 @@ def _f1_at_threshold(scores_labels: list[tuple[float, int]], threshold: float,
 
 def _best_threshold(scores_labels: list[tuple[float, int]],
                     invert: bool = False) -> dict:
-    best = {"threshold": 0.7, "f1": 0.0, "precision": 0.0, "recall": 0.0}
+    if not scores_labels or any(type(label) is not int or label not in (0, 1) for _, label in scores_labels):
+        raise ValueError("Calibration requires nonempty binary-labeled measurements")
+    for score, _ in scores_labels:
+        _valid_score(score)
+    best = None
     sweep = []
     for t in THRESHOLD_RANGE:
         p, r, f1 = _f1_at_threshold(scores_labels, t, invert=invert)
         sweep.append({"threshold": t, "precision": p, "recall": r, "f1": f1})
-        if f1 > best["f1"]:
+        if best is None or f1 > best["f1"]:
             best = {"threshold": t, "f1": f1, "precision": p, "recall": r}
-    return {"optimal": best, "sweep": sweep}
+    return {"optimal": best, "sweep": sweep, "n": len(scores_labels),
+            "scope": "development fit; no held-out estimate"}
 
 
 # ── Runner ────────────────────────────────────────────────────────────────────
@@ -267,30 +290,6 @@ def main() -> None:
     out.write_text(json.dumps({"calibration": calibration}, indent=2))
     if verbose:
         print(f"  Results saved → {args.output}\n")
-
-
-# ── Fallback data (used when GitHub fetch fails) ──────────────────────────────
-
-_HALUEVAL_QA_FALLBACK = [
-    {"question": "What is the capital of France?",
-     "knowledge": "France is a country in Western Europe. Its capital city is Paris.",
-     "right_answer": "The capital of France is Paris.",
-     "hallucinated_answer": "The capital of France is Lyon."},
-    {"question": "Who wrote Romeo and Juliet?",
-     "knowledge": "Romeo and Juliet is a tragedy written by William Shakespeare, believed to have been written between 1594 and 1596.",
-     "right_answer": "Romeo and Juliet was written by William Shakespeare.",
-     "hallucinated_answer": "Romeo and Juliet was written by Christopher Marlowe in 1590."},
-    {"question": "What is the speed of light?",
-     "knowledge": "The speed of light in a vacuum is exactly 299,792,458 metres per second.",
-     "right_answer": "The speed of light is approximately 299,792,458 metres per second.",
-     "hallucinated_answer": "The speed of light is approximately 150,000 kilometres per second."},
-]
-
-_HALUEVAL_SUMM_FALLBACK = [
-    {"document": "The Amazon rainforest, also known as Amazonia, is a moist broadleaf tropical rainforest in the Amazon biome that covers most of the Amazon basin of South America. This basin encompasses 7,000,000 km2, of which 5,500,000 km2 are covered by the rainforest.",
-     "right_summary": "The Amazon rainforest covers most of the Amazon basin in South America, spanning about 5.5 million km2.",
-     "hallucinated_summary": "The Amazon rainforest is located primarily in Africa and covers about 3 million km2."},
-]
 
 
 if __name__ == "__main__":

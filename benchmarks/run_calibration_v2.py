@@ -1,5 +1,5 @@
 """
-Calibration sweep — emits `_calibration_data/v2.json` directly.
+Legacy development sweep — emits a candidate calibration artifact for review.
 
 Reuses the threshold-sweep machinery from `run_threshold_calibration.py`
 but writes its output in the schema the runtime loader expects, with
@@ -14,14 +14,14 @@ behavior:
     sweep doesn't drop coverage).
   • Bump schema_version to 2 in the output.
 
-Cost budget: by default, ~$10 across the four most-impactful missing
-judges (gpt-4o, claude-opus-4-7, gpt-5.5, claude-sonnet-4-7). Override
-with --judges if you want to be cheaper.
+This script does not enforce a spend budget or provide held-out validation.
+Choose explicit available model IDs with --judges and review candidate results
+before changing a runtime threshold pack.
 
 Usage:
   python benchmarks/run_calibration_v2.py
   python benchmarks/run_calibration_v2.py --judges anthropic/claude-haiku-4-5-20251001
-  python benchmarks/run_calibration_v2.py --output multivon_eval/_calibration_data/v2.json
+  python benchmarks/run_calibration_v2.py --output benchmarks/results/calibration-candidate.json
 """
 from __future__ import annotations
 
@@ -32,6 +32,8 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+
+from multivon_eval.case_manifest import digest
 
 # Reuse the existing sweep mechanics.
 HERE = Path(__file__).resolve().parent
@@ -45,6 +47,7 @@ from run_threshold_calibration import (  # noqa: E402
     _score_hallucination,
     _score_faithfulness,
     _score_relevance,
+    HALUEVAL_REVISION,
 )
 
 
@@ -63,27 +66,13 @@ DEFAULT_JUDGES_TO_ADD = [
 DATASET_META = {
     "hallucination": {
         "dataset": "HaluEval QA",
-        "dataset_hash": "halueval-qa-2024-50c",  # 50-case sweep, balanced
     },
     "faithfulness": {
         "dataset": "HaluEval Summarization",
-        "dataset_hash": "halueval-sum-2024-30c",  # 30-case sweep, balanced
     },
     "relevance": {
         "dataset": "Curated relevance golden set",
-        "dataset_hash": "relevance-gold-2026-40c",
     },
-}
-
-
-# Alias maps for stable lookup against short model ids.
-JUDGE_ALIASES = {
-    "claude-haiku-4-5-20251001": ["claude-haiku-4-5"],
-    "claude-sonnet-4-6-20251030": ["claude-sonnet-4-6"],
-    "claude-sonnet-4-7-20251030": ["claude-sonnet-4-7"],
-    "claude-opus-4-7-20251101": ["claude-opus-4-7"],
-    "gpt-4o-2024-11-20": ["gpt-4o"],
-    "gpt-5.5-2026-04-23": ["gpt-5.5", "gpt-5"],
 }
 
 
@@ -92,26 +81,26 @@ def _provenance_entry(
     evaluator: str,
     judge_model: str,
     sweep_result: dict,
-    n: int,
+    items: list[dict],
     measured_at: str,
 ) -> dict:
     """Convert one (evaluator × judge) sweep result into a v2 entry."""
     meta = DATASET_META[evaluator]
     opt = sweep_result["optimal"]
-    aliases = JUDGE_ALIASES.get(judge_model, [])
     return {
         "evaluator": evaluator,
         "judge_model": judge_model,
-        "judge_aliases": aliases,
+        "judge_aliases": [],
         "threshold": opt["threshold"],
         "dataset": meta["dataset"],
-        "dataset_hash": meta["dataset_hash"],
-        "n": n,
+        "dataset_hash": digest(items),
+        "n": len(items),
         "precision": opt["precision"],
         "recall": opt["recall"],
         "f1": opt["f1"],
         "measured_at": measured_at,
-        "notes": "Threshold maximises F1 over a 0.30..0.90 sweep against human labels.",
+        "notes": "Development-only F1 fit on dataset labels; no held-out estimate. "
+                 "HaluEval task negatives are generated; relevance labels are maintainer-curated.",
     }
 
 
@@ -140,7 +129,7 @@ def main() -> None:
     ap.add_argument("--n-rel", type=int, default=40,
                     help="Relevance golden set sample size")
     ap.add_argument("--evaluators", nargs="+", default=["hallucination", "faithfulness", "relevance"])
-    ap.add_argument("--output", default="multivon_eval/_calibration_data/v2.json")
+    ap.add_argument("--output", default="benchmarks/results/calibration-candidate.json")
     ap.add_argument("--no-merge-v1", action="store_true",
                     help="Don't merge with v1 entries (output only what you re-measured)")
     args = ap.parse_args()
@@ -158,10 +147,12 @@ def main() -> None:
             {"question": g["question"], "output": g["answer"], "label": g["label"]}
             for g in GOLDEN_SET
         ][: args.n_rel]
+    rel_items = rel_items[:args.n_rel]
     print(f"  Loaded: hal={len(hal_items)}, faith={len(faith_items)}, rel={len(rel_items)}")
     print(f"  Sweeping {len(args.judges)} judge(s) × {len(args.evaluators)} evaluator(s)\n")
 
     new_entries: list[dict] = []
+    evidence = []
     measured_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
     overall_t0 = time.time()
 
@@ -177,15 +168,15 @@ def main() -> None:
             if ev_name == "hallucination":
                 ev = Hallucination(threshold=0.5)
                 scores = _collect_scores(hal_items, _score_hallucination, ev, args.workers)
-                n = len(scores)
+                items = hal_items
             elif ev_name == "faithfulness":
                 ev = Faithfulness(threshold=0.5)
                 scores = _collect_scores(faith_items, _score_faithfulness, ev, args.workers)
-                n = len(scores)
+                items = faith_items
             elif ev_name == "relevance":
                 ev = Relevance(threshold=0.5)
                 scores = _collect_scores(rel_items, _score_relevance, ev, args.workers)
-                n = len(scores)
+                items = rel_items
             else:
                 print(f"    [skip] unknown evaluator: {ev_name}", file=sys.stderr)
                 continue
@@ -200,9 +191,12 @@ def main() -> None:
                 evaluator=ev_name,
                 judge_model=model,
                 sweep_result=sweep,
-                n=n,
+                items=items,
                 measured_at=measured_at,
             ))
+            evidence.append({"judge": judge_str, "evaluator": ev_name, "items": items,
+                             "scores_labels": scores, "sweep": sweep,
+                             "halueval_revision": HALUEVAL_REVISION if ev_name != "relevance" else None})
 
         print()
 
@@ -221,11 +215,12 @@ def main() -> None:
         "generated_at": measured_at,
         "methodology": (
             "Threshold sweep over [0.30..0.90] in steps of 0.05, selecting the "
-            "value that maximises F1 against human labels. Reproduced by "
+            "value that maximises development F1 against dataset labels; no held-out estimate. Reproduced by "
             "benchmarks/run_calibration_v2.py."
         ),
         "based_on_v1": not args.no_merge_v1,
         "entries": merged,
+        "development_evidence": evidence,
     }
 
     out_path = Path(args.output)

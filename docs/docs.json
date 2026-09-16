@@ -102,6 +102,7 @@
               "guides/versioned-evidence",
               "guides/acceptance-policies",
               "guides/inspect-integration",
+              "guides/review-labels",
               "guides/document-workflows",
               "guides/input-quality",
               "guides/ci-cd",

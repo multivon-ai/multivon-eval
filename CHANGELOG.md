@@ -4,6 +4,27 @@ All notable changes to `multivon-eval`. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+### Calibration audit
+
+- Stop legacy threshold sweeps on missing/invalid/skipped measurements instead
+  of inventing a score of 0.5. Failed dataset downloads no longer silently
+  substitute tiny local fixtures under the HaluEval name.
+- Pin HaluEval source revision, retain source-pair identity, hash actual selected
+  content, and preserve development inputs/scores in newly generated candidate
+  artifacts. Default candidate output no longer overwrites the runtime pack.
+- Correct generated-label provenance and development-versus-held-out wording;
+  remove an unsupported quantitative accuracy-drift warning. Existing historical
+  packs are unchanged and are not newly validated by these script corrections.
+
+### Review interoperability
+
+- Add a dependency-free Label Studio JSON bridge for saved text/trace trials.
+  Bind labels to the original output and rubric; preserve reviewer provenance,
+  Unknown/cancelled annotations, omitted-task coverage and disagreements.
+  Predictions/drafts cannot supply completed reviews; duplicate reviewer votes
+  require explicit adjudication. No independent human validation is claimed.
+- Add a runnable offline review-exchange example and development-preview guide.
+
 ## [0.18.0] — 2026-09-17
 
 ### Statistical comparisons

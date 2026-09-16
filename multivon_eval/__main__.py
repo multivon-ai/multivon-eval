@@ -134,7 +134,7 @@ _DEMO_CASES_DATA = [
 def _calibration_advisory(caught: list) -> str:
     """Turn a captured calibration-fallback UserWarning into a demo ⚠ line.
 
-    Preserves the warning's information (the default threshold + drift note),
+    Preserves the warning's information (the default threshold + validation note),
     just reformatted to match the demo's other advisory lines. Returns "" when
     no calibration warning was captured. Any warning is included exactly once.
     """
@@ -144,11 +144,10 @@ def _calibration_advisory(caught: list) -> str:
             return (
                 "  ⚠ Uncalibrated judge threshold: no calibration row for this "
                 "judge model,\n"
-                "    falling back to 0.7 (may produce 5-15pp F1 drift on real "
-                "data).\n"
-                "    Demo scores are indicative only — run "
-                "benchmarks/run_threshold_calibration.py\n"
-                "    to add a row, or set the fallback policy to \"strict\" to "
+                "    falling back to 0.7 (accuracy on your task is unknown).\n"
+                "    Demo scores are indicative only — validate thresholds on "
+                "held-out task data,\n"
+                "    or set the fallback policy to \"strict\" to "
                 "fail closed."
             )
     return ""

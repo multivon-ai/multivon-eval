@@ -46,8 +46,7 @@ _DEFAULT_THRESHOLD = 0.7
 # When `calibrated_threshold` is asked for an (evaluator, judge_model) pair
 # that isn't in the shipped calibration table, this policy decides what
 # happens. "warn" is the default as of 2026-05-16 — earlier releases were
-# silently using 0.7, which is uncalibrated and can produce 5-15pp F1 drift
-# on real data. "silent" is opt-in for backward compatibility.
+# silently using 0.7, which is uncalibrated for the requested judge and task. "silent" is opt-in for backward compatibility.
 #
 # Override globally via `set_calibration_fallback_policy("strict")` or the
 # `MULTIVON_CALIBRATION_FALLBACK` env var.
@@ -306,10 +305,10 @@ def calibrated_threshold(
                 f"calibrated_threshold: no calibration row for evaluator="
                 f"{evaluator!r} judge_model={model!r}; falling back to "
                 f"{_DEFAULT_THRESHOLD}. This default is uncalibrated and "
-                "may produce 5-15pp F1 drift on real data. Call "
+                "has unknown accuracy on your task. Call "
                 "multivon_eval.calibration.set_calibration_fallback_policy"
-                "(\"strict\") to fail closed, or run "
-                "benchmarks/run_threshold_calibration.py to add a row.",
+                "(\"strict\") to fail closed, or "
+                "validate thresholds on development and held-out task data.",
                 UserWarning,
                 stacklevel=2,
             )

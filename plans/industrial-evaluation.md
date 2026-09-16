@@ -21,7 +21,7 @@ Gymnasium at their established boundaries.
 | R02 | Complete immutable trial evidence and regrading | All outputs, traces, grader results, retries/errors, effective requests, usage retained across sync/async/parallel paths; saved output regrading makes no target calls | In progress: per-run/retry snapshots and regrading implemented; provider requests, usage, interrupted attempts and execution configuration remain |
 | R03 | Resumable execution and resource controls | Kill/restart experiment preserves completed work; checkpoint compatibility, cancellation, bounded concurrency, deadlines and budget accounting; explicit policy for ambiguous side effects | In progress: Inspect SIGKILL/recovery experiment preserves completed work and rejects duplicate-write control; full compatibility, cancellation/deadline/budget validation remains |
 | R04 | Acceptance policies | Required-check coverage, critical invariants, per-slice thresholds, sample requirements, quality/error/indeterminate distinctions and machine-readable decisions verified | Delivered in 0.18.0: policy/CLI, failure-path tests and frozen document-workflow policy; task/domain validity tracked separately |
-| R05 | Review and calibration | Label import/export, review disagreements, development-only fitting, held-out evaluation, uncertainty/false-accept reporting and no leakage verified | Pending |
+| R05 | Review and calibration | Label import/export, review disagreements, development-only fitting, held-out evaluation, uncertainty/false-accept reporting and no leakage verified | In progress: Label Studio native JSON bridge and SDK validation; deployed review UI, saved-score fitting and held-out analysis remain |
 | R06 | Trace interoperability | OpenTelemetry ingestion/export, documented schema/version handling, actual round trips with supported companion integrations | Pending |
 | R07 | Task/environment/outcome interfaces | Setup/reset/action/observation/cleanup, isolated repeated episodes, real end-state assertions, forbidden side effects, partial failures and recovery cases | Pending |
 | R08 | Failure investigation UI | Trial comparison, evidence references, slices, review, case promotion, local security and accessibility; rendered desktop/mobile verification | Pending |
@@ -146,3 +146,14 @@ returned to draft and the accidental tag removed. No action v2 is claimed as
 published. Local 2.0.1 also fixes remote-only PR base refs and has 89 passing
 tests. User input is pending for Git credential capability; independent work
 continues. Core/library and MCP releases are unaffected.
+
+2026-09-17 review checkpoint: added a native Label Studio JSON bridge, SDK 2.1.1
+configuration/annotation validation and runnable offline export/import example.
+Synthetic fixture reviews preserve disagreements, missing coverage and exact
+trial bindings; they are not independent human labels. Corrected legacy
+calibration scripts that substituted midpoint scores after errors and tiny
+fixtures after failed downloads. New candidates pin upstream HaluEval revision,
+hash actual selected content and retain development evidence. Historical runtime
+packs were not regenerated or retroactively validated. Core Python 3.12 checks:
+1,604 passed, 4 skipped; focused Python 3.10 checks: 70 passed, 1 optional SDK skip;
+63 MDX pages compiled. Deployed review UI and held-out saved-score analysis remain.
