@@ -54,3 +54,20 @@ a research contribution or defensible moat by themselves. The hypothesis to
 test is the usefulness of independently verified task outcomes, controlled
 failure cases, and their connection to industrial release decisions. Publish
 negative findings and compare against the chosen upstream baseline.
+
+## Document experiment datasets
+
+Use [CORD v2](https://github.com/clovaai/cord), the official corrected receipt
+annotations and Hugging Face release, for the public-data track. Keep its
+upstream splits and attribution; Multivon's verbatim-total-to-ledger task is a
+separate workflow projection, not the original CORD parsing metric. Use existing
+pdfhell generators for controlled cross-modality conflicts. Pin their revision
+and validate their numeric oracle independently. The frozen
+[protocol](../benchmarks/industrial/DOCUMENT_PROTOCOL.md) records selections,
+limits and what the experiment cannot establish.
+
+[DocILE](https://docile.rossum.ai/) is the preferred follow-on for invoice fields
+and line items, with its own loader, layout-cluster analyses and official
+metrics. Obtain data through its access process rather than assuming a mirror's
+license or inventing another invoice corpus. FATURA is another candidate for
+layout diversity; its suitability/terms have not yet been verified for inclusion.
