@@ -62,6 +62,16 @@ Open `results.html` to inspect each verdict. The example verifies a small
 lookup fixture; it does not establish the quality of a real AI application.
 Start your own suite by [defining task success](docs/guides/task-success.mdx).
 
+## A real workflow example
+
+The [document-to-ledger study](benchmarks/industrial/DOCUMENT_RESULTS.md) reuses
+CORD receipts, pdfhell generators and Inspect execution. Models write to SQLite;
+independent checks verify the saved state. Both models fail the frozen policy
+on 39 held-out source documents. The report separates wrong amounts, missing
+posts, transcription-only mismatches and integration errors, with raw-log hashes,
+cost accounting and a reproducible protocol. It is a sandbox study, not proof
+of production readiness or a new dataset.
+
 ## Why use it
 
 | Need | Available today |

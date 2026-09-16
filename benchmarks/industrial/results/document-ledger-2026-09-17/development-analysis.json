@@ -1,0 +1,346 @@
+{
+  "runs": [
+    {
+      "status": "success",
+      "model": "anthropic/claude-haiku-4-5-20251001",
+      "manifest_digest": "ad04e036f9506157551e2063b63c63fdb546641935a7b20dd30f6b3c0cc73078",
+      "decision": "reject",
+      "slices": {
+        "cord/image": {
+          "n": 4,
+          "passed": 3,
+          "errors": 0,
+          "response_only_false_accepts": 1
+        },
+        "cord/oracle-text": {
+          "n": 4,
+          "passed": 4,
+          "errors": 0,
+          "response_only_false_accepts": 0
+        },
+        "currency_mismatch_conversion/pdf": {
+          "n": 2,
+          "passed": 2,
+          "errors": 0,
+          "response_only_false_accepts": 0
+        },
+        "currency_mismatch_conversion/pixels": {
+          "n": 2,
+          "passed": 2,
+          "errors": 0,
+          "response_only_false_accepts": 0
+        },
+        "hidden_ocr_mismatch/pdf": {
+          "n": 2,
+          "passed": 2,
+          "errors": 0,
+          "response_only_false_accepts": 0
+        },
+        "hidden_ocr_mismatch/pixels": {
+          "n": 2,
+          "passed": 2,
+          "errors": 0,
+          "response_only_false_accepts": 0
+        }
+      },
+      "usage": {
+        "anthropic/claude-haiku-4-5-20251001": {
+          "input_tokens": 29114,
+          "output_tokens": 1635,
+          "total_tokens": 30749,
+          "input_tokens_cache_write": 0,
+          "input_tokens_cache_read": 0,
+          "reasoning_tokens": null,
+          "total_cost": 0.037289
+        }
+      },
+      "estimated_usd": 0.037289,
+      "cost_is_invoice": false,
+      "pricing_date": "2026-09-17",
+      "versions": {
+        "inspect-ai": "0.3.263",
+        "multivon-eval": "0.17.0",
+        "anthropic": "1.6.0"
+      },
+      "log": "2026-09-16T20-55-29-00-00_document-ledger_n5LSpQFYgptoFpD3ehzJXh.eval",
+      "rates": [
+        {
+          "family": "cord",
+          "modality": "image",
+          "n": 4,
+          "passed": 3,
+          "missing": 0,
+          "wilson95": [
+            0.30064184258240184,
+            0.9544127391902995
+          ]
+        },
+        {
+          "family": "cord",
+          "modality": "oracle-text",
+          "n": 4,
+          "passed": 4,
+          "missing": 0,
+          "wilson95": [
+            0.5101091635454027,
+            1.0
+          ]
+        },
+        {
+          "family": "currency_mismatch_conversion",
+          "modality": "pdf",
+          "n": 2,
+          "passed": 2,
+          "missing": 0,
+          "wilson95": [
+            0.34238022750665303,
+            1.0
+          ]
+        },
+        {
+          "family": "currency_mismatch_conversion",
+          "modality": "pixels",
+          "n": 2,
+          "passed": 2,
+          "missing": 0,
+          "wilson95": [
+            0.34238022750665303,
+            1.0
+          ]
+        },
+        {
+          "family": "hidden_ocr_mismatch",
+          "modality": "pdf",
+          "n": 2,
+          "passed": 2,
+          "missing": 0,
+          "wilson95": [
+            0.34238022750665303,
+            1.0
+          ]
+        },
+        {
+          "family": "hidden_ocr_mismatch",
+          "modality": "pixels",
+          "n": 2,
+          "passed": 2,
+          "missing": 0,
+          "wilson95": [
+            0.34238022750665303,
+            1.0
+          ]
+        }
+      ],
+      "failures": [
+        {
+          "case_id": "cord-validation-1-image",
+          "source_id": "cord-validation-1",
+          "observed": {
+            "observed_rows": [
+              [
+                "23.009",
+                "UNSPECIFIED"
+              ]
+            ],
+            "expected_row": [
+              "23.000",
+              "UNSPECIFIED"
+            ]
+          },
+          "model_error": null,
+          "evaluator_error": null
+        }
+      ]
+    },
+    {
+      "status": "success",
+      "model": "anthropic/claude-sonnet-5",
+      "manifest_digest": "ad04e036f9506157551e2063b63c63fdb546641935a7b20dd30f6b3c0cc73078",
+      "decision": "accept",
+      "slices": {
+        "cord/image": {
+          "n": 4,
+          "passed": 4,
+          "errors": 0,
+          "response_only_false_accepts": 0
+        },
+        "cord/oracle-text": {
+          "n": 4,
+          "passed": 4,
+          "errors": 0,
+          "response_only_false_accepts": 0
+        },
+        "currency_mismatch_conversion/pdf": {
+          "n": 2,
+          "passed": 2,
+          "errors": 0,
+          "response_only_false_accepts": 0
+        },
+        "currency_mismatch_conversion/pixels": {
+          "n": 2,
+          "passed": 2,
+          "errors": 0,
+          "response_only_false_accepts": 0
+        },
+        "hidden_ocr_mismatch/pdf": {
+          "n": 2,
+          "passed": 2,
+          "errors": 0,
+          "response_only_false_accepts": 0
+        },
+        "hidden_ocr_mismatch/pixels": {
+          "n": 2,
+          "passed": 2,
+          "errors": 0,
+          "response_only_false_accepts": 0
+        }
+      },
+      "usage": {
+        "anthropic/claude-sonnet-5": {
+          "input_tokens": 33725,
+          "output_tokens": 1546,
+          "total_tokens": 35271,
+          "input_tokens_cache_write": 0,
+          "input_tokens_cache_read": 0,
+          "reasoning_tokens": 247,
+          "total_cost": 0.08291
+        }
+      },
+      "estimated_usd": 0.08291,
+      "cost_is_invoice": false,
+      "pricing_date": "2026-09-17",
+      "versions": {
+        "inspect-ai": "0.3.263",
+        "multivon-eval": "0.17.0",
+        "anthropic": "1.6.0"
+      },
+      "log": "2026-09-16T20-56-30-00-00_document-ledger_X2kXsUzVM8GbWPfi2oA5Ab.eval",
+      "rates": [
+        {
+          "family": "cord",
+          "modality": "image",
+          "n": 4,
+          "passed": 4,
+          "missing": 0,
+          "wilson95": [
+            0.5101091635454027,
+            1.0
+          ]
+        },
+        {
+          "family": "cord",
+          "modality": "oracle-text",
+          "n": 4,
+          "passed": 4,
+          "missing": 0,
+          "wilson95": [
+            0.5101091635454027,
+            1.0
+          ]
+        },
+        {
+          "family": "currency_mismatch_conversion",
+          "modality": "pdf",
+          "n": 2,
+          "passed": 2,
+          "missing": 0,
+          "wilson95": [
+            0.34238022750665303,
+            1.0
+          ]
+        },
+        {
+          "family": "currency_mismatch_conversion",
+          "modality": "pixels",
+          "n": 2,
+          "passed": 2,
+          "missing": 0,
+          "wilson95": [
+            0.34238022750665303,
+            1.0
+          ]
+        },
+        {
+          "family": "hidden_ocr_mismatch",
+          "modality": "pdf",
+          "n": 2,
+          "passed": 2,
+          "missing": 0,
+          "wilson95": [
+            0.34238022750665303,
+            1.0
+          ]
+        },
+        {
+          "family": "hidden_ocr_mismatch",
+          "modality": "pixels",
+          "n": 2,
+          "passed": 2,
+          "missing": 0,
+          "wilson95": [
+            0.34238022750665303,
+            1.0
+          ]
+        }
+      ],
+      "failures": []
+    }
+  ],
+  "paired_by_source": [
+    {
+      "family": "cord",
+      "modality": "image",
+      "n": 4,
+      "first_only": 0,
+      "second_only": 1,
+      "exact_mcnemar_p_unadjusted": 1.0,
+      "inference": "exploratory; no multiplicity adjustment or population ranking"
+    },
+    {
+      "family": "cord",
+      "modality": "oracle-text",
+      "n": 4,
+      "first_only": 0,
+      "second_only": 0,
+      "exact_mcnemar_p_unadjusted": 1.0,
+      "inference": "exploratory; no multiplicity adjustment or population ranking"
+    },
+    {
+      "family": "currency_mismatch_conversion",
+      "modality": "pdf",
+      "n": 2,
+      "first_only": 0,
+      "second_only": 0,
+      "exact_mcnemar_p_unadjusted": 1.0,
+      "inference": "exploratory; no multiplicity adjustment or population ranking"
+    },
+    {
+      "family": "currency_mismatch_conversion",
+      "modality": "pixels",
+      "n": 2,
+      "first_only": 0,
+      "second_only": 0,
+      "exact_mcnemar_p_unadjusted": 1.0,
+      "inference": "exploratory; no multiplicity adjustment or population ranking"
+    },
+    {
+      "family": "hidden_ocr_mismatch",
+      "modality": "pdf",
+      "n": 2,
+      "first_only": 0,
+      "second_only": 0,
+      "exact_mcnemar_p_unadjusted": 1.0,
+      "inference": "exploratory; no multiplicity adjustment or population ranking"
+    },
+    {
+      "family": "hidden_ocr_mismatch",
+      "modality": "pixels",
+      "n": 2,
+      "first_only": 0,
+      "second_only": 0,
+      "exact_mcnemar_p_unadjusted": 1.0,
+      "inference": "exploratory; no multiplicity adjustment or population ranking"
+    }
+  ],
+  "uncertainty_scope": "CORD merchant independence unknown; synthetic intervals cover seed sampling within two fixed templates only"
+}

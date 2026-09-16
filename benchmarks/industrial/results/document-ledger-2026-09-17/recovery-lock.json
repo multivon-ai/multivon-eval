@@ -1,0 +1,5 @@
+{
+  "code_revision": "134e7be1c7a1287f8a0c2c0059217f9189dba448",
+  "original_log_sha256": "31062e5d9e5f8f601d06523e50a882bacbf0aa3c2e2ae4b808a3ccdb95a40374",
+  "repair": "offline scoring repair, preserve completed generations; retry 62 remaining samples"
+}

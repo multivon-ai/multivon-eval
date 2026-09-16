@@ -29,7 +29,7 @@ Gymnasium at their established boundaries.
 | R10 | Controlled robustness suite | Validated invariant-preserving and semantic-changing transformations; reviewed or code-derived answers; no transformations that silently corrupt the oracle | Pending |
 | R11 | World-model evaluation (experimental) | Real adapter demo; action responsiveness, horizons, state persistence, uncertainty, planning utility; model and simulator errors separated; reproducible measured results | Pending |
 | R12 | FOSS extension/stability contract | Public plugin/environment protocols, versioned report schemas, optional heavy dependencies, contributor fixtures, compatibility matrix and release checks | Pending |
-| R13 | Industrial workflow and experiments | Document-to-ledger task, independent assertions, failures/benign controls, matched-budget baselines, held-out splits, actual provider runs, costs and uncertainty; results critique | Pending |
+| R13 | Industrial workflow and experiments | Document-to-ledger task, independent assertions, failures/benign controls, matched-budget baselines, held-out splits, actual provider runs, costs and uncertainty; results critique | In progress: CORD/pdfhell study completed with 39 held-out sources, two models, native recovery and explicit task-mapping critique; customer-domain contract validation remains |
 | R14 | Research contribution/popularization | Related-work comparison, bounded novelty statement, reproducibility bundle, diagrams when useful, worked demo and evidence-led website narrative | Pending |
 | R15 | Associated projects | multivon-mcp, pdfhell, eval-action compatibility and relevant integrations; cross-project end-to-end tests, docs/README, versions and releases as applicable | Pending |
 | R16 | Library/docs/site delivery | Cohesive API/migrations, runnable docs, visual website checks, supported-Python tests, packaging, verified pushes/releases, no overstated claims | Pending |
@@ -107,3 +107,18 @@ partial-epoch retries. Retained four actual executions per handler. All-attempt
 policy stays indeterminate for the interrupted safe run; final-attempt acceptance
 requires explicit replay scope and verified state. No inference spend. Claude
 credential preflight succeeded via model listing; no credential values logged.
+
+
+2026-09-17 document study: reused official CORD v2 and existing pdfhell generators.
+Completed 32 development and 156 held-out scored cases (39 held-out sources),
+with 190 unique model events including two cancelled requests of unknown billing.
+Known usage estimate $0.699844; no account-invoice claim. Native tool errors
+exposed a bridge dataclass serialization bug, fixed with regression coverage.
+Offline regrading preserved a malformed model output as a failure; Inspect retry
+preserved 16 completed generations and ran 62 remaining samples. Both models
+failed the frozen policy. Review identified transcription-only false rejects for
+business semantics alongside wrong numeric values and a missing write. No labels
+or prompts were changed after results. Public evidence and critique are in
+benchmarks/industrial/DOCUMENT_RESULTS.md; original logs/assets are archived in
+Documents/Multivon/document-ledger-2026-09-17. This does not complete customer
+validation, broader execution controls, review tooling or the remaining program.

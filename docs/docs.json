@@ -90,6 +90,7 @@
               "guides/versioned-evidence",
               "guides/acceptance-policies",
               "guides/inspect-integration",
+              "guides/document-workflows",
               "guides/input-quality",
               "guides/ci-cd",
               "guides/agent-trace",

@@ -72,3 +72,29 @@ correlated observations; do not treat them as independent source examples.
 The industrial document-to-ledger workflow, real API experiments, human review,
 multimodal and world-model validation, companion-project updates, and final
 website/release delivery remain part of the active implementation program.
+
+## Document workflow checkpoint
+
+Reused official CORD v2 and pdfhell generators through Datasets, with Inspect
+owning model/tool execution, logs, offline scoring and native retry. The frozen
+study completed 32 development and 156 held-out scored cases. It exposed and
+fixed dataclass serialization of native tool errors. Regrading preserved the
+malformed original output as a failure and retry preserved 16 completed
+executions. Strict acceptance rejected both models; the failure review documents
+limitations of using verbatim transcription labels as business outcomes.
+
+- Python 3.12 full tracked suite: **1,548 passed, 4 skipped**, five existing
+  calibration fallback warnings (`/tmp/multivon-doc-final-full.log`).
+- Python 3.10 focused Inspect/workflow/acceptance checks: **51 passed**.
+- Documentation contracts: **16 passed**; **61 MDX pages compiled**.
+- Website article: lint, TypeScript and production build passed; headless Chrome
+  screenshots inspected at 1440×1000 and 390×844. No page errors or horizontal
+  overflow; study link present on the blog index.
+- pdfhell companion fix: **170 tracked tests passed**; original PDF bytes and
+  renderer identity now protect image cache correctness. Numeric token and
+  currency checks reject demonstrated lexical false accepts; prose limitations
+  remain explicit. Commit `16d184b` pushed, not yet released to PyPI.
+
+See [study and limitations](../../benchmarks/industrial/DOCUMENT_RESULTS.md).
+The broader R01–R17 program remains active; these checkpoints do not establish
+customer validation or completion of all execution, review and modality features.

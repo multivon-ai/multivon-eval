@@ -1,0 +1,41 @@
+{
+  "reviewer": "Codex assistant visual/arithmetic review; not independent human adjudication",
+  "labels_changed": false,
+  "reviews": [
+    {
+      "source_id": "cord-test-2",
+      "classification": "separator-only mismatch",
+      "note": "Haiku wrote 28.000; upstream total label is 28,000. Visual punctuation is faint. Numeric equivalence requires a declared locale; do not call this a wrong payment amount."
+    },
+    {
+      "source_id": "cord-test-4",
+      "classification": "numeric mismatch",
+      "note": "Haiku wrote 174,500; label and visible total are 174,600. Visible subtotal 194,000 minus discount 19,400 corroborates the label."
+    },
+    {
+      "source_id": "cord-test-13",
+      "classification": "numeric mismatch and separator-only mismatch",
+      "note": "Haiku wrote 51.370, Sonnet 51,300, upstream label 51.300. Cash 52,000 minus change 700 corroborates 51,300 units. Sonnet differs in separator only."
+    },
+    {
+      "source_id": "cord-test-14",
+      "classification": "incomplete tool arguments",
+      "note": "Sonnet annotation-text response hit max_tokens=512 and omitted required currency. No ledger row was written. Original response retained after offline scorer repair."
+    },
+    {
+      "source_id": "cord-test-17",
+      "classification": "currency-prefix omission / task-mapping limitation",
+      "note": "Both annotation-text responses wrote 91,000 against upstream Rp. 91,000. Numeric amount agrees; verbatim target includes a currency prefix although task stores currency as UNSPECIFIED. Frozen score retained; future task contract needs separate amount/currency fields."
+    },
+    {
+      "source_id": "currency_mismatch_conversion-91700",
+      "classification": "numeric conversion mismatch",
+      "note": "Visible EUR 12,345.67 \u00d7 1.09 = USD 13,456.7803, rounded 13,456.78. Haiku native PDF wrote 13,456.57."
+    },
+    {
+      "source_id": "currency_mismatch_conversion-91701",
+      "classification": "numeric conversion mismatch",
+      "note": "Visible EUR 15,327.50 \u00d7 1.27 = USD 19,465.925, half-up 19,465.93. Haiku pixels wrote 19,466.33."
+    }
+  ]
+}

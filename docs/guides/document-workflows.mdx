@@ -1,0 +1,68 @@
+---
+title: "Evaluate a document workflow"
+description: "Reuse public datasets and verify the application's persisted outcome."
+---
+
+<Warning>
+This worked study uses the development branch, including the Inspect bridge
+and acceptance policies. These additions are not in PyPI 0.17.0.
+</Warning>
+
+An extraction answer can be correct while the application writes the wrong
+record, writes twice, or writes nothing. Define the required end state before
+choosing an output grader.
+
+## Reuse the right foundations
+
+Use [Hugging Face Datasets](https://huggingface.co/docs/datasets/en/loading)
+for loading and revision pinning, [Inspect](https://inspect.aisi.org.uk/)
+for model/tool execution and logs, and the dataset's existing labels and metrics
+where they match the task. Multivon's role is to connect case evidence and
+independent outcome assertions to an explicit acceptance policy.
+
+Our [document-to-ledger study](https://github.com/multivon-ai/multivon-eval/blob/main/benchmarks/industrial/DOCUMENT_RESULTS.md)
+uses CORD v2 receipt annotations and existing pdfhell invoice generators.
+A model calls a tool that writes to SQLite. A separate scorer queries the
+committed rows and compares amount, currency and row count with the task contract.
+No LLM judge decides whether the ledger is correct.
+
+## Keep dataset labels and business rules separate
+
+CORD's raw total label includes formatting and, sometimes, a currency prefix.
+A verbatim transcription mismatch does not necessarily mean the numeric amount
+is wrong. Define locale, currency, rounding, disputed-document handling and
+permitted normalization for your application before collecting final results.
+Retain original labels, transformations and source attribution.
+
+The study froze a narrow verbatim contract, then found separator/prefix mismatches
+as well as real numeric errors. Its published scores remain unchanged; the
+failure review records why those categories have different business meaning.
+Do not silently change a held-out label to improve a result.
+
+## Preserve failure evidence
+
+The run exposed a tool-error serialization bug in the integration itself.
+Inspect's saved outputs allowed offline regrading. Native retry preserved 16
+completed generations while running the remaining samples; the malformed tool
+call remained a failure. Original logs, regrading provenance and interrupted
+attempts were retained. This is the distinction between repairing measurement
+and giving a failed model output another chance.
+
+Use [acceptance policies](/guides/acceptance-policies) to require all relevant
+checks and coverage. Choose retry scope explicitly. The example's zero-failure
+policy rejected both models; it is a demonstration contract, not a recommended
+production SLO.
+
+## Reproduce and extend
+
+The repository includes the [frozen protocol](https://github.com/multivon-ai/multivon-eval/blob/main/benchmarks/industrial/DOCUMENT_PROTOCOL.md),
+preparation/run/analysis scripts, source manifests, dataset attribution,
+per-source results, confidence intervals and cost accounting. Start with its
+development selection and your own independent state assertion. Use a fresh
+held-out selection after changing task rules or prompts.
+
+The 39-source held-out study does not prove customer usefulness or unseen-layout
+generalization. Synthetic seeds share generator templates. For invoice fields
+and line items, consider [DocILE's existing benchmark and official access process](https://docile.rossum.ai/)
+before creating another dataset. Public benchmarks complement permissioned cases
+from the application you intend to deploy.

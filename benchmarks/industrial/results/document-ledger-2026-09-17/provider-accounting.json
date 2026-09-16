@@ -1,0 +1,65 @@
+{
+  "model_events": 190,
+  "events_with_usage": 188,
+  "known_usage_estimate_usd": 0.699844,
+  "unknown_usage_events": [
+    {
+      "event_id": "JRm4QhHvcHjApNdFxsuvB4",
+      "model": "anthropic/claude-haiku-4-5-20251001",
+      "case_id": "cord-validation-0-oracle-text",
+      "error": "RuntimeError('model call cancelled')"
+    },
+    {
+      "event_id": "F5QQEUMLUh4KjTARrEneHT",
+      "model": "anthropic/claude-sonnet-5",
+      "case_id": "cord-test-16-image",
+      "error": "RuntimeError('model call cancelled')"
+    }
+  ],
+  "billable_total_known": false,
+  "note": "API list price estimate, not an invoice. Interrupted requests may be billable. Repeated native events counted once.",
+  "artifacts": [
+    {
+      "file": "2026-09-16T20-53-42-00-00_document-ledger_GguXdnMsmBzHGWdMmq573J.eval",
+      "sha256": "21f68d96c601b445f571f92ed5d537fb7cff2f9f1fc2b70ca1ead6f68c4ff162",
+      "status": "error",
+      "samples": 3
+    },
+    {
+      "file": "2026-09-16T20-55-29-00-00_document-ledger_n5LSpQFYgptoFpD3ehzJXh.eval",
+      "sha256": "171052797db34274ecd1721209d01b27e83bf2b4d4ba22c56f72efc408229f0e",
+      "status": "success",
+      "samples": 16
+    },
+    {
+      "file": "2026-09-16T20-56-30-00-00_document-ledger_X2kXsUzVM8GbWPfi2oA5Ab.eval",
+      "sha256": "ed940d84b69d602fca86b5e451c4325384faf95c0ce126d2df8411148a78abd2",
+      "status": "success",
+      "samples": 16
+    },
+    {
+      "file": "2026-09-16T20-58-34-00-00_document-ledger_Lvozaobo95BG9Rj78P4QdU.eval",
+      "sha256": "93ca3239ad7d84524c07a78a948003a1127e5176d5a651eae496c5c04576f829",
+      "status": "success",
+      "samples": 78
+    },
+    {
+      "file": "2026-09-16T21-00-08-00-00_document-ledger_96ydc5Fdi5PGSvEFAJJpX8.eval",
+      "sha256": "31062e5d9e5f8f601d06523e50a882bacbf0aa3c2e2ae4b808a3ccdb95a40374",
+      "status": "error",
+      "samples": 18
+    },
+    {
+      "file": "regraded.eval",
+      "sha256": "54e4f6aff65f8739972e6b1c67be8c575f4a6912e7633021e4d9dd3be0d2121d",
+      "status": "error",
+      "samples": 18
+    },
+    {
+      "file": "2026-09-16T21-06-48-00-00_document-ledger_96ydc5Fdi5PGSvEFAJJpX8.eval",
+      "sha256": "d45cb49c8e6cdc9c4461eccfeed794385517eaecbcaa04eae1177318d6b163a5",
+      "status": "success",
+      "samples": 78
+    }
+  ]
+}

@@ -1,0 +1,498 @@
+{
+  "runs": [
+    {
+      "status": "success",
+      "model": "anthropic/claude-haiku-4-5-20251001",
+      "manifest_digest": "9c6d47326b07354efcf38129d9abb14148e9a95c45fc6f63d24107819ae3a0a6",
+      "decision": "reject",
+      "slices": {
+        "cord/image": {
+          "n": 19,
+          "passed": 16,
+          "errors": 0,
+          "response_only_false_accepts": 2
+        },
+        "cord/oracle-text": {
+          "n": 19,
+          "passed": 18,
+          "errors": 0,
+          "response_only_false_accepts": 1
+        },
+        "currency_mismatch_conversion/pdf": {
+          "n": 10,
+          "passed": 9,
+          "errors": 0,
+          "response_only_false_accepts": 1
+        },
+        "currency_mismatch_conversion/pixels": {
+          "n": 10,
+          "passed": 9,
+          "errors": 0,
+          "response_only_false_accepts": 1
+        },
+        "hidden_ocr_mismatch/pdf": {
+          "n": 10,
+          "passed": 10,
+          "errors": 0,
+          "response_only_false_accepts": 0
+        },
+        "hidden_ocr_mismatch/pixels": {
+          "n": 10,
+          "passed": 10,
+          "errors": 0,
+          "response_only_false_accepts": 0
+        }
+      },
+      "usage": {
+        "anthropic/claude-haiku-4-5-20251001": {
+          "input_tokens": 140865,
+          "output_tokens": 8542,
+          "total_tokens": 149407,
+          "input_tokens_cache_write": 0,
+          "input_tokens_cache_read": 0,
+          "reasoning_tokens": null,
+          "total_cost": 0.1835750000000002
+        }
+      },
+      "estimated_usd": 0.183575,
+      "cost_is_invoice": false,
+      "pricing_date": "2026-09-17",
+      "versions": {
+        "inspect-ai": "0.3.263",
+        "multivon-eval": "0.17.0",
+        "anthropic": "1.6.0"
+      },
+      "log": "2026-09-16T20-58-34-00-00_document-ledger_Lvozaobo95BG9Rj78P4QdU.eval",
+      "rates": [
+        {
+          "family": "cord",
+          "modality": "image",
+          "n": 19,
+          "passed": 16,
+          "missing": 0,
+          "wilson95": [
+            0.6243452472967093,
+            0.9447952836146587
+          ]
+        },
+        {
+          "family": "cord",
+          "modality": "oracle-text",
+          "n": 19,
+          "passed": 18,
+          "missing": 0,
+          "wilson95": [
+            0.7536126883310122,
+            0.9906480059376997
+          ]
+        },
+        {
+          "family": "currency_mismatch_conversion",
+          "modality": "pdf",
+          "n": 10,
+          "passed": 9,
+          "missing": 0,
+          "wilson95": [
+            0.5958499732047615,
+            0.9821237869049271
+          ]
+        },
+        {
+          "family": "currency_mismatch_conversion",
+          "modality": "pixels",
+          "n": 10,
+          "passed": 9,
+          "missing": 0,
+          "wilson95": [
+            0.5958499732047615,
+            0.9821237869049271
+          ]
+        },
+        {
+          "family": "hidden_ocr_mismatch",
+          "modality": "pdf",
+          "n": 10,
+          "passed": 10,
+          "missing": 0,
+          "wilson95": [
+            0.7224672001371109,
+            1.0
+          ]
+        },
+        {
+          "family": "hidden_ocr_mismatch",
+          "modality": "pixels",
+          "n": 10,
+          "passed": 10,
+          "missing": 0,
+          "wilson95": [
+            0.7224672001371109,
+            1.0
+          ]
+        }
+      ],
+      "failures": [
+        {
+          "case_id": "cord-test-13-image",
+          "source_id": "cord-test-13",
+          "observed": {
+            "observed_rows": [
+              [
+                "51.370",
+                "UNSPECIFIED"
+              ]
+            ],
+            "expected_row": [
+              "51.300",
+              "UNSPECIFIED"
+            ]
+          },
+          "model_error": null,
+          "evaluator_error": null
+        },
+        {
+          "case_id": "cord-test-17-oracle-text",
+          "source_id": "cord-test-17",
+          "observed": {
+            "observed_rows": [
+              [
+                "91,000",
+                "UNSPECIFIED"
+              ]
+            ],
+            "expected_row": [
+              "Rp. 91,000",
+              "UNSPECIFIED"
+            ]
+          },
+          "model_error": null,
+          "evaluator_error": null
+        },
+        {
+          "case_id": "cord-test-2-image",
+          "source_id": "cord-test-2",
+          "observed": {
+            "observed_rows": [
+              [
+                "28.000",
+                "UNSPECIFIED"
+              ]
+            ],
+            "expected_row": [
+              "28,000",
+              "UNSPECIFIED"
+            ]
+          },
+          "model_error": null,
+          "evaluator_error": null
+        },
+        {
+          "case_id": "cord-test-4-image",
+          "source_id": "cord-test-4",
+          "observed": {
+            "observed_rows": [
+              [
+                "174,500",
+                "UNSPECIFIED"
+              ]
+            ],
+            "expected_row": [
+              "174,600",
+              "UNSPECIFIED"
+            ]
+          },
+          "model_error": null,
+          "evaluator_error": null
+        },
+        {
+          "case_id": "currency_mismatch_conversion-91700-pdf",
+          "source_id": "currency_mismatch_conversion-91700",
+          "observed": {
+            "observed_rows": [
+              [
+                "13456.57",
+                "USD"
+              ]
+            ],
+            "expected_row": [
+              "13456.78",
+              "USD"
+            ]
+          },
+          "model_error": null,
+          "evaluator_error": null
+        },
+        {
+          "case_id": "currency_mismatch_conversion-91701-pixels",
+          "source_id": "currency_mismatch_conversion-91701",
+          "observed": {
+            "observed_rows": [
+              [
+                "19466.33",
+                "USD"
+              ]
+            ],
+            "expected_row": [
+              "19465.93",
+              "USD"
+            ]
+          },
+          "model_error": null,
+          "evaluator_error": null
+        }
+      ]
+    },
+    {
+      "status": "success",
+      "model": "anthropic/claude-sonnet-5",
+      "manifest_digest": "9c6d47326b07354efcf38129d9abb14148e9a95c45fc6f63d24107819ae3a0a6",
+      "decision": "reject",
+      "slices": {
+        "cord/image": {
+          "n": 19,
+          "passed": 18,
+          "errors": 0,
+          "response_only_false_accepts": 0
+        },
+        "cord/oracle-text": {
+          "n": 19,
+          "passed": 17,
+          "errors": 0,
+          "response_only_false_accepts": 0
+        },
+        "currency_mismatch_conversion/pdf": {
+          "n": 10,
+          "passed": 10,
+          "errors": 0,
+          "response_only_false_accepts": 0
+        },
+        "currency_mismatch_conversion/pixels": {
+          "n": 10,
+          "passed": 10,
+          "errors": 0,
+          "response_only_false_accepts": 0
+        },
+        "hidden_ocr_mismatch/pdf": {
+          "n": 10,
+          "passed": 10,
+          "errors": 0,
+          "response_only_false_accepts": 0
+        },
+        "hidden_ocr_mismatch/pixels": {
+          "n": 10,
+          "passed": 10,
+          "errors": 0,
+          "response_only_false_accepts": 0
+        }
+      },
+      "usage": {
+        "anthropic/claude-sonnet-5": {
+          "input_tokens": 161020,
+          "output_tokens": 7403,
+          "total_tokens": 168423,
+          "input_tokens_cache_write": 0,
+          "input_tokens_cache_read": 0,
+          "reasoning_tokens": 1162,
+          "total_cost": 0.3960699999999996
+        }
+      },
+      "estimated_usd": 0.39607,
+      "cost_is_invoice": false,
+      "pricing_date": "2026-09-17",
+      "versions": {
+        "inspect-ai": "0.3.263",
+        "multivon-eval": "0.17.0",
+        "anthropic": "1.6.0"
+      },
+      "log": "2026-09-16T21-06-48-00-00_document-ledger_96ydc5Fdi5PGSvEFAJJpX8.eval",
+      "preserved_generation_count": 16,
+      "original_usage": {
+        "anthropic/claude-sonnet-5": {
+          "input_tokens": 18094,
+          "output_tokens": 1725,
+          "total_tokens": 19819,
+          "input_tokens_cache_write": 0,
+          "input_tokens_cache_read": 0,
+          "reasoning_tokens": 446,
+          "total_cost": 0.053438
+        }
+      },
+      "rates": [
+        {
+          "family": "cord",
+          "modality": "image",
+          "n": 19,
+          "passed": 18,
+          "missing": 0,
+          "wilson95": [
+            0.7536126883310122,
+            0.9906480059376997
+          ]
+        },
+        {
+          "family": "cord",
+          "modality": "oracle-text",
+          "n": 19,
+          "passed": 17,
+          "missing": 0,
+          "wilson95": [
+            0.68605917288891,
+            0.9706414397011298
+          ]
+        },
+        {
+          "family": "currency_mismatch_conversion",
+          "modality": "pdf",
+          "n": 10,
+          "passed": 10,
+          "missing": 0,
+          "wilson95": [
+            0.7224672001371109,
+            1.0
+          ]
+        },
+        {
+          "family": "currency_mismatch_conversion",
+          "modality": "pixels",
+          "n": 10,
+          "passed": 10,
+          "missing": 0,
+          "wilson95": [
+            0.7224672001371109,
+            1.0
+          ]
+        },
+        {
+          "family": "hidden_ocr_mismatch",
+          "modality": "pdf",
+          "n": 10,
+          "passed": 10,
+          "missing": 0,
+          "wilson95": [
+            0.7224672001371109,
+            1.0
+          ]
+        },
+        {
+          "family": "hidden_ocr_mismatch",
+          "modality": "pixels",
+          "n": 10,
+          "passed": 10,
+          "missing": 0,
+          "wilson95": [
+            0.7224672001371109,
+            1.0
+          ]
+        }
+      ],
+      "failures": [
+        {
+          "case_id": "cord-test-13-image",
+          "source_id": "cord-test-13",
+          "observed": {
+            "observed_rows": [
+              [
+                "51,300",
+                "UNSPECIFIED"
+              ]
+            ],
+            "expected_row": [
+              "51.300",
+              "UNSPECIFIED"
+            ]
+          },
+          "model_error": null,
+          "evaluator_error": null
+        },
+        {
+          "case_id": "cord-test-14-oracle-text",
+          "source_id": "cord-test-14",
+          "observed": {
+            "observed_rows": [],
+            "expected_row": [
+              "281,435",
+              "UNSPECIFIED"
+            ]
+          },
+          "model_error": null,
+          "evaluator_error": null
+        },
+        {
+          "case_id": "cord-test-17-oracle-text",
+          "source_id": "cord-test-17",
+          "observed": {
+            "observed_rows": [
+              [
+                "91,000",
+                "UNSPECIFIED"
+              ]
+            ],
+            "expected_row": [
+              "Rp. 91,000",
+              "UNSPECIFIED"
+            ]
+          },
+          "model_error": null,
+          "evaluator_error": null
+        }
+      ]
+    }
+  ],
+  "paired_by_source": [
+    {
+      "family": "cord",
+      "modality": "image",
+      "n": 19,
+      "first_only": 0,
+      "second_only": 2,
+      "exact_mcnemar_p_unadjusted": 0.5,
+      "inference": "exploratory; no multiplicity adjustment or population ranking"
+    },
+    {
+      "family": "cord",
+      "modality": "oracle-text",
+      "n": 19,
+      "first_only": 1,
+      "second_only": 0,
+      "exact_mcnemar_p_unadjusted": 1.0,
+      "inference": "exploratory; no multiplicity adjustment or population ranking"
+    },
+    {
+      "family": "currency_mismatch_conversion",
+      "modality": "pdf",
+      "n": 10,
+      "first_only": 0,
+      "second_only": 1,
+      "exact_mcnemar_p_unadjusted": 1.0,
+      "inference": "exploratory; no multiplicity adjustment or population ranking"
+    },
+    {
+      "family": "currency_mismatch_conversion",
+      "modality": "pixels",
+      "n": 10,
+      "first_only": 0,
+      "second_only": 1,
+      "exact_mcnemar_p_unadjusted": 1.0,
+      "inference": "exploratory; no multiplicity adjustment or population ranking"
+    },
+    {
+      "family": "hidden_ocr_mismatch",
+      "modality": "pdf",
+      "n": 10,
+      "first_only": 0,
+      "second_only": 0,
+      "exact_mcnemar_p_unadjusted": 1.0,
+      "inference": "exploratory; no multiplicity adjustment or population ranking"
+    },
+    {
+      "family": "hidden_ocr_mismatch",
+      "modality": "pixels",
+      "n": 10,
+      "first_only": 0,
+      "second_only": 0,
+      "exact_mcnemar_p_unadjusted": 1.0,
+      "inference": "exploratory; no multiplicity adjustment or population ranking"
+    }
+  ],
+  "uncertainty_scope": "CORD merchant independence unknown; synthetic intervals cover seed sampling within two fixed templates only"
+}

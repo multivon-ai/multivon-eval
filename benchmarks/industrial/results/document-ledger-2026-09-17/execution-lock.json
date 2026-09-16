@@ -1,0 +1,17 @@
+{
+  "code_revision": "b3d8b887b45916b93c747ad87d1491590cfe3c1f",
+  "python": "3.12.13",
+  "file_sha256": {
+    "benchmarks/industrial/DOCUMENT_PROTOCOL.md": "060bdcc5986723ec8da6d12812857701cafe1f365744106bb329b52671a46221",
+    "benchmarks/industrial/document_task.py": "fce0fe23dcd50b5bf2dcd2641c0c93a58c40971484c25b7b2c288a798e08cd2f",
+    "benchmarks/industrial/prepare_documents.py": "caca5bbe1366d5521fd9f7bfb1d14b48f1a32f85ad40f6d270f0d407c6fccb8b",
+    "benchmarks/industrial/run_documents.py": "9c90558b893f04b324887681f07fc07148ad3af7cf1a1312f6f64465ccd940c2"
+  },
+  "versions": {
+    "inspect-ai": "0.3.263",
+    "anthropic": "1.6.0",
+    "datasets": "5.0.1",
+    "pdfhell": "0.6.1",
+    "multivon-eval": "0.17.0"
+  }
+}
