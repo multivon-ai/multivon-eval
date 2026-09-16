@@ -50,6 +50,19 @@ class EvalCase:
     metadata: dict[str, Any] = field(default_factory=dict)
     tags: list[str] = field(default_factory=list)
     reference_output: str | Callable[["EvalCase"], str] | None = None
+    case_id: str | None = None
+    revision: str | None = None
+    source_id: str | None = None
+
+    def identity(self) -> tuple[str, str]:
+        """Return stable ID and content digest; explicit IDs survive revisions.
+
+        Without an explicit ID, the content digest supplies the ID. Runtime
+        mutation changes the digest, so runners capture it before execution.
+        Callable validation-only reference outputs do not enter this digest.
+        """
+        from .datasets import case_identity
+        return case_identity(self)
 
     def context_str(self) -> str:
         if self.context is None:

@@ -1,11 +1,13 @@
 from __future__ import annotations
 import asyncio
 import dataclasses
+import math
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import TYPE_CHECKING, Any, Callable, Awaitable
 
 from .case import EvalCase
+from .trials import attach_trial, capture_case
 from .exceptions import JudgeUnavailable
 from .result import (
     CalibrationResult, CaseResult, EvalGateFailure, EvalReport, EvalResult, EvalStatus, ERROR_STATUSES, EVALUATION_STATUSES,
@@ -201,6 +203,7 @@ class EvalSuite:
         model_fn: Callable[[str], str],
         tracer: "AgentTracer | None" = None,
     ) -> CaseResult:
+        snapshot = capture_case(case)
         if tracer is not None:
             tracer.reset()
 
@@ -226,6 +229,7 @@ class EvalSuite:
             if trace:
                 case = dataclasses.replace(case, agent_trace=trace)
 
+        evaluation_snapshot = capture_case(case)
         results = []
         # judge_error / evaluator_error are populated below if any evaluator
         # raises. Latching the FIRST one of each kind is enough for status
@@ -241,6 +245,7 @@ class EvalSuite:
                     score=0.0,
                     passed=False,
                     reason=f"[skipped — model error: {model_error}]",
+                    metadata={"skipped": True, "error_kind": "model_error_skip"},
                 ))
                 continue
             try:
@@ -269,7 +274,7 @@ class EvalSuite:
                 )
             results.append(result)
 
-        return CaseResult(
+        return attach_trial(CaseResult(
             case_input=case.input,
             actual_output=output,
             model_error=model_error,
@@ -279,7 +284,7 @@ class EvalSuite:
             latency_ms=latency_ms,
             tags=case.tags,
             agent_trace=case.agent_trace,
-        )
+        ), snapshot, evaluation_snapshot=evaluation_snapshot)
 
     def _run_case(
         self,
@@ -334,6 +339,8 @@ class EvalSuite:
         from .retry import should_retry, sleep_for_attempt
 
         retry_errors: list[str] = []
+        trial_history = []
+        evidence_errors = []
         cr: CaseResult | None = None
         for attempt in range(1, judge_retry.max_attempts + 1):
             # Sleep BEFORE the attempt for attempt >= 2 — attempt 1 runs
@@ -341,6 +348,10 @@ class EvalSuite:
             if attempt > 1:
                 sleep_for_attempt(judge_retry, attempt)
             cr = self._run_case(case, model_fn, runs, tracer=tracer, early_stop=early_stop)
+            trial_history.extend(t.with_position(attempt=attempt, run_index=i + 1)
+                                 for i, t in enumerate(cr.trials))
+            if cr.evidence_error:
+                evidence_errors.append(cr.evidence_error)
             if not should_retry(cr.status, judge_retry):
                 break
             # ``retry_errors`` records "errors that *prompted* a retry" —
@@ -354,6 +365,8 @@ class EvalSuite:
                 cr.judge_error or cr.evaluator_error or cr.model_error or f"<{cr.status.value}>"
             )
         assert cr is not None  # max_attempts >= 1 guarantees one pass
+        cr.trials = tuple(trial_history)
+        cr.evidence_error = "; ".join(evidence_errors) or None
 
         # Record retry history on the case result. ``retry_attempts``
         # is the number of FAILED prior attempts — for a case that
@@ -787,6 +800,8 @@ class EvalSuite:
         verbose: bool = True,
         fail_threshold: float | None = None,
         max_error_rate: float | None = None,
+        *,
+        latencies_ms: list[float | None] | None = None,
     ) -> EvalReport:
         """
         Run evaluators on pre-evaluated (case, output) pairs.
@@ -803,9 +818,21 @@ class EvalSuite:
             verbose:         Print terminal report.
             fail_threshold:  Exit(1) in CI if pass_rate < threshold.
             max_error_rate:  Error budget for the gate — see :meth:`run`.
+            latencies_ms:    Measured target latencies aligned with the pairs.
+                            Missing latency causes latency checks to skip.
         """
+        if latencies_ms is not None and len(latencies_ms) != len(traced_outputs):
+            raise ValueError("latencies_ms must align with traced_outputs")
+        if latencies_ms is not None and any(
+            value is not None and (not isinstance(value, (float, int))
+                                   or not math.isfinite(value) or value < 0)
+            for value in latencies_ms
+        ):
+            raise ValueError("latencies_ms must contain finite nonnegative values or None")
         case_results = []
-        for case, output in traced_outputs:
+        for index, (case, output) in enumerate(traced_outputs):
+            snapshot = capture_case(case)
+            latency = latencies_ms[index] if latencies_ms is not None else None
             results = []
             # Apply the same per-evaluator isolation as the live run path —
             # an imported trace shouldn't crash the whole suite if one
@@ -815,7 +842,14 @@ class EvalSuite:
             for ev in self._evaluators:
                 ev_name = getattr(ev, "name", type(ev).__name__)
                 try:
-                    result = ev.evaluate(case, output)
+                    if isinstance(ev, (Latency, MaxLatency)):
+                        if latency is None:
+                            result = EvalResult(ev_name, 0.0, False, "Target latency was not recorded",
+                                                {"skipped": True})
+                        else:
+                            result = ev.evaluate(case, output, latency_ms=latency)
+                    else:
+                        result = ev.evaluate(case, output)
                 except JudgeUnavailable as ju:
                     if judge_err is None:
                         judge_err = str(ju)
@@ -831,16 +865,16 @@ class EvalSuite:
                         reason=f"[evaluator error: {type(ex).__name__}: {ex}]",
                     )
                 results.append(result)
-            case_results.append(CaseResult(
+            case_results.append(attach_trial(CaseResult(
                 case_input=case.input,
                 actual_output=output,
                 results=results,
-                latency_ms=0.0,
+                latency_ms=latency if latency is not None else 0.0,
                 tags=case.tags,
                 judge_error=judge_err,
                 evaluator_error=evaluator_err,
                 agent_trace=case.agent_trace,
-            ))
+            ), snapshot, origin="import", latency_known=latency is not None))
 
         report = EvalReport(
             suite_name=self.name,
@@ -1453,7 +1487,7 @@ class EvalSuite:
                     score=0.0,
                     passed=False,
                     reason=f"[skipped — model error: {model_error}]",
-                    metadata={"error_kind": "model_error_skip"},
+                    metadata={"skipped": True, "error_kind": "model_error_skip"},
                 )
             # Catch judge + evaluator exceptions so one outage doesn't crash
             # the whole case. The error TYPE is tagged via
@@ -1487,6 +1521,7 @@ class EvalSuite:
             async with sem:
                 single_runs = []
                 for _ in range(runs):
+                    snapshot = capture_case(case)
                     t0 = time.time()
                     async_model_error: str | None = None
                     try:
@@ -1502,6 +1537,7 @@ class EvalSuite:
                         async_model_error = str(e)
                         output = f"[MODEL ERROR: {e}]"
                     latency_ms = (time.time() - t0) * 1000
+                    evaluation_snapshot = capture_case(case)
 
                     ev_results = await asyncio.gather(*[
                         _gated_eval(ev, case, output, latency_ms, async_model_error)
@@ -1520,7 +1556,7 @@ class EvalSuite:
                         elif async_evaluator_error is None and kind == "evaluator_error":
                             async_evaluator_error = r.metadata.get("error_detail", r.reason)
 
-                    single_runs.append(CaseResult(
+                    single_runs.append(attach_trial(CaseResult(
                         case_input=case.input,
                         actual_output=output,
                         model_error=async_model_error,
@@ -1530,7 +1566,7 @@ class EvalSuite:
                         latency_ms=latency_ms,
                         tags=case.tags,
                         agent_trace=case.agent_trace,
-                    ))
+                    ), snapshot, evaluation_snapshot=evaluation_snapshot))
 
                 if runs == 1:
                     return single_runs[0]
@@ -1544,11 +1580,17 @@ class EvalSuite:
                 return await _run_one_async(case)
             from .retry import should_retry, async_sleep_for_attempt
             retry_errors: list[str] = []
+            trial_history = []
+            evidence_errors = []
             cr: CaseResult | None = None
             for attempt in range(1, judge_retry.max_attempts + 1):
                 if attempt > 1:
                     await async_sleep_for_attempt(judge_retry, attempt)
                 cr = await _run_one_async(case)
+                trial_history.extend(t.with_position(attempt=attempt, run_index=i + 1)
+                                     for i, t in enumerate(cr.trials))
+                if cr.evidence_error:
+                    evidence_errors.append(cr.evidence_error)
                 if not should_retry(cr.status, judge_retry):
                     break
                 if attempt >= judge_retry.max_attempts:
@@ -1558,6 +1600,8 @@ class EvalSuite:
                     or f"<{cr.status.value}>"
                 )
             assert cr is not None
+            cr.trials = tuple(trial_history)
+            cr.evidence_error = "; ".join(evidence_errors) or None
             if retry_errors:
                 cr = dataclasses.replace(
                     cr,
@@ -1749,7 +1793,14 @@ def _aggregate_runs(case: EvalCase, single_runs: list[CaseResult]) -> CaseResult
         judge_error=agg_judge_err,
         evaluator_error=agg_eval_err,
         skipped=agg_skipped and not (agg_model_err or agg_judge_err or agg_eval_err),
-        agent_trace=case.agent_trace,
+        agent_trace=single_runs[-1].agent_trace,
+        case_id=single_runs[0].case_id,
+        case_digest=single_runs[0].case_digest,
+        trials=tuple(t.with_position(attempt=1, run_index=i + 1)
+                     for i, cr in enumerate(single_runs) for t in cr.trials),
+        evidence_error=next((r.evidence_error for r in single_runs if r.evidence_error), None)
+            or ("Case definition changed between trials" if any(
+                r.case_digest != single_runs[0].case_digest for r in single_runs) else None),
     )
 
 

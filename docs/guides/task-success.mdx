@@ -45,8 +45,10 @@ stay in the same split.
 
 Separate the cases used to design prompts, rubrics, and thresholds from a
 held-out test set. Do not inspect that test set repeatedly while tuning. Save
-fixed case definitions for baseline/proposal comparisons; current report
-pairing uses input text and cannot reliably identify changed context or labels.
+fixed case definitions for baseline/proposal comparisons. PyPI 0.17.0 pairs
+reports by input text and cannot reliably identify changed context or labels.
+The development branch adds [versioned cases and trial evidence](/guides/versioned-evidence)
+to detect these changes; it still requires representative, reviewed data.
 
 ## Verify the grader
 

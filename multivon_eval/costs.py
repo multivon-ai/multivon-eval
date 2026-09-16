@@ -67,6 +67,15 @@ class Costs:
     by_model: list[ProviderUsage] = field(default_factory=list)
     """One entry per (provider, model) pair seen during the run."""
 
+    @classmethod
+    def from_dict(cls, data: dict) -> Costs:
+        """Restore recorded usage; derived totals are recomputed from entries."""
+        return cls([ProviderUsage(
+            provider=row["provider"], model=row["model"],
+            input_tokens=row["input_tokens"], output_tokens=row["output_tokens"],
+            calls=row["calls"], cost_usd=row["cost_usd"],
+        ) for row in data["by_model"]])
+
     @property
     def total_input_tokens(self) -> int:
         return sum(u.input_tokens for u in self.by_model)

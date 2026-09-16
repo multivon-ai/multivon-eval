@@ -42,10 +42,12 @@ diff = report_v1.compare(report_v2)  # baseline, then proposal
 print(diff.pass_rate_delta)
 ```
 
-This pairs cases by input text and uses McNemar's test over completed quality
+In PyPI 0.17.0 this pairs cases by input text and uses McNemar's test over completed quality
 pairs. Identical input text is not a stable identity for cases whose context
 or expected output changed. Keep case definitions fixed and inspect unmatched
 cases and coverage. See [statistical limitations](/guides/statistical-rigor).
+The development branch uses [case IDs and content digests](/guides/versioned-evidence)
+and requires explicit trust for legacy prompt-only comparisons.
 
 ## View run history
 

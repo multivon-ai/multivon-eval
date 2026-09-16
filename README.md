@@ -19,6 +19,11 @@ No hosted account is required.
 **Current release: 0.17.0 — September 17, 2026.** Python 3.10+, Apache 2.0.
 [Migration notes](docs/guides/migration-0-17.mdx).
 
+On the development branch, [versioned cases and retained trial evidence](docs/guides/versioned-evidence.mdx)
+support safer comparisons and regrading without target calls. These additions
+are not yet in PyPI 0.17.0. The [industrial evaluation program](plans/industrial-evaluation.md)
+tracks validation, agent environments, multimodal work, and experimental world-model evaluation.
+
 ## Start in 30 seconds
 
 ```bash

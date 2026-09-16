@@ -10,9 +10,8 @@ Returns a structured diff: pass-rate delta, per-case regressions and
 improvements, and a McNemar p-value so the reader can tell a real
 shift from noise on a small dataset.
 
-Pairing convention: cases are paired by ``case_input`` (sequential
-within duplicates). Cases present in only one side are reported as
-``added`` / ``removed`` rather than silently dropped.
+Pairing uses stable case IDs and matching content digests. Legacy prompt-only
+pairs remain diagnostic and cannot pass a regression gate by default.
 """
 from __future__ import annotations
 
@@ -43,6 +42,7 @@ class CaseDiff:
     proposal_status: EvalStatus
     baseline_score: float
     proposal_score: float
+    case_id: str | None = None
 
     @property
     def direction(self) -> str:
@@ -88,6 +88,7 @@ class ReportDiff:
     # McNemar stays the sole significance test (over paired pass/fail).
     baseline_pass_hat_k: "Optional[PassKResult]" = None
     proposal_pass_hat_k: "Optional[PassKResult]" = None
+    identity_issues: list[str] = field(default_factory=list)
 
     @property
     def pass_rate_delta(self) -> float:
@@ -140,9 +141,12 @@ class ReportDiff:
                 "flaky": self.flaky_delta,
             },
             "paired_count": len(self.paired),
+            "identity_verified": not self.identity_issues,
+            "identity_issues": self.identity_issues,
             "regressions": [
                 {
                     "input": c.case_input,
+                    "case_id": c.case_id,
                     "baseline_status": c.baseline_status.value,
                     "proposal_status": c.proposal_status.value,
                     "baseline_score": c.baseline_score,
@@ -153,6 +157,7 @@ class ReportDiff:
             "improvements": [
                 {
                     "input": c.case_input,
+                    "case_id": c.case_id,
                     "baseline_status": c.baseline_status.value,
                     "proposal_status": c.proposal_status.value,
                     "baseline_score": c.baseline_score,
@@ -168,6 +173,7 @@ class ReportDiff:
     def to_text(self, *, regressions_only: bool = False) -> str:
         """Render a terse terminal diff. ASCII-only — pipes to logs cleanly."""
         lines: list[str] = []
+        lines.extend(f"Identity warning: {issue}" for issue in self.identity_issues)
         lines.append(f"Comparing:")
         lines.append(f"  baseline: {self.baseline_name}")
         lines.append(f"  proposal: {self.proposal_name}")
@@ -243,6 +249,7 @@ class ReportDiff:
         lines: list[str] = []
         lines.append("## Eval comparison")
         lines.append("")
+        lines.extend(f"Identity warning: {issue}\n" for issue in self.identity_issues)
         lines.append("| Metric | Baseline | Proposal | Δ |")
         lines.append("| --- | ---: | ---: | ---: |")
         lines.append(
@@ -352,10 +359,11 @@ def _pair_by_input(
     return paired, added, removed
 
 
-def compare_reports(baseline: EvalReport, proposal: EvalReport) -> ReportDiff:
+def compare_reports(baseline: EvalReport, proposal: EvalReport, *,
+                    allow_legacy_identity: bool = False) -> ReportDiff:
     """Compute a structured diff between two :class:`EvalReport` snapshots.
 
-    Pairs cases by ``case_input`` (sequential within duplicates). McNemar
+    Pairs cases by stable ID and matching case digest. McNemar
     p-value is computed only over PAIRED cases — added / removed cases
     can't enter a paired test.
 
@@ -363,7 +371,8 @@ def compare_reports(baseline: EvalReport, proposal: EvalReport) -> ReportDiff:
     ``mcnemar_p`` is set to ``None`` rather than 1.0 (which would mean
     "tested and found no difference" — misleading).
     """
-    paired_pairs, added, removed = _pair_by_input(
+    from .pairing import pair_cases
+    paired_pairs, added, removed, identity_issues = pair_cases(
         baseline.case_results, proposal.case_results
     )
 
@@ -375,6 +384,7 @@ def compare_reports(baseline: EvalReport, proposal: EvalReport) -> ReportDiff:
             proposal_status=p_cr.status,
             baseline_score=b_cr.score,
             proposal_score=p_cr.score,
+            case_id=b_cr.case_id,
         ))
 
     # Errors and skips on either side are missing measurements, not failures.
@@ -386,7 +396,9 @@ def compare_reports(baseline: EvalReport, proposal: EvalReport) -> ReportDiff:
         if d.baseline_status in EVALUATION_STATUSES
         and d.proposal_status in EVALUATION_STATUSES
     ]
-    if mcnemar_pairs:
+    legacy_override = allow_legacy_identity and all(
+        not c.case_id and not c.case_digest for c in baseline.case_results + proposal.case_results)
+    if mcnemar_pairs and (not identity_issues or legacy_override):
         mcnemar_p = mcnemar_test(
             [d.baseline_status == EvalStatus.PASSED for d in mcnemar_pairs],
             [d.proposal_status == EvalStatus.PASSED for d in mcnemar_pairs],
@@ -419,6 +431,7 @@ def compare_reports(baseline: EvalReport, proposal: EvalReport) -> ReportDiff:
         mcnemar_p=mcnemar_p,
         baseline_pass_hat_k=baseline_phk,
         proposal_pass_hat_k=proposal_phk,
+        identity_issues=identity_issues,
     )
 
 
@@ -445,6 +458,8 @@ def _cli(argv: list[str]) -> int:
     )
     p.add_argument("baseline", help="Baseline report JSON")
     p.add_argument("proposal", help="Proposal report JSON to compare")
+    p.add_argument("--allow-legacy-identity", action="store_true",
+                   help="Explicitly trust prompt-only pairing for reports without case IDs")
     p.add_argument(
         "--regressions-only", action="store_true",
         help="Show only regressions in the per-case section (good for CI gates)",
@@ -467,11 +482,11 @@ def _cli(argv: list[str]) -> int:
     try:
         baseline = _load_report(args.baseline)
         proposal = _load_report(args.proposal)
-    except FileNotFoundError as exc:
+    except (OSError, ValueError, KeyError, TypeError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 
-    diff = compare_reports(baseline, proposal)
+    diff = compare_reports(baseline, proposal, allow_legacy_identity=args.allow_legacy_identity)
 
     if args.json:
         print(json.dumps(diff.to_dict(), indent=2, default=str))
@@ -481,7 +496,10 @@ def _cli(argv: list[str]) -> int:
         print(diff.to_text(regressions_only=args.regressions_only))
 
     if args.fail_on_regression:
-        if (not diff.paired or diff.added or diff.removed
+        legacy_override = args.allow_legacy_identity and all(
+            not c.case_id and not c.case_digest for c in baseline.case_results + proposal.case_results)
+        if (diff.identity_issues and not legacy_override
+                or not diff.paired or diff.added or diff.removed
                 or any(d.baseline_status not in EVALUATION_STATUSES
                        or d.proposal_status not in EVALUATION_STATUSES for d in diff.paired)):
             print("Comparison INDETERMINATE: incomplete paired quality measurements.", file=sys.stderr)

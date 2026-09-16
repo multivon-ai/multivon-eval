@@ -4,6 +4,22 @@ All notable changes to `multivon-eval`. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+### Evidence foundations
+
+- Add versioned, content-addressed datasets with explicit case IDs, revisions,
+  source groups, split assignment checks, and immutable snapshots.
+- JSONL loading now preserves traces, tool expectations, references, and IDs;
+  rejects unknown fields instead of silently dropping them. Add `save_jsonl`.
+- Retain individual outputs, traces, grader verdicts, errors, and retry attempts
+  on sync, async, parallel, and imported-output runs. Add saved-output regrading.
+- Pair new reports by unique case ID and matching content digest. Legacy
+  comparisons require `--allow-legacy-identity` for significance and CI gates.
+- Report schema v2 preserves trial evidence, aggregate costs, suite locks,
+  and exact pass counts. Old reports no longer fabricate individual run scores.
+- Imported outputs skip latency checks unless measured latencies are supplied.
+- Provider request capture and full experiment compatibility remain unfinished;
+  trial evidence explicitly records missing instrumentation.
+
 ### Documentation
 
 - Rewrite the README around a runnable offline example, task success, and CI gates.

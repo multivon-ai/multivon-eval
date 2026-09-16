@@ -87,6 +87,7 @@
               "guides/factory-suites",
               "guides/compliance",
               "guides/datasets",
+              "guides/versioned-evidence",
               "guides/input-quality",
               "guides/ci-cd",
               "guides/agent-trace",

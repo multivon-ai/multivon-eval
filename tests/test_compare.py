@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 
 from multivon_eval import (
-    CaseDiff, EvalReport, EvalResult, EvalStatus, ReportDiff, compare_reports,
+    CaseDiff, EvalCase, EvalReport, EvalResult, EvalStatus, ReportDiff, compare_reports,
 )
 from multivon_eval.compare import _cli, _pair_by_input
 from multivon_eval.result import CaseResult
@@ -30,6 +30,7 @@ def _case(
     runs: int = 1,
     pass_count: int = -1,
 ) -> CaseResult:
+    case_id, case_digest = EvalCase(inp).identity()
     return CaseResult(
         case_input=inp,
         actual_output="ok",
@@ -37,6 +38,8 @@ def _case(
         judge_error=judge_error,
         runs=runs,
         pass_count=pass_count,
+        case_id=case_id,
+        case_digest=case_digest,
     )
 
 

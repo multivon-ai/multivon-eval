@@ -3,26 +3,28 @@ import csv
 import json
 from pathlib import Path
 from .case import EvalCase
+from .datasets import case_from_dict, case_to_dict, canonical_json
 
 
 def load_jsonl(path: str) -> list[EvalCase]:
     """Load test cases from a JSONL file. Each line is a JSON object."""
     cases = []
-    with open(path) as f:
-        for line in f:
+    with open(path, encoding="utf-8") as f:
+        for line_number, line in enumerate(f, 1):
             line = line.strip()
             if not line:
                 continue
-            data = json.loads(line)
-            cases.append(EvalCase(
-                input=data["input"],
-                expected_output=data.get("expected_output"),
-                context=data.get("context"),
-                conversation=data.get("conversation"),
-                metadata=data.get("metadata", {}),
-                tags=data.get("tags", []),
-            ))
+            try:
+                cases.append(case_from_dict(json.loads(line)))
+            except (ValueError, TypeError) as exc:
+                raise ValueError(f"{path}:{line_number}: {exc}") from exc
     return cases
+
+
+def save_jsonl(cases: list[EvalCase], path: str) -> None:
+    """Write portable cases, validating the full payload before opening the file."""
+    payload = "".join(canonical_json(case_to_dict(c)) + "\n" for c in cases)
+    Path(path).write_text(payload, encoding="utf-8")
 
 
 def load_csv(path: str) -> list[EvalCase]:

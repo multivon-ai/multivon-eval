@@ -36,7 +36,9 @@ from .integrations import (
     LangSmithTracer, LangSmithImporter,
     LangGraphTracer, OpenAIAgentsTracer,
 )
-from .dataset import load, load_jsonl, load_csv
+from .dataset import load, load_jsonl, load_csv, save_jsonl
+from .datasets import Dataset, case_from_dict, case_to_dict
+from .trials import TrialRecord, regrade
 from .generate import (
     generate_from_text, generate_from_file, generate_hallucination_pairs,
     generate_contrast_pairs,
@@ -185,7 +187,8 @@ __all__ = [
     "ManualTracer", "LangChainTracer",
     "LangSmithTracer", "LangSmithImporter",
     "LangGraphTracer", "OpenAIAgentsTracer",
-    "load", "load_jsonl", "load_csv",
+    "load", "load_jsonl", "load_csv", "save_jsonl",
+    "Dataset", "case_from_dict", "case_to_dict", "TrialRecord", "regrade",
     # Generation
     "generate_from_text", "generate_from_file", "generate_hallucination_pairs",
     # Generation toolkit (0.13.0): mutators, template grids, contrast pairs

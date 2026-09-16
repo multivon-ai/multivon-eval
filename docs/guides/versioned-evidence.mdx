@@ -1,0 +1,119 @@
+---
+title: Versioned cases and trial evidence
+description: Compare the same tasks, retain every attempt, and regrade saved outputs.
+---
+
+**Development branch: not included in PyPI 0.17.0.** These interfaces are being
+validated for the next release. See the [implementation program](https://github.com/multivon-ai/multivon-eval/blob/main/plans/industrial-evaluation.md)
+for unfinished work.
+
+## Preserve the task definition
+
+Two prompts can be identical while their source documents, expected answers,
+or permitted actions differ. `case_id` names a case across edits; its content
+digest detects edits. Without an explicit ID, the digest supplies the ID.
+`revision` is an optional human label. Changing a label without updating
+`revision` still changes the digest.
+
+```python
+from multivon_eval import Dataset, EvalCase, EvalSuite, ExactMatch
+
+dataset = Dataset("invoice decisions", [
+    EvalCase("May this invoice be posted?", "post", context="Approved invoice",
+             case_id="invoice-a", revision="1", source_id="document-a"),
+    EvalCase("May this invoice be posted?", "hold", context="Missing approval",
+             case_id="invoice-b", revision="1", source_id="document-b"),
+], splits={"development": ["invoice-a"], "test": ["invoice-b"]})
+dataset.save("invoices.dataset.json")
+assert Dataset.load("invoices.dataset.json").digest == dataset.digest
+
+suite = EvalSuite("invoice decision strings")
+suite.add_cases(dataset.split("test")).add_evaluator(ExactMatch())
+report = suite.run(lambda prompt: "hold", runs=3, verbose=False)
+report.save_json("invoice-results.json")
+assert len(report.case_results[0].trials) == 3
+```
+
+This is a synthetic decision-string fixture. It does not test document reading,
+ledger writes, or real customer requirements.
+
+`Dataset` detaches cases from mutable input objects, rejects duplicate IDs,
+and requires every case to belong to exactly one split when splits are supplied.
+Cases with the same `source_id` cannot cross split boundaries. It cannot infer
+that two differently named sources are related: supply source groups from your
+data pipeline. Group paraphrases, page variants, and repeated sessions before
+selecting held-out data.
+
+`load_jsonl` and `save_jsonl` preserve tool expectations, traces, reference
+outputs, IDs, revisions, and source groups. Unknown fields are rejected with
+a line number. Metadata must be portable JSON; nonfinite numbers and lossy
+non-string object keys are rejected. Materialize callable `reference_output`
+values before exporting. Validation-only references do not enter the execution
+case digest; the full dataset manifest still preserves string references.
+
+## Compare compatible cases
+
+New reports pair unique case IDs only when content digests match. Reordering
+cases is safe. Changing context, expected answers, metadata, tags, tool
+expectations, or revisions makes the case unpaired. Explicit duplicate IDs are
+ambiguous and cannot support a paired test.
+
+Old reports without identity remain readable and show diagnostic prompt pairs.
+They do not produce a McNemar p-value or pass `--fail-on-regression` by default.
+If you have independently verified their case definitions, use
+`--allow-legacy-identity` to explicitly trust the old prompt pairing. The warning
+remains in the comparison artifact. Prefer rerunning both versions on a frozen
+dataset.
+
+Case identity alone does **not** establish that grader configurations, provider
+settings, application revisions, or dependencies match. This compatibility
+work remains part of the implementation program. Do not describe an identity
+check as complete experiment reproducibility.
+
+## Inspect and regrade every attempt
+
+Each new execution stores immutable `TrialRecord` snapshots with case input,
+evaluation-time case data, output, trace, per-grader reasons and metadata,
+latency, status, retry attempt, and repeated-run position. Aggregates remain
+available, but no longer replace individual outputs. All retry attempts are
+retained, including failed attempts before a successful retry.
+
+```python
+import json
+from multivon_eval import EvalReport, EvalSuite, NotEmpty, regrade
+
+saved = EvalReport.from_dict(json.loads(open("invoice-results.json").read()))
+trial = saved.case_results[0].trials[0]
+print(trial.data["output"], trial.data["evaluators"])
+new_graders = EvalSuite("nonempty diagnostic").add_evaluator(NotEmpty())
+reviewed = regrade(saved, new_graders)
+assert reviewed.total == 3
+```
+
+`regrade` makes no target calls. Configured LLM graders can still make paid
+judge calls. The result contains one row per original trial, including retry
+attempts, with a `parent_trial` digest. These correlated rows are **not** an
+independent sample for confidence intervals. Regrading with `NotEmpty` in this
+example tests only whether text exists; it cannot establish decision accuracy.
+
+Model errors remain model errors during regrading. Imported outputs without
+measured target latency skip latency checks. Pass `latencies_ms` to
+`run_on_cases` when those measurements are available. Legacy reports never
+invent missing trials or individual scores from aggregate means.
+
+## Current evidence boundaries
+
+- Provider requests, effective settings, SDK retries, and per-trial usage are
+  not yet captured here. `evidence_gaps` records this explicitly.
+- Arbitrary user callbacks can mutate inputs or external state. Snapshots do
+  not provide process isolation or undo side effects. Existing case-level
+  retries rerun the target; use them only when that is safe.
+- Nonportable custom metadata leaves evaluation results available but sets
+  `evidence_error`. Those reports cannot establish verified identity or be
+  regraded through this API.
+- Hashes detect accidental changes; they are not trusted signatures.
+- Artifacts contain prompts, outputs, traces, and metadata. Keep confidential
+  application data in your own controlled storage.
+
+Agent environments, multimodal artifact identity, durable execution, and
+world-model experiments build on these interfaces and remain separate work.

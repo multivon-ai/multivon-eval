@@ -5,6 +5,8 @@ import math
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, TYPE_CHECKING
+from .trials import TrialRecord
+from .datasets import trace_from_data, trace_to_data
 
 if TYPE_CHECKING:
     from .passk import PassKResult
@@ -142,6 +144,10 @@ class CaseResult:
     # retry_attempts`` always.
     retry_attempts: int = 0
     retry_errors: list[str] = field(default_factory=list)
+    case_id: str | None = None
+    case_digest: str | None = None
+    trials: tuple[TrialRecord, ...] = ()
+    evidence_error: str | None = None
 
     @property
     def status(self) -> "EvalStatus":
@@ -794,6 +800,8 @@ class EvalReport:
     @classmethod
     def from_dict(cls, data: dict) -> "EvalReport":
         """Reconstruct an EvalReport from the dict produced by to_json()."""
+        if data.get("schema", "multivon.report/v1") not in {"multivon.report/v1", "multivon.report/v2"}:
+            raise ValueError("Unsupported report schema")
         case_results = []
         for c in data.get("cases", []):
             results = [
@@ -808,11 +816,6 @@ class EvalReport:
             ]
             runs = c.get("runs", 1)
             all_scores = c.get("all_scores") or []
-            # Legacy round-trip: reconstruct if all_scores not stored (pre-fix JSON)
-            if runs > 1 and not all_scores:
-                score = c.get("score", 0.0)
-                std = c.get("score_std", 0.0)
-                all_scores = [score] * runs if std == 0 else [score + std, score - std] + [score] * max(0, runs - 2)
             cr = CaseResult(
                 case_input=c["input"],
                 actual_output=c["output"],
@@ -828,16 +831,27 @@ class EvalReport:
                 pass_count=-1,
                 retry_attempts=c.get("retry_attempts", 0),
                 retry_errors=list(c.get("retry_errors", [])),
+                case_id=c.get("case_id"),
+                case_digest=c.get("case_digest"),
+                agent_trace=trace_from_data(c.get("agent_trace")),
+                trials=tuple(TrialRecord.from_dict(t) for t in c.get("trials", [])),
+                evidence_error=c.get("evidence_error"),
             )
             if runs > 1:
                 rpr = c.get("run_pass_rate", 1.0)
-                cr.pass_count = round(rpr * runs)
+                cr.pass_count = c.get("pass_count", round(rpr * runs))
             case_results.append(cr)
+        from .costs import Costs
+        from .lockfile import SuiteLock
+        summary = data.get("summary") or {}
         return cls(
             suite_name=data.get("suite", ""),
             model_id=data.get("model", ""),
             case_results=case_results,
             purpose=(data.get("summary") or {}).get("purpose", ""),
+            judge_reliability=summary.get("judge_reliability"),
+            costs=Costs.from_dict(summary["costs"]) if summary.get("costs") is not None else None,
+            suite_lock=SuiteLock.from_dict(data["suite_lock"]) if data.get("suite_lock") else None,
         )
 
     def to_json(self) -> str:
@@ -886,12 +900,19 @@ class EvalReport:
                     summary[key]["unknown_reason"] = res.unknown_reason
         return json.dumps(
             {
+                "schema": "multivon.report/v2",
                 "suite": self.suite_name,
                 "model": self.model_id,
+                "suite_lock": self.suite_lock.to_dict() if self.suite_lock is not None else None,
                 "summary": summary,
                 "cases": [
                     {
                         "input": cr.case_input,
+                        "case_id": cr.case_id,
+                        "case_digest": cr.case_digest,
+                        "agent_trace": trace_to_data(cr.agent_trace),
+                        "trials": [t.data for t in cr.trials],
+                        "evidence_error": cr.evidence_error,
                         "output": cr.actual_output,
                         "status": cr.status.value,
                         "model_error": cr.model_error,
@@ -905,6 +926,7 @@ class EvalReport:
                         "run_pass_rate": round(cr.run_pass_rate, 4),
                         "is_flaky": cr.is_flaky,
                         "runs": cr.runs,
+                        "pass_count": cr.pass_count,
                         "retry_attempts": cr.retry_attempts,
                         "retry_errors": cr.retry_errors,
                         "latency_ms": round(cr.latency_ms, 1),
