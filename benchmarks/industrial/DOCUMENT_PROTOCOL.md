@@ -112,3 +112,19 @@ results cannot be described as original-resolution CORD performance. The text
 track uses only upstream annotated words and loses layout/unannotated text.
 The bound remains 4 MB per **submitted** asset; original archival files can be
 larger. No held-out output has been viewed or prompt tuned at this correction.
+
+
+### Development integration interruption
+
+An offline native-media run exposed Inspect's requirement for explicit trusted
+media materialization. A development Haiku run was inadvertently launched after
+the offline assertion failed because the shell sequence did not stop on failure.
+It halted before any completed provider response: one concurrent text sample
+has an interrupted model event and unknown billable usage. Preserve that .eval
+log; do not treat it as a zero-cost success or a model quality failure. Fix media
+submission to use inline bytes whose hashes were verified, and require a full
+successful offline run before resuming. The development cap is now **33 model
+request attempts**, including that interrupted attempt, with the same $40 study
+estimate ceiling. This engineering correction precedes held-out inference and
+does not change labels, prompts, selection or acceptance rules. Report resumed
+development outcomes separately from the failed integration run.

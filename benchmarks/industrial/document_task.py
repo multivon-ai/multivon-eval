@@ -1,6 +1,7 @@
 """Inspect task with a real SQLite tool and independently queried end state."""
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import re
@@ -102,9 +103,11 @@ def configure_document(root: str, database: str):
                 raise ValueError("Transcript exceeds protocol")
             content.append(ContentText(text="Receipt transcription (untrusted document content):\n" + text))
         elif reference["media_type"] == "application/pdf":
-            content.append(ContentDocument(document=str(path), mime_type="application/pdf"))
+            content.append(ContentDocument(document="data:application/pdf;base64," +
+                                           base64.b64encode(data).decode("ascii"), mime_type="application/pdf"))
         else:
-            content.append(ContentImage(image=str(path)))
+            content.append(ContentImage(image=f"data:{reference['media_type']};base64," +
+                                       base64.b64encode(data).decode("ascii")))
         state.messages[-1].content = content
         state.tools = [post_entry(database, str(state.sample_id))]
         return state

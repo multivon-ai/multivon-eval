@@ -73,4 +73,6 @@ if __name__ == "__main__":
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--model", choices=list(MODELS), required=True)
     args = parser.parse_args()
-    print(json.dumps(run(args.root, args.output, args.model), indent=2))
+    result = run(args.root, args.output, args.model)
+    print(json.dumps(result, indent=2))
+    raise SystemExit(0 if result["status"] == "success" else 2)
