@@ -84,9 +84,9 @@ jobs:
 multivon-eval gate eval_results.json --policy evals/acceptance.json --output decision.json
 ```
 
-This uses the same versioned policy as the eval-action v2 branch and
-`eval_acceptance_report` in the multivon-mcp 0.4 branch. Check the companion
-release notes for availability. The policy returns accept/reject/indeterminate
+This uses the same versioned policy as `eval_acceptance_report` in
+multivon-mcp 0.4.0. The corresponding eval-action v2 update is prepared but
+pending publication; check its release notes before choosing an action version. The policy returns accept/reject/indeterminate
 with exit codes 0/1/2; it does not require a baseline or a p-value.
 
 ## Compare against a baseline

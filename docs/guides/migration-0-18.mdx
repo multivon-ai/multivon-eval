@@ -73,12 +73,14 @@ variants can violate independence and need grouped analysis.
 
 ## Companion tools and evidence limits
 
-The eval-action v2 branch consumes the same JSON acceptance policy and requires
+The prepared eval-action v2 update consumes the same JSON acceptance policy and requires
 an actual synchronous `model_fn` in the suite module. Its `INDETERMINATE` verdict
 is a blocking exit 2 unless explicitly configured as report-only. Regenerate
 reports from older action versions, which evaluated a placeholder target.
+Publication of this action update is pending a workflow-scoped GitHub credential;
+do not assume the existing v1 action contains these fixes.
 
-The multivon-mcp 0.4 branch adds `eval_acceptance_report`; skipped/error results
+Multivon-mcp 0.4.0 adds `eval_acceptance_report`; skipped/error results
 carry `measured: false` and null `score`/`passed`. Update clients that assume every
 response contains an ordinary binary verdict. Check each companion's release
 notes before choosing a version.
