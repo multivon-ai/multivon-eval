@@ -49,12 +49,15 @@ setting, no application retries, cache disabled. Record provider request and
 returned model ID; provider internals and versioned-ID immutability are not
 assumed. One generation with tool execution per sample, no repair loop.
 
-Treatments: original image for CORD; native PDF and locally rendered 150 DPI
+Treatments: standardized image for CORD (RGB PNG, longest edge at most 1536
+pixels, Lanczos downsampling, no upscaling; retain original bytes and both
+hashes); native PDF and locally rendered 150 DPI
 pixels for each pdfhell source. Images/pixels are different information channels;
 report paired results by modality, not as a universal ranking. Also run a
 **privileged text baseline** for CORD using the upstream human transcription
-in `valid_line` order with categories/answer labels removed. It isolates the
-perception burden; it is not an OCR-system baseline or a deployable competitor.
+in `valid_line` order with categories/answer labels removed. It changes the
+perception burden but also removes layout and any text not annotated upstream;
+it is not a complete OCR transcript, OCR-system baseline or deployable competitor.
 Each source remains one statistical unit across all modalities/models.
 
 ## Limits and evidence
@@ -98,3 +101,14 @@ Publish all exclusions, disagreements, failures and limitations. Development
 may expose bugs; any protocol change must be versioned before inspecting test
 outputs. Do not tune prompts on held-out results. Customer usefulness remains
 unproven without a real application target and independent review.
+
+
+### Pre-inference preparation correction
+
+Before any paid calls, development row 3 exceeded the 4 MB request bound even
+with original PNG bytes (9.8 MB). Standardized CORD resizing above was added for
+all image samples, not only large ones. This is part of the image treatment;
+results cannot be described as original-resolution CORD performance. The text
+track uses only upstream annotated words and loses layout/unannotated text.
+The bound remains 4 MB per **submitted** asset; original archival files can be
+larger. No held-out output has been viewed or prompt tuned at this correction.
