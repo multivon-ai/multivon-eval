@@ -128,3 +128,19 @@ request attempts**, including that interrupted attempt, with the same $40 study
 estimate ceiling. This engineering correction precedes held-out inference and
 does not change labels, prompts, selection or acceptance rules. Report resumed
 development outcomes separately from the failed integration run.
+
+### Held-out scoring repair (no task or prompt change)
+
+Sonnet's first held-out log stopped after 16 completed responses and two
+interrupted samples. A max-output-token response omitted a required tool field;
+Inspect represented that as a ToolCallError dataclass. Multivon's bridge tried
+`.model_dump()` and crashed while grading it. The fix uses dataclass serialization.
+The malformed response remains a quality failure. Native `score()` regrades
+saved outputs, preserving original errors in a separate original report and
+repair provenance; native `eval_retry()` preserves those 16 completed generations
+and runs the remaining 62 samples. It may replay two interrupted requests whose
+billable usage is unknown. Total held-out request attempts remain at most 158,
+inside the original 160-attempt cap after the predeclared CORD exclusion.
+No model prompt, label, budget or acceptance threshold changes. Retain both
+original and derived grading artifacts; the final report explicitly flags this
+repair and retained interruptions rather than presenting an uninterrupted run.

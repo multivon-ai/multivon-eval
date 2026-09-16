@@ -34,8 +34,14 @@ def run(root: Path, output: Path, model: str) -> dict:
         model_cost_config={model: ModelCost(input=price_in, output=price_out,
                                            input_cache_write=price_in * 1.25, input_cache_read=price_in * 0.1)},
     )
-    log = logs[0]
-    report = from_inspect_log(log)
+    return summarize(logs[0], manifest, output, model)
+
+
+def summarize(log, manifest, output: Path, model: str, *, previous_logs=None, evidence_note=None) -> dict:
+    price_in, price_out = MODELS[model]
+    report = from_inspect_log(log, previous_logs=previous_logs)
+    if evidence_note:
+        report.evidence_issues.append(evidence_note)
     report.save_json(str(output / "report.json"))
     policy = AcceptancePolicy(checks=(CheckRequirement("ledger_outcome", critical=True),
                                      CheckRequirement("valid_posting_call")),

@@ -25,6 +25,8 @@ All notable changes to `multivon-eval`. The format follows [Keep a Changelog](ht
 - Name the unreleased snapshot API `CaseManifest`, keeping dataset loading,
   storage, streaming, transformations and revision pinning in Hugging Face
   Datasets. Add an optional adapter for native datasets and bounded streams.
+- Preserve native Inspect tool parsing/execution errors using their dataclass schema;
+  tool failures no longer crash scoring or log import.
 - Add an optional Inspect scorer/dataset/log bridge. Inspect owns execution
   and native logs; epochs, tool transcripts, errors, skips, sample identity
   and upstream evidence references are preserved by the adapter.

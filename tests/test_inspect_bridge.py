@@ -5,16 +5,27 @@ import pytest
 
 inspect_ai = pytest.importorskip("inspect_ai")
 
-from inspect_ai import Task, eval as inspect_eval
+from inspect_ai import Task
+from inspect_ai import eval as inspect_eval
 from inspect_ai.log import read_eval_log
 from inspect_ai.model import ModelOutput
 from inspect_ai.solver import solver
+
 from multivon_eval import (
-    AcceptancePolicy, CaseManifest, CheckRequirement, EvalCase, EvalReport,
-    EvalResult, ExactMatch, NotEmpty,
+    AcceptancePolicy,
+    CaseManifest,
+    CheckRequirement,
+    EvalCase,
+    EvalReport,
+    ExactMatch,
+    NotEmpty,
 )
 from multivon_eval.evaluators.base import Evaluator
-from multivon_eval.integrations.inspect import as_inspect_scorer, from_inspect_log, to_inspect_dataset
+from multivon_eval.integrations.inspect import (
+    as_inspect_scorer,
+    from_inspect_log,
+    to_inspect_dataset,
+)
 
 
 @solver
@@ -91,8 +102,9 @@ def test_context_is_delivered_to_native_model_and_case_id_checked():
 def test_native_tool_transcript_converts_without_reusing_static_trace():
     from inspect_ai.model import ChatMessageAssistant, ChatMessageTool
     from inspect_ai.tool import ToolCall as InspectToolCall
-    from multivon_eval.integrations.inspect import _execution_case
+
     from multivon_eval import AgentStep, ToolCall
+    from multivon_eval.integrations.inspect import _execution_case
     case = EvalCase("x", agent_trace=[AgentStep(tool_calls=[ToolCall("fake")])])
     messages = [ChatMessageAssistant(content="", tool_calls=[InspectToolCall(
         id="call-1", function="lookup", arguments={"id": 1})]),
@@ -108,15 +120,16 @@ def test_documented_inspect_example(tmp_path):
     import sys
     from pathlib import Path
     source = (Path(__file__).parents[1] / "docs/guides/inspect-integration.mdx").read_text()
-    blocks = re.findall(r"```python\n(.*?)```", source, re.S)
+    blocks = re.findall(r"```python\n(.*?)```", source, re.DOTALL)
     script = tmp_path / "inspect_example.py"
     script.write_text("\n".join(blocks))
-    result = subprocess.run([sys.executable, str(script)], cwd=tmp_path, capture_output=True, text=True)
+    result = subprocess.run([sys.executable, str(script)], cwd=tmp_path, capture_output=True, text=True, check=False)
     assert result.returncode == 0, result.stderr
 
 
 def test_partial_epoch_retry_history_preserves_executions_without_double_counting(tmp_path):
     from inspect_ai.log import EvalError
+
     from multivon_eval.trials import trial_integrity_issues
     log = execute(tmp_path, [EvalCase("x", "yes", case_id="good")], [ExactMatch()], epochs=2)
     prior = log.model_copy(deep=True)
@@ -140,3 +153,36 @@ def test_partial_epoch_retry_history_preserves_executions_without_double_countin
     prior.status = "started"
     with pytest.raises(ValueError, match="Recover started"):
         from_inspect_log(log, previous_logs=[prior])
+
+
+def test_native_tool_errors_survive_projection_and_scoring(tmp_path):
+    from inspect_ai.model import ChatMessageAssistant, ChatMessageTool
+    from inspect_ai.tool import ToolCall as InspectToolCall
+    from inspect_ai.tool import ToolCallError
+
+    from multivon_eval.integrations.inspect import _execution_case
+
+    messages = [ChatMessageAssistant(content="", tool_calls=[InspectToolCall(
+        id="bad-call", function="post_entry", arguments={"amount": "1.00"})]),
+        ChatMessageTool(content="currency is required", tool_call_id="bad-call",
+                        error=ToolCallError(type="parsing", message="currency is required"))]
+    case = EvalCase("Post", case_id="bad-call-case")
+    result = _execution_case(case, messages)
+    assert result.agent_trace[0].tool_calls[0].result == {
+        "error": {"type": "parsing", "message": "currency is required"}, "text": "currency is required"}
+
+    @solver
+    def failed_tool():
+        async def solve(state, generate):
+            state.messages.extend(messages)
+            state.output = ModelOutput.from_content("fixture", "")
+            return state
+        return solve
+
+    task = Task(dataset=to_inspect_dataset(CaseManifest("tool errors", [case])),
+                solver=failed_tool(), scorer=as_inspect_scorer(NotEmpty()))
+    log = inspect_eval(task, model="mockllm/model", log_dir=str(tmp_path), display="none")[0]
+    assert log.status == "success", log.error
+    report = from_inspect_log(read_eval_log(log.location))
+    assert report.errors == 0 and report.failed == 1
+    assert report.case_results[0].agent_trace[0].tool_calls[0].result["error"]["type"] == "parsing"

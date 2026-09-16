@@ -5,7 +5,7 @@ The bridge keeps its native log as the authoritative execution artifact.
 """
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import asdict, replace
 from typing import Any
 
 from ..case import AgentStep, EvalCase, ToolCall
@@ -75,7 +75,7 @@ def _execution_case(case: EvalCase, messages: list) -> EvalCase:
             if message.tool_call_id in responses:
                 raise ValueError("Duplicate Inspect tool response ID")
             responses[message.tool_call_id] = (
-                {"error": message.error.model_dump(mode="json"), "text": message.text}
+                {"error": asdict(message.error), "text": message.text}
                 if message.error else message.text)
     trace, conversation = [], []
     for message in messages:
