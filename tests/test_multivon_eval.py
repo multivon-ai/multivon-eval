@@ -37,7 +37,7 @@ class TestExactMatch:
 
     def test_no_expected_skips(self):
         r = ExactMatch().evaluate(case(), "anything")
-        assert r.passed and r.metadata.get("skipped") and r.reason.startswith("[skipped]")
+        assert not r.passed and r.metadata.get("skipped") and r.reason.startswith("[skipped]")
 
 
 class TestContains:
@@ -113,7 +113,7 @@ class TestBLEU:
 
     def test_no_expected_skips(self):
         r = BLEU().evaluate(case(), "anything")
-        assert r.passed and r.metadata.get("skipped") and r.reason.startswith("[skipped]")
+        assert not r.passed and r.metadata.get("skipped") and r.reason.startswith("[skipped]")
 
 
 class TestROUGE:
@@ -169,7 +169,7 @@ class TestToolCallAccuracy:
     def test_no_trace_skips(self):
         c = EvalCase(input="test", expected_tool_calls=["search"])
         r = ToolCallAccuracy().evaluate(c, "done")
-        assert r.passed and r.metadata.get("skipped") and r.reason.startswith("[skipped]")
+        assert not r.passed and r.metadata.get("skipped") and r.reason.startswith("[skipped]")
 
     def test_ordered_correct(self):
         c = EvalCase(

@@ -164,9 +164,12 @@ class CaseResult:
         if self.evaluator_error is not None:
             return EvalStatus.EVALUATOR_ERROR
         # No infrastructure failure → fall through to quality outcome.
+        measured = [r for r in self.results if not r.metadata.get("skipped")]
+        if self.results and not measured:
+            return EvalStatus.SKIPPED
         if self.pass_count >= 0:
             return EvalStatus.PASSED if self.pass_count == self.runs else EvalStatus.FAILED_QUALITY
-        all_passed = all(r.passed for r in self.results) if self.results else False
+        all_passed = bool(measured) and all(r.passed for r in measured)
         return EvalStatus.PASSED if all_passed else EvalStatus.FAILED_QUALITY
 
     @property
@@ -186,9 +189,10 @@ class CaseResult:
     def score(self) -> float:
         if self.all_scores:
             return sum(self.all_scores) / len(self.all_scores)
-        if not self.results:
+        measured = [r for r in self.results if not r.metadata.get("skipped")]
+        if not measured:
             return 0.0
-        return sum(r.score for r in self.results) / len(self.results)
+        return sum(r.score for r in measured) / len(measured)
 
     @property
     def score_std(self) -> float:
@@ -553,7 +557,9 @@ class EvalReport:
         """Cases where the named evaluator failed. Useful for drilling into a specific check."""
         return [
             cr for cr in self.case_results
-            if any(r.evaluator == name and not r.passed for r in cr.results)
+            if cr.status in EVALUATION_STATUSES
+            and any(r.evaluator == name and not r.passed and not r.metadata.get("skipped")
+                    for r in cr.results)
         ]
 
     def sample(self, n: int, *, failed_only: bool = False) -> list["CaseResult"]:
@@ -723,7 +729,8 @@ class EvalReport:
         """
         if percentiles is None:
             percentiles = [10, 50, 90]
-        scores = sorted(cr.score for cr in self.case_results)
+        scores = sorted(cr.score for cr in self.case_results
+                        if cr.status in EVALUATION_STATUSES)
         if not scores:
             return {}
         n = len(scores)
@@ -740,6 +747,8 @@ class EvalReport:
         """Average score per tag across all tagged cases."""
         totals: dict[str, list[float]] = {}
         for cr in self.case_results:
+            if cr.status not in EVALUATION_STATUSES:
+                continue
             for tag in cr.tags:
                 totals.setdefault(tag, []).append(cr.score)
         return {k: round(sum(v) / len(v), 4) for k, v in totals.items()}
@@ -748,6 +757,8 @@ class EvalReport:
         """Pass rate per tag across all tagged cases."""
         totals: dict[str, list[bool]] = {}
         for cr in self.case_results:
+            if cr.status not in EVALUATION_STATUSES:
+                continue
             for tag in cr.tags:
                 totals.setdefault(tag, []).append(cr.passed)
         return {k: round(sum(v) / len(v), 4) for k, v in totals.items()}
@@ -763,15 +774,21 @@ class EvalReport:
     def scores_by_evaluator(self) -> dict[str, float]:
         totals: dict[str, list[float]] = {}
         for cr in self.case_results:
+            if cr.status not in EVALUATION_STATUSES:
+                continue
             for r in cr.results:
-                totals.setdefault(r.evaluator, []).append(r.score)
+                if not r.metadata.get("skipped"):
+                    totals.setdefault(r.evaluator, []).append(r.score)
         return {k: sum(v) / len(v) for k, v in totals.items()}
 
     def passed_by_evaluator(self) -> dict[str, float]:
         totals: dict[str, list[bool]] = {}
         for cr in self.case_results:
+            if cr.status not in EVALUATION_STATUSES:
+                continue
             for r in cr.results:
-                totals.setdefault(r.evaluator, []).append(r.passed)
+                if not r.metadata.get("skipped"):
+                    totals.setdefault(r.evaluator, []).append(r.passed)
         return {k: sum(v) / len(v) for k, v in totals.items()}
 
     @classmethod
@@ -785,6 +802,7 @@ class EvalReport:
                     score=e["score"],
                     passed=e["passed"],
                     reason=e.get("reason", ""),
+                    metadata=e.get("metadata", {}),
                 )
                 for e in c.get("evaluators", [])
             ]
@@ -879,7 +897,7 @@ class EvalReport:
                         "model_error": cr.model_error,
                         "judge_error": cr.judge_error,
                         "evaluator_error": cr.evaluator_error,
-                        "skipped": cr.skipped,
+                        "skipped": cr.status == EvalStatus.SKIPPED,
                         "passed": cr.passed,
                         "score": round(cr.score, 4),
                         "score_std": round(cr.score_std, 4),
@@ -897,6 +915,7 @@ class EvalReport:
                                 "score": round(r.score, 4),
                                 "passed": r.passed,
                                 "reason": r.reason,
+                                "metadata": r.metadata,
                             }
                             for r in cr.results
                         ],
@@ -988,7 +1007,10 @@ class EvalReport:
             # An error case with no evaluator results still emits one row so
             # the CI sees the case at all.
             for r in (cr.results or [None]):
-                rows.append((cr, r, _classify_row(cr)))
+                verb = _classify_row(cr)
+                if r is not None and r.metadata.get("skipped") and verb != "errored":
+                    verb = "skipped"
+                rows.append((cr, r, verb))
 
         total_tests = len(rows)
         n_failures = sum(1 for _, _, v in rows if v == "failed")

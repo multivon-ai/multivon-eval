@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any, Callable, Awaitable
 from .case import EvalCase
 from .exceptions import JudgeUnavailable
 from .result import (
-    CalibrationResult, CaseResult, EvalGateFailure, EvalReport, EvalResult, ERROR_STATUSES,
+    CalibrationResult, CaseResult, EvalGateFailure, EvalReport, EvalResult, EvalStatus, ERROR_STATUSES, EVALUATION_STATUSES,
 )
 from .evaluators.base import Evaluator
 from .evaluators.deterministic import Latency, MaxLatency
@@ -398,8 +398,8 @@ class EvalSuite:
                              errored cases, so it can look perfect while most
                              cases errored; set this to make the gate raise
                              (indeterminate) when errors/total exceeds it.
-                             Default ``None`` = warn on stderr at >= 10%
-                             errors when a fail_threshold gate is active.
+                             Default ``None`` = zero errors allowed when a
+                             fail_threshold gate is active.
             workers:         Parallel threads for cases. Default ``None`` is
                              "auto": pick ``min(8, len(cases))`` when no
                              tracer is set, else fall back to 1. Pass an
@@ -889,6 +889,8 @@ class EvalSuite:
         for case, output, human_pass in labeled_pairs:
             for ev in self._evaluators:
                 r = ev.evaluate(case, output)
+                if r.metadata.get("skipped"):
+                    continue
                 ev_name = r.evaluator
                 counts = by_ev.setdefault(ev_name, {"tp": 0, "fp": 0, "fn": 0, "tn": 0})
                 if human_pass and r.passed:
@@ -971,6 +973,7 @@ class EvalSuite:
                     results[idx] = CaseResult(
                         case_input=self._cases[idx].input,
                         actual_output=f"[ERROR: {e}]",
+                        evaluator_error=f"{type(e).__name__}: {e}",
                         results=[],
                         latency_ms=0.0,
                     )
@@ -1606,12 +1609,9 @@ def _enforce_fail_threshold(
     """Raise :class:`EvalGateFailure` when the report misses ``fail_threshold``
     or blows the ``max_error_rate`` error budget.
 
-    ``pass_rate`` excludes error cases from its denominator by design, so a
-    run with 90 judge errors and 10 passes reports pass_rate 1.0. The error
-    budget closes that blind spot: with ``max_error_rate`` set, the gate goes
-    indeterminate (raises) when ``errors / total`` exceeds it. With it unset,
-    a loud stderr warning fires at >= 10% errors (same threshold ``view
-    --dir`` already flags) whenever a ``fail_threshold`` gate is active.
+    Quality gates require measurements for every case and default to zero
+    infrastructure errors. Callers can explicitly set ``max_error_rate``
+    to permit a disclosed error budget. Skips never become passing evidence.
 
     No-op when both are None. Shared by ``run()``, ``run_on_cases()``, and
     ``run_async()``.
@@ -1635,6 +1635,14 @@ def _enforce_fail_threshold(
             pass_rate=report.pass_rate,
             threshold=fail_threshold,
         )
+    if fail_threshold is not None and (report.evaluated == 0 or report.skipped):
+        raise EvalGateFailure(
+            f"Eval gate INDETERMINATE: {report.evaluated} evaluated, "
+            f"{report.skipped} skipped; every gated case needs a measurement.",
+            pass_rate=report.pass_rate, threshold=fail_threshold,
+        )
+    if fail_threshold is not None and max_error_rate is None:
+        max_error_rate = 0.0
     if max_error_rate is not None and report.error_rate > max_error_rate:
         kinds = ", ".join(f"{k}={v}" for k, v in sorted(report.errors_by_kind.items()))
         raise EvalGateFailure(
@@ -1647,15 +1655,6 @@ def _enforce_fail_threshold(
             threshold=fail_threshold,
         )
     if fail_threshold is not None:
-        if max_error_rate is None and report.error_rate >= 0.10:
-            import sys as _sys
-            _sys.stderr.write(
-                f"\n  ⚠ error budget: {report.errors}/{report.total} case(s) "
-                f"({report.error_rate:.0%}) errored — pass_rate excludes them, so the "
-                f"gate below may be unreliable. Pass max_error_rate= to enforce an "
-                f"error budget.\n\n"
-            )
-            _sys.stderr.flush()
         if report.pass_rate < fail_threshold:
             raise EvalGateFailure(
                 f"\nEval failed: pass rate {report.pass_rate:.1%} < threshold {fail_threshold:.1%}",
@@ -1706,6 +1705,11 @@ def _aggregate_runs(case: EvalCase, single_runs: list[CaseResult]) -> CaseResult
 
     agg_results = []
     for ev_name, ev_results in ev_data.items():
+        measured = [r for r in ev_results if not r.metadata.get("skipped")]
+        if not measured:
+            agg_results.append(ev_results[0])
+            continue
+        ev_results = measured
         avg_score = sum(r.score for r in ev_results) / len(ev_results)
         pass_votes = sum(1 for r in ev_results if r.passed)
         agg_results.append(EvalResult(
@@ -1730,7 +1734,7 @@ def _aggregate_runs(case: EvalCase, single_runs: list[CaseResult]) -> CaseResult
             agg_judge_err = r.judge_error
         if agg_eval_err is None and r.evaluator_error is not None:
             agg_eval_err = r.evaluator_error
-        if r.skipped:
+        if r.status == EvalStatus.SKIPPED:
             agg_skipped = True
     return CaseResult(
         case_input=case.input,
@@ -1744,7 +1748,7 @@ def _aggregate_runs(case: EvalCase, single_runs: list[CaseResult]) -> CaseResult
         model_error=agg_model_err,
         judge_error=agg_judge_err,
         evaluator_error=agg_eval_err,
-        skipped=agg_skipped,
+        skipped=agg_skipped and not (agg_model_err or agg_judge_err or agg_eval_err),
         agent_trace=case.agent_trace,
     )
 
@@ -1813,21 +1817,27 @@ def _measure_judge_reliability(
     # The global config may be unresolved (None-sentinel fields) — fall back
     # to the resolved default sample size.
     reliability_sample = judge_cfg.reliability_sample if judge_cfg.reliability_sample is not None else 5
-    sample_size = min(reliability_sample, len(case_results))
-    sample_indices = _rand.sample(range(len(case_results)), sample_size)
+    eligible = [i for i, cr in enumerate(case_results) if cr.status in EVALUATION_STATUSES]
+    sample_size = min(reliability_sample, len(eligible))
+    sample_indices = _rand.sample(eligible, sample_size)
 
     agreements: list[bool] = []
     for idx in sample_indices:
         cr = case_results[idx]
         orig_case = original_cases[idx] if idx < len(original_cases) else EvalCase(input=cr.case_input)
         for ev in evaluators:
+            if not ev.uses_llm_judge:
+                continue
             ev_name = getattr(ev, "name", type(ev).__name__.lower())
             first = next((r for r in cr.results if r.evaluator == ev_name), None)
-            if first is None:
+            if first is None or first.metadata.get("skipped"):
                 continue
             try:
-                second = ev.evaluate(orig_case, cr.actual_output)
-                agreements.append(first.passed == second.passed)
+                from ._measurement_context import fresh_judge_measurement
+                with fresh_judge_measurement():
+                    second = ev.evaluate(orig_case, cr.actual_output)
+                if not second.metadata.get("skipped"):
+                    agreements.append(first.passed == second.passed)
             except Exception:
                 pass
 

@@ -26,7 +26,8 @@ class TestExactMatch:
 
     def test_no_expected_fails(self):
         r = ExactMatch().evaluate(case(), "anything")
-        assert r.passed
+        assert not r.passed and r.metadata.get("skipped")
+
 
 
 class TestContains:

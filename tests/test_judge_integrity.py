@@ -266,13 +266,10 @@ def test_error_budget_enforced_without_fail_threshold():
         suite.run(_model_fn, verbose=False, workers=1, max_error_rate=0.1)
 
 
-def test_default_gate_unchanged_but_warns_at_10_percent(capsys):
+def test_default_quality_gate_rejects_infrastructure_errors():
     suite = _suite_9_errors_1_pass()
-    report = suite.run(_model_fn, verbose=False, workers=1, fail_threshold=0.5)
-    assert report.pass_rate == pytest.approx(1.0)
-    err = capsys.readouterr().err
-    assert "error budget" in err
-    assert "9/10" in err
+    with pytest.raises(EvalGateFailure, match="error budget"):
+        suite.run(_model_fn, verbose=False, workers=1, fail_threshold=0.5)
 
 
 def test_no_warning_when_no_errors(capsys):
@@ -372,8 +369,8 @@ def test_resolve_fills_nones_on_direct_resolve():
     ("no —", False),
     ('"No", it is not supported', False),
     ("  YES — fully supported", True),
-    # Token fallback (single unambiguous verdict WORD anywhere) unchanged.
-    ("I cannot say yes.", True),
+    # A verdict mentioned inside a refusal is not a verdict.
+    ("I cannot say yes.", None),
     # Both verdict words present → UNKNOWN, never a guess.
     ("I cannot say yes or no", None),
 ])

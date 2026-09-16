@@ -45,8 +45,8 @@ def test_readme_commands_match_cli_contract() -> None:
 def test_readme_leads_with_current_release_and_public_surfaces() -> None:
     readme = _read("README.md")
     assert f"Current release: {multivon_eval.__version__}" in readme
-    assert "Current release — 0.16.1" in readme
-    assert "August 16, 2026" in readme
+    assert f"Current release — {multivon_eval.__version__}" in readme
+    assert "September 17, 2026" in readme
     assert "eval-framework-benchmark" not in readme
     assert "Four public packages plus one closed early-access product" in readme
     assert len(readme.splitlines()) < 350

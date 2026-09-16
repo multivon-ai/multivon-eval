@@ -533,7 +533,9 @@ def to_html(report: "EvalReport") -> str:
         eval_rows = ""
         for r in cr.results:
             r_sc = _score_class(r.score)
-            r_pass = '<span class="pill pass">✓</span>' if r.passed else '<span class="pill fail">✗</span>'
+            r_pass = ('<span class="pill">SKIPPED</span>' if r.metadata.get("skipped")
+                      else '<span class="pill pass">✓</span>' if r.passed
+                      else '<span class="pill fail">✗</span>')
             reason_cell = f'<span class="reason-text">{_h(r.reason[:300])}</span>' if r.reason else '<span style="color:var(--muted)">—</span>'
             eval_rows += (
                 f'<tr>'

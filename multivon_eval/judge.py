@@ -274,7 +274,7 @@ def _wrap_provider_error(provider: str, model: str, exc: Exception) -> JudgeUnav
 
 def _sync_anthropic_call(prompt: str, config: JudgeConfig) -> str:
     import anthropic
-    client = anthropic.Anthropic()
+    client = anthropic.Anthropic(timeout=config.timeout)
     response = client.messages.create(
         model=config.model,
         max_tokens=config.max_tokens,
@@ -298,7 +298,7 @@ def _openai_client_kwargs(config: JudgeConfig) -> dict:
     a base_url is set and the user hasn't exported OPENAI_API_KEY, so the
     documented local-judge path works out of the box.
     """
-    client_kwargs: dict = {}
+    client_kwargs: dict = {"timeout": config.timeout}
     if config.base_url:
         client_kwargs["base_url"] = config.base_url
         if not os.getenv("OPENAI_API_KEY"):
@@ -340,7 +340,7 @@ def _sync_google_call(prompt: str, config: JudgeConfig) -> str:
             provider="google",
             model=config.model,
         ) from exc
-    client = genai.Client()
+    client = genai.Client(http_options={"timeout": int(config.timeout * 1000)})
     response = client.models.generate_content(
         model=config.model,
         contents=prompt,
@@ -407,6 +407,7 @@ def _sync_litellm_call(prompt: str, config: JudgeConfig) -> str:
             model=config.model,
         ) from exc
     extra = dict(config.extra)
+    extra.setdefault("timeout", config.timeout)
     if config.base_url and "api_base" not in extra:
         extra["api_base"] = config.base_url
     response = litellm.completion(
@@ -476,7 +477,8 @@ def make_judge_call(prompt: str, config: JudgeConfig) -> str:
     path, sqlite lock), the call falls through to the live judge so the
     eval still completes.
     """
-    if not config.cache:
+    from ._measurement_context import judge_cache_bypassed
+    if not config.cache or judge_cache_bypassed():
         return _make_judge_call_uncached(prompt, config)
 
     cache, cached = _cache_get_safe(prompt, config)
@@ -536,7 +538,7 @@ def _warn_cache_degraded(direction: str, exc: BaseException) -> None:
 
 async def _async_anthropic_call(prompt: str, config: JudgeConfig) -> str:
     import anthropic
-    client = anthropic.AsyncAnthropic()
+    client = anthropic.AsyncAnthropic(timeout=config.timeout)
     response = await client.messages.create(
         model=config.model,
         max_tokens=config.max_tokens,
@@ -583,7 +585,7 @@ async def _async_google_call(prompt: str, config: JudgeConfig) -> str:
             provider="google",
             model=config.model,
         ) from exc
-    client = genai.Client()
+    client = genai.Client(http_options={"timeout": int(config.timeout * 1000)})
     aio = getattr(client, "aio", None)
     if aio is None:
         # SDK without async support — degrade to threaded sync call so the
@@ -623,6 +625,7 @@ async def _async_litellm_call(prompt: str, config: JudgeConfig) -> str:
             model=config.model,
         ) from exc
     extra = dict(config.extra)
+    extra.setdefault("timeout", config.timeout)
     if config.base_url and "api_base" not in extra:
         extra["api_base"] = config.base_url
     response = await litellm.acompletion(
@@ -705,7 +708,8 @@ async def make_judge_call_async(prompt: str, config: JudgeConfig) -> str:
     Cache is advisory: a CacheError on read or write degrades to an uncached
     call rather than failing the eval.
     """
-    if not config.cache:
+    from ._measurement_context import judge_cache_bypassed
+    if not config.cache or judge_cache_bypassed():
         return await _make_judge_call_async_uncached(prompt, config)
 
     cache, cached = _cache_get_safe(prompt, config)

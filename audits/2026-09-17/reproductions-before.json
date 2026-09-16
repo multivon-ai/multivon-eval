@@ -1,0 +1,64 @@
+{
+  "missing_context": {
+    "pass_rate": 1.0,
+    "evaluated": 1,
+    "skipped": 0,
+    "score": 1.0
+  },
+  "false_fact_with_apology": {
+    "Faithfulness": {
+      "evaluator": "faithfulness",
+      "score": 1.0,
+      "passed": true,
+      "reason": "[skipped] response is a refusal \u2014 no substantive claims to verify.",
+      "metadata": {
+        "skipped": true
+      }
+    },
+    "Hallucination": {
+      "evaluator": "hallucination",
+      "score": 1.0,
+      "passed": true,
+      "reason": "[skipped] response is a refusal \u2014 no fabrications to flag.",
+      "metadata": {
+        "skipped": true
+      }
+    }
+  },
+  "outage_recovery": {
+    "improvements": 20,
+    "mcnemar_p": 2.1517864378095553e-05
+  },
+  "ambiguous_verdicts": {
+    "I cannot say yes with confidence.": true,
+    "There is no way to determine this.": false,
+    "Yes or no, I cannot tell.": true
+  },
+  "strict_tool_score": 1.5,
+  "openai_request": {
+    "constructor": {},
+    "request": {
+      "model": "gpt-4o-mini",
+      "max_completion_tokens": 1024,
+      "messages": [
+        {
+          "role": "user",
+          "content": "q"
+        }
+      ]
+    }
+  },
+  "anthropic_request": {
+    "constructor": {},
+    "request": {
+      "model": "claude-haiku-4-5",
+      "max_tokens": 1024,
+      "messages": [
+        {
+          "role": "user",
+          "content": "q"
+        }
+      ]
+    }
+  }
+}

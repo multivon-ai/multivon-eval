@@ -60,7 +60,7 @@ class Evaluator(ABC):
         )
 
     def _skipped(self, reason: str) -> EvalResult:
-        """Return a passing EvalResult flagged as skipped.
+        """Return an unscored EvalResult flagged as skipped.
 
         Use when the case shape doesn't fit this evaluator (no context for
         a RAG metric, no expected_output for an exact-match metric, no
@@ -68,14 +68,17 @@ class Evaluator(ABC):
         punishes the user for the *absence* of ground truth rather than a
         real quality failure, and contaminates aggregate pass rates.
 
+        The numeric score is a placeholder, excluded from report aggregates.
+        A skip is not evidence of either quality success or quality failure.
+
         The reason is prefixed with "[skipped]" so consumers can filter
         on the reason string without inspecting metadata. metadata.skipped
         is also set to True for structured filtering.
         """
         return EvalResult(
             evaluator=self.name,
-            score=1.0,
-            passed=True,
+            score=0.0,
+            passed=False,
             reason=f"[skipped] {reason}",
             metadata={"skipped": True},
         )

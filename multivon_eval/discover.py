@@ -774,7 +774,8 @@ def calibrate_thresholds(
             output = trace.get("output", "")
             try:
                 result = evaluator.evaluate(case, output)
-                scores.append(float(result.score))
+                if not result.metadata.get("skipped"):
+                    scores.append(float(result.score))
             except Exception:
                 # Calibration error per-trace is non-fatal; skip the trace.
                 continue

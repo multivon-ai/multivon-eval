@@ -104,24 +104,18 @@ _VERDICT_PREFIX = re.compile(r"^\W*(yes|no)\b")
 def _parse_yes_no(text: str) -> bool | None:
     """Parse a judge reply into a verdict: True / False / None (unknown).
 
-    Clear leading verdicts keep the historical semantics — but matched at
-    a word boundary, so "Yesterday was unclear" / "Nobody can determine
-    this" are no longer verdicts. A reply with exactly one verdict WORD
-    anywhere still counts (token fallback, unchanged); anything else is
-    None so callers can exclude it from the score denominator rather than
-    guess (e.g. "I cannot say yes or no with certainty").
+    Accept leading yes/no verdicts and complete explicit answer phrases.
+    Mentions of verdict words elsewhere in an explanation remain UNKNOWN.
     """
     text = text.strip().lower()
+    # A verdict word inside an explanation is not itself a verdict.
+    if re.match(r"^\W*(?:yes\s+(?:or|and)\s+no|no\s+(?:or|and)\s+yes)\b", text):
+        return None
     m = _VERDICT_PREFIX.match(text)
     if m:
         return m.group(1) == "yes"
-    has_yes = _YES_WORD.search(text) is not None
-    has_no = _NO_WORD.search(text) is not None
-    if has_yes and not has_no:
-        return True
-    if has_no and not has_yes:
-        return False
-    return None
+    m = re.fullmatch(r"(?:the answer is|i believe the answer is)\s+(yes|no)[.!]?", text)
+    return m.group(1) == "yes" if m else None
 
 
 def _extract_json_array(raw: str) -> list | None:
@@ -148,17 +142,7 @@ def _extract_json_array(raw: str) -> list | None:
     return None
 
 
-# ── Refusal heuristic ──────────────────────────────────────────────────────
-#
-# Refusals deserve special handling for *content* metrics (Faithfulness,
-# Hallucination): "I don't have that information" is not a substantive
-# claim about the world, so there's nothing to ground or hallucinate. A
-# bot that correctly refuses an out-of-KB question shouldn't fail those
-# metrics — the prior behavior turned every correct refusal into a 0%
-# pass rate, which is the opposite of useful.
-#
-# (See Evaluator._skipped() in base.py for the general case-shape-mismatch
-# helper. _is_refusal is content-shape — independent of case shape.)
+# Simulation uses this conversational heuristic, never as a factuality verdict.
 
 _REFUSAL_PREFIXES = (
     "i don't know",
@@ -275,10 +259,6 @@ class Faithfulness(Evaluator):
             return self._skipped(
                 "Requires case.context — add retrieved context to enable Faithfulness.",
             )
-        if _is_refusal(output):
-            return self._skipped(
-                "response is a refusal — no substantive claims to verify.",
-            )
         judge = resolve_judge(self._judge_cfg)
         self.threshold = self._resolve_threshold(judge)
         context = case.context_str()
@@ -369,10 +349,6 @@ class Hallucination(Evaluator):
         if not case.context:
             return self._skipped(
                 "Requires case.context — add retrieved context to enable Hallucination.",
-            )
-        if _is_refusal(output):
-            return self._skipped(
-                "response is a refusal — no fabrications to flag.",
             )
         judge = resolve_judge(self._judge_cfg)
         self.threshold = self._resolve_threshold(judge)

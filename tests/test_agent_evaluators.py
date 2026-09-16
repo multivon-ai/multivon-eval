@@ -64,8 +64,9 @@ class TestToolCallAccuracy:
 
     def test_empty_steps_fail(self):
         result = ToolCallAccuracy().evaluate(make_case(steps=[] , expected_tool_calls=["search_weather"]), "done")
-        assert result.passed
+        assert not result.passed and result.metadata.get("skipped")
         assert result.reason.startswith("[skipped]")
+
 
     def test_no_tool_calls_still_records_failure_when_expected(self):
         case = make_case(steps=[AgentStep(thought="I can answer directly")], expected_tool_calls=["search_weather"])
@@ -157,8 +158,9 @@ class TestToolArgumentAccuracy:
 
     def test_empty_steps_fail(self):
         result = ToolArgumentAccuracy().evaluate(make_case(steps=[]), "done")
-        assert result.passed
+        assert not result.passed and result.metadata.get("skipped")
         assert result.reason.startswith("[skipped]")
+
 
     def test_no_tool_calls_passes(self):
         result = ToolArgumentAccuracy().evaluate(make_case(steps=[AgentStep(thought="No tools needed")]), "done")
@@ -183,7 +185,8 @@ class TestPlanQuality:
 
     def test_empty_steps_fail(self):
         result = PlanQuality().evaluate(make_case(steps=[]), "done")
-        assert result.passed
+        assert not result.passed and result.metadata.get("skipped")
+
 
     @patch("multivon_eval.evaluators.agent._qag_eval", return_value=(0.8, ["single step ok"]))
     def test_no_tool_calls_still_evaluates_trace(self, _qag_eval):
@@ -231,7 +234,8 @@ class TestStepFaithfulness:
 
     def test_empty_steps_fail(self):
         result = StepFaithfulness().evaluate(make_case(steps=[]), "done")
-        assert result.passed
+        assert not result.passed and result.metadata.get("skipped")
+
 
     @patch("multivon_eval.evaluators.agent._judge_call", side_effect=["Yes"])
     def test_no_tool_calls_still_scores_steps(self, _judge_call):
@@ -258,6 +262,7 @@ class TestToolCallNecessity:
         result = ToolCallNecessity().evaluate(make_case(steps=[]), "done")
         assert result.passed
 
+
     def test_no_tool_calls_passes(self):
         result = ToolCallNecessity().evaluate(make_case(steps=[AgentStep(thought="No tools needed")]), "done")
         assert result.passed
@@ -279,7 +284,8 @@ class TestTrajectoryEfficiency:
 
     def test_empty_steps_fail(self):
         result = TrajectoryEfficiency().evaluate(make_case(steps=[]), "done")
-        assert result.passed
+        assert not result.passed and result.metadata.get("skipped")
+
 
     @patch("multivon_eval.evaluators.agent._qag_eval", return_value=(0.9, ["direct answer"]))
     def test_no_tool_calls_still_evaluates(self, _qag_eval):
@@ -323,8 +329,9 @@ class TestAgentMemoryEval:
 
     def test_missing_context_fails(self):
         result = AgentMemoryEval().evaluate(make_case(context=None), "done")
-        assert result.passed
+        assert not result.passed and result.metadata.get("skipped")
         assert result.reason.startswith("[skipped]")
+
 
     @patch("multivon_eval.evaluators.agent._qag_eval", return_value=(0.75, ["nothing to remember but okay"]))
     def test_no_tool_calls_are_allowed(self, _qag_eval):

@@ -115,17 +115,15 @@ def test_case_diff_unchanged_for_fail_to_fail():
     assert d.direction == "unchanged"
 
 
-def test_case_diff_error_to_pass_is_improvement():
+def test_case_diff_error_to_pass_is_not_quality_improvement():
     d = CaseDiff("x", EvalStatus.JUDGE_ERROR, EvalStatus.PASSED, 0.0, 1.0)
-    assert d.direction == "improved"
+    assert d.direction == "unchanged"
 
 
-def test_case_diff_pass_to_error_is_regression():
-    """If a judge outage replaced a previously-passing eval, that is a
-    regression — the operator wants to see it, even though the
-    underlying model behavior may be unchanged."""
+def test_case_diff_pass_to_error_is_not_quality_regression():
+    """Infrastructure changes are reported separately from quality."""
     d = CaseDiff("x", EvalStatus.PASSED, EvalStatus.JUDGE_ERROR, 1.0, 0.0)
-    assert d.direction == "regressed"
+    assert d.direction == "unchanged"
 
 
 # ─────────────────────────────────────────────────────────────────────────────

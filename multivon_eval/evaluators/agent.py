@@ -136,7 +136,7 @@ class ToolCallAccuracy(Evaluator):
             denom = len(set(expected) | set(actual_calls))
             # Count matches the same way each branch does above.
             if self.require_order:
-                score = matches / denom
+                score = matches / (len(expected) + len(unexpected))
             else:
                 score = len(matched) / denom
 

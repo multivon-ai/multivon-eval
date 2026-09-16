@@ -1,0 +1,37 @@
+{
+  "release": "0.17.0",
+  "python_3_12": {
+    "passed": 1450,
+    "skipped": 4,
+    "warnings": 5
+  },
+  "python_3_10": {
+    "passed": 1450,
+    "skipped": 4,
+    "warnings": 5
+  },
+  "baseline_python_3_12": {
+    "passed": 1421,
+    "skipped": 4
+  },
+  "website": {
+    "lint": "passed",
+    "typescript": "passed",
+    "production_build": "passed",
+    "visual_qa": "unavailable: no browser"
+  },
+  "artifacts": {
+    "multivon_eval-0.17.0-py3-none-any.whl": "d859b3480ef5e3817b94c5ebc9235927d66acd1d2f0af307d8a0badfb6c76303",
+    "multivon_eval-0.17.0.tar.gz": "c4d19e554a1fa768d0eef10ff9d17e2f16b309a8930dd9633af47cbe8de6d2e4"
+  },
+  "scope": "Offline tests and SDK request mocks; no new live judge accuracy benchmarks.",
+  "published": {
+    "url": "https://pypi.org/project/multivon-eval/0.17.0/",
+    "verified_artifacts": 2,
+    "sha256_matches": true
+  },
+  "fresh_wheel": {
+    "regression_tests_passed": 29,
+    "offline_demo": "passed"
+  }
+}

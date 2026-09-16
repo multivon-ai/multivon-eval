@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Optional, Union, TYPE_CHECKING
 
 from .experiments import mcnemar_test
-from .result import CaseResult, EvalReport, EvalStatus
+from .result import CaseResult, EvalReport, EvalStatus, EVALUATION_STATUSES
 
 if TYPE_CHECKING:
     from .passk import PassKResult
@@ -48,19 +48,12 @@ class CaseDiff:
     def direction(self) -> str:
         """Pass-state direction: improved / regressed / unchanged.
 
-        Improvement = quality-fail or error → pass.
-        Regression  = pass → quality-fail or error.
-        Status-state changes within "error space" (e.g. judge_error
-        → evaluator_error) count as ``unchanged`` for direction, but
-        callers can still inspect the underlying statuses.
-
-        SKIPPED on either side is treated as ``unchanged`` for the
-        direction, because the case was deliberately not evaluated on
-        at least one side — we don't have signal about whether the
-        model behavior changed (otherwise skipped→pass would be
-        reported as an improvement, which is misleading).
+        Only completed quality verdicts can improve or regress. Error and
+        skipped pairs stay in the diff for inspection but do not establish
+        a quality direction or enter the significance test.
         """
-        if self.baseline_status == EvalStatus.SKIPPED or self.proposal_status == EvalStatus.SKIPPED:
+        if (self.baseline_status not in EVALUATION_STATUSES
+                or self.proposal_status not in EVALUATION_STATUSES):
             return _UNCHANGED
         b_pass = self.baseline_status == EvalStatus.PASSED
         p_pass = self.proposal_status == EvalStatus.PASSED
@@ -384,15 +377,14 @@ def compare_reports(baseline: EvalReport, proposal: EvalReport) -> ReportDiff:
             proposal_score=p_cr.score,
         ))
 
-    # Exclude paired-but-skipped cases from McNemar — a skipped case
-    # on either side is a deliberate "not evaluated," not a failure.
+    # Errors and skips on either side are missing measurements, not failures.
     # Counting them as False would falsely inflate the discordant-pair
     # count toward "regression" or "improvement" depending on the
     # other side.
     mcnemar_pairs = [
         d for d in paired_diffs
-        if d.baseline_status != EvalStatus.SKIPPED
-        and d.proposal_status != EvalStatus.SKIPPED
+        if d.baseline_status in EVALUATION_STATUSES
+        and d.proposal_status in EVALUATION_STATUSES
     ]
     if mcnemar_pairs:
         mcnemar_p = mcnemar_test(
@@ -488,8 +480,14 @@ def _cli(argv: list[str]) -> int:
     else:
         print(diff.to_text(regressions_only=args.regressions_only))
 
-    if args.fail_on_regression and diff.regressions:
-        return 1
+    if args.fail_on_regression:
+        if (not diff.paired or diff.added or diff.removed
+                or any(d.baseline_status not in EVALUATION_STATUSES
+                       or d.proposal_status not in EVALUATION_STATUSES for d in diff.paired)):
+            print("Comparison INDETERMINATE: incomplete paired quality measurements.", file=sys.stderr)
+            return 2
+        if diff.regressions:
+            return 1
     return 0
 
 

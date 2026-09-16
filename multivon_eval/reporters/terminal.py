@@ -33,7 +33,11 @@ def print_report(report: EvalReport) -> None:
         score_color = "green" if cr.score >= 0.7 else "yellow" if cr.score >= 0.5 else "red"
 
         if multi_run:
-            if cr.is_flaky:
+            if cr.status.value == "skipped":
+                status = "[yellow]SKIPPED[/]"
+            elif cr.status.value.endswith("error"):
+                status = "[yellow]ERROR[/]"
+            elif cr.is_flaky:
                 status = "[yellow]FLAKY[/]"
             elif cr.passed:
                 status = "[green]PASS[/]"
@@ -54,7 +58,9 @@ def print_report(report: EvalReport) -> None:
                 f"{cr.latency_ms:.0f}ms",
             )
         else:
-            status = "[green]PASS[/]" if cr.passed else "[red]FAIL[/]"
+            status = ("[yellow]SKIPPED[/]" if cr.status.value == "skipped"
+                      else "[yellow]ERROR[/]" if cr.status.value.endswith("error")
+                      else "[green]PASS[/]" if cr.passed else "[red]FAIL[/]")
             table.add_row(
                 str(i + 1),
                 cr.case_input[:36],
@@ -113,6 +119,7 @@ def print_report(report: EvalReport) -> None:
         f"[bold]Total:[/] {report.total}   "
         f"[green]Passed:[/] {report.passed}   "
         f"[red]Failed:[/] {report.failed}   "
+        f"[yellow]Errors:[/] {report.errors}   Skipped: {report.skipped}   "
         f"[bold]Pass Rate:[/] [{rate_color}]{report.pass_rate:.1%}[/] "
         f"[dim][{ci_lo:.0%}–{ci_hi:.0%} 95% CI][/]   "
         f"[bold]Avg Score:[/] {report.avg_score:.2f} "

@@ -140,7 +140,7 @@ The objects in `case_result.results` (per-evaluator).
 | `evaluator` | `str` | Evaluator name. |
 | `score` | `float` | 0.0–1.0. |
 | `passed` | `bool` | `score >= evaluator.threshold`. |
-| `reason` | `str` | Human-readable reason. Strings starting with `[skipped]` mean the case shape didn't fit this evaluator (returns a passing skip — does not contaminate aggregates). |
+| `reason` | `str` | Human-readable reason. Strings starting with `[skipped]` mean the case shape didn't fit this evaluator (returns `passed=False` with skip metadata and is excluded from quality aggregates). |
 | `metadata` | `dict` | `{"skipped": True}` is set when the evaluator skipped. Free-form otherwise. |
 
 ## `Costs` shape

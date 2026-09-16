@@ -1,0 +1,52 @@
+---
+title: "Migrating to 0.17"
+description: "Stricter measurement and CI gate semantics."
+---
+
+Version 0.17 separates missing measurements from evidence that a model passed.
+Review these changes before updating CI.
+
+## Skips are not successes
+
+An evaluator that lacks required inputs returns `metadata.skipped=True`,
+`passed=False`, and a placeholder `score=0.0`. Do not interpret that placeholder
+as a measured quality failure. Reports exclude the result from score and pass
+rate denominators. A case where every evaluator skipped has status `SKIPPED`.
+A case with both measured and skipped evaluators uses the measured results.
+
+If you consume evaluator results directly, check `metadata.get("skipped")`
+before using the score. `assert_evaluators` rejects skipped assertions because
+it cannot establish that the requested check passed.
+
+## Gates require measurements
+
+```python
+report = suite.run(model_fn, fail_threshold=0.95)
+```
+
+This now rejects any infrastructure error by default. To explicitly permit a
+small error budget, pass `max_error_rate=0.02`. Empty or skipped cases still
+block a quality gate. Runs without a quality gate continue to return reports
+for inspection; they do not automatically raise just because a case errored.
+
+`compare --fail-on-regression` returns 1 for a measured regression, 2 when
+cases are missing, added, removed, skipped, or errored, and 0 for a complete
+comparison with no measured regression. A zero exit does not establish
+statistical equivalence. Case pairing still uses input text and occurrence
+order; retain the same cases, order, judge, and evaluator settings.
+
+## Recheck historical baselines
+
+Short responses beginning with an apology or refusal are now evaluated for
+factuality. This can increase judge calls and change verdicts. Judge verdict
+parsing no longer treats a yes/no word embedded in an uncertain explanation
+as a decision. Rerun baselines before comparing scores across versions.
+
+Judge reliability checks make fresh calls even when caching is enabled.
+Configured judge timeouts now reach provider clients. Retries can make a
+whole run take longer than that per-request timeout.
+
+The shipped threshold calibration data and published benchmark results are
+historical measurements. This release fixes measurement behavior; it does not
+establish improved benchmark F1 or state-of-the-art accuracy. Validate graders
+against representative labeled examples from your own task.

@@ -78,6 +78,7 @@
               "guides/intelligent-eval",
               "guides/statistical-rigor",
               "guides/reliability-metrics",
+              "guides/migration-0-17",
               "guides/validate",
               "guides/reliability",
               "guides/examples",

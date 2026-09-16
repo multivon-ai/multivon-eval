@@ -4,6 +4,44 @@ All notable changes to `multivon-eval`. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+## [0.17.0] — 2026-09-17
+
+### Measurement integrity and migration
+
+- **Skipped is no longer passed.** An evaluator skip carries `passed=False`,
+  `score=0.0`, and `metadata.skipped=True`; the numeric value is a placeholder,
+  excluded from quality aggregates. All-skipped cases become `SKIPPED`.
+  Mixed cases are graded only by evaluators that produced measurements.
+  Repeated runs and JSON round trips preserve skip metadata; HTML, terminal,
+  and JUnit exports distinguish skips from quality failures.
+- **CI gates now fail closed on missing measurements.** Setting
+  `fail_threshold` requires measured cases and defaults to zero infrastructure
+  errors. An explicit `max_error_rate` can allow errors; all-skipped and empty
+  runs cannot pass a gate even at threshold zero. `compare --fail-on-regression`
+  exits 2 for incomplete comparisons instead of reporting a clean gate.
+- **Factuality checks no longer trust refusal prefixes.** A short answer beginning
+  with “Sorry” or “I cannot” still goes through the judge; those words do not
+  prove that the remainder contains no factual claims.
+- **Ambiguous yes/no mentions remain UNKNOWN.** “I cannot say yes” is not YES;
+  “There is no way to determine this” is not NO. Leading verdicts and complete
+  explicit answer phrases remain supported.
+- **Infrastructure transitions do not establish quality improvements.** McNemar
+  and improvement/regression lists use only pairs with completed quality
+  verdicts. Errors are still disclosed separately. Per-evaluator/tag aggregates
+  and score percentiles likewise exclude unmeasured cases.
+- **Judge request timeouts reach provider clients** on sync and async OpenAI,
+  Anthropic, Google, and LiteLLM paths. These are request timeouts, not hard
+  end-to-end deadlines across retries or arbitrary model functions.
+- **Judge reliability reruns bypass the response cache**, so a cached answer
+  cannot manufacture perfect judge agreement.
+- **Ordered strict tool matching stays within [0, 1]** when expected tool names
+  repeat and unexpected tools occur. Runner-level parallel exceptions retain
+  an error status. Trace-threshold suggestions exclude skipped graders.
+
+This minor release changes skip and default gate behavior intentionally. See
+`docs/guides/migration-0-17.mdx`. Existing benchmark artifacts were not rerun and
+are historical evidence, not accuracy estimates for this release.
+
 ### Documentation
 
 - Reworked the README into a shorter orientation path: quickstart, product

@@ -12,8 +12,8 @@ open-source Python framework for evaluating LLM applications, RAG systems,
 agents, conversations, and document AI. It validates automated graders,
 quantifies uncertainty, and produces evidence your team can inspect locally.
 
-> **Current release: 0.16.1 — August 16, 2026.** Python 3.10–3.14, Apache 2.0,
-> no hosted account and no telemetry. See [what changed](#current-release--0161).
+> **Current release: 0.17.0 — September 17, 2026.** Python 3.10–3.14, Apache 2.0,
+> no hosted account and no telemetry. See [what changed](#current-release--0170).
 
 ## Start in 30 seconds
 
@@ -238,13 +238,20 @@ traces and release gates. For research-grade model capability studies, consider
 [Inspect AI](https://inspect.aisi.org.uk/). The longer selection guide is in
 [the docs](https://docs.multivon.ai/why-multivon-eval).
 
-## Current release — 0.16.1
+## Current release — 0.17.0
 
-Released August 16, 2026:
+Released September 17, 2026:
 
-- Reasoning-tier judges receive enough output budget to reach a verdict.
-- The generated quickstart validates all three reference cases successfully.
-- Local demo advisories no longer appear as raw Python warnings.
+- Skipped graders no longer count as successful measurements or inflate scores.
+- Quality gates reject unmeasured cases and default to zero infrastructure errors;
+  set `max_error_rate=` explicitly to permit an error budget.
+- Apology prefixes cannot bypass factuality checks. Ambiguous verdicts stay UNKNOWN.
+- Comparisons separate infrastructure recovery from model improvements.
+- Judge timeouts reach the provider; reliability checks bypass cached verdicts.
+
+See the [migration notes](docs/guides/migration-0-17.mdx) for the stricter gate and
+skip semantics. Published benchmark numbers describe historical configurations;
+this correctness release does not claim new benchmark accuracy.
 
 Read the complete [changelog](CHANGELOG.md) for release history and migration
 details.
@@ -258,7 +265,7 @@ changes, open an issue first so the measurement contract can be reviewed.
 git clone https://github.com/multivon-ai/multivon-eval
 cd multivon-eval
 pip install -e ".[dev]"
-pytest tests/
+python -m pytest tests/ --ignore=tests/test_integrations_live.py
 ```
 
 ## License
