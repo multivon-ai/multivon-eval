@@ -135,6 +135,17 @@ def trial_integrity_issues(result: CaseResult) -> list[str]:
         issues.append("Case output does not match its final retained trial")
     if all(t["origin"] == "regrade" for t in trials):
         return issues
+    if all(t["origin"] == "inspect" for t in trials):
+        slots: dict[int, list[int]] = {}
+        for trial in trials:
+            slots.setdefault(trial["run_index"], []).append(trial["attempt"])
+        if sorted(slots) != list(range(1, result.runs + 1)):
+            issues.append("Retained Inspect epoch slots do not match runs")
+        if any(sorted(attempts) != list(range(1, len(attempts) + 1)) for attempts in slots.values()):
+            issues.append("Retained Inspect epoch attempts are missing or duplicated")
+        if max(t["attempt"] for t in trials) != result.retry_attempts + 1:
+            issues.append("Retained Inspect attempts do not match retry history")
+        return issues
     attempts: dict[int, list[int]] = {}
     for trial in trials:
         attempts.setdefault(trial["attempt"], []).append(trial["run_index"])

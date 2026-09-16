@@ -113,3 +113,30 @@ def test_documented_inspect_example(tmp_path):
     script.write_text("\n".join(blocks))
     result = subprocess.run([sys.executable, str(script)], cwd=tmp_path, capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
+
+
+def test_partial_epoch_retry_history_preserves_executions_without_double_counting(tmp_path):
+    from inspect_ai.log import EvalError
+    from multivon_eval.trials import trial_integrity_issues
+    log = execute(tmp_path, [EvalCase("x", "yes", case_id="good")], [ExactMatch()], epochs=2)
+    prior = log.model_copy(deep=True)
+    prior.status = "error"
+    interrupted = next(sample for sample in prior.samples if sample.epoch == 2)
+    interrupted.uuid = "interrupted-original-execution"
+    interrupted.error = EvalError(message="interrupted", traceback="", traceback_ansi="")
+    interrupted.scores = None
+    combined = from_inspect_log(log, previous_logs=[prior])
+    row = combined.case_results[0]
+    assert row.runs == 2 and row.retry_attempts == 1 and len(row.trials) == 3
+    assert [(t.data["attempt"], t.data["run_index"]) for t in row.trials] == [(1, 1), (1, 2), (2, 2)]
+    assert not trial_integrity_issues(row)
+    requirement = (CheckRequirement("exact_match"),)
+    assert AcceptancePolicy(requirement).evaluate(combined).decision == "indeterminate"
+    assert AcceptancePolicy(requirement, trial_scope="final_attempt").evaluate(combined).decision == "accept"
+    altered = prior.model_copy(deep=True)
+    altered.eval.task_id = "unrelated"
+    with pytest.raises(ValueError, match="same task ID"):
+        from_inspect_log(log, previous_logs=[altered])
+    prior.status = "started"
+    with pytest.raises(ValueError, match="Recover started"):
+        from_inspect_log(log, previous_logs=[prior])

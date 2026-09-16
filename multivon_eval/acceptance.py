@@ -246,8 +246,16 @@ class AcceptancePolicy:
         if row.trials:
             trials = [t.data for t in row.trials]
             if self.trial_scope == "final_attempt":
-                last = max(t["attempt"] for t in trials)
-                trials = [t for t in trials if t["attempt"] == last]
+                if all(t["origin"] == "inspect" for t in trials):
+                    last_by_epoch = {}
+                    for trial in trials:
+                        slot = trial["run_index"]
+                        if slot not in last_by_epoch or trial["attempt"] > last_by_epoch[slot]["attempt"]:
+                            last_by_epoch[slot] = trial
+                    trials = list(last_by_epoch.values())
+                else:
+                    last = max(t["attempt"] for t in trials)
+                    trials = [t for t in trials if t["attempt"] == last]
             return trials
         if self.require_trials:
             return []

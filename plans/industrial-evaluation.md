@@ -19,7 +19,7 @@ Gymnasium at their established boundaries.
 |---|---|---|---|
 | R01 | Versioned cases/datasets: stable IDs, content revisions, source groups, split provenance | Reordering, duplicate inputs, changed contexts/labels, JSON round trips, split leakage and comparison compatibility tested; migration demonstrated | In progress: case/dataset identities, group splits, strict comparison pairing implemented; full grader/run compatibility remains |
 | R02 | Complete immutable trial evidence and regrading | All outputs, traces, grader results, retries/errors, effective requests, usage retained across sync/async/parallel paths; saved output regrading makes no target calls | In progress: per-run/retry snapshots and regrading implemented; provider requests, usage, interrupted attempts and execution configuration remain |
-| R03 | Resumable execution and resource controls | Kill/restart experiment preserves completed work; checkpoint compatibility, cancellation, bounded concurrency, deadlines and budget accounting; explicit policy for ambiguous side effects | Pending |
+| R03 | Resumable execution and resource controls | Kill/restart experiment preserves completed work; checkpoint compatibility, cancellation, bounded concurrency, deadlines and budget accounting; explicit policy for ambiguous side effects | In progress: Inspect SIGKILL/recovery experiment preserves completed work and rejects duplicate-write control; full compatibility, cancellation/deadline/budget validation remains |
 | R04 | Acceptance policies | Required-check coverage, critical invariants, per-slice thresholds, sample requirements, quality/error/indeterminate distinctions and machine-readable decisions verified | In progress: policy/CLI and failure-path tests implemented; industrial acceptance experiment remains |
 | R05 | Review and calibration | Label import/export, review disagreements, development-only fitting, held-out evaluation, uncertainty/false-accept reporting and no leakage verified | Pending |
 | R06 | Trace interoperability | OpenTelemetry ingestion/export, documented schema/version handling, actual round trips with supported companion integrations | Pending |
@@ -96,3 +96,14 @@ three-way decisions and explicit retry scope. These replace planned custom
 dataset/execution infrastructure where upstream behavior fits. Inspect
 kill/restart, complete provider/judge accounting and industrial experiments
 remain required; dependency-level capabilities alone do not complete R03.
+
+2026-09-17 recovery experiment: two synthetic handlers, three cases each,
+one SIGKILL after a committed side effect per handler. Inspect preserved two
+completed samples and replayed the interrupted sample. An independent SQLite
+invariant accepted idempotent final state and rejected the duplicate-write
+control. Test exposed omitted historical attempts in a single-log import;
+added chronological log-chain import and native UUID deduplication, including
+partial-epoch retries. Retained four actual executions per handler. All-attempt
+policy stays indeterminate for the interrupted safe run; final-attempt acceptance
+requires explicit replay scope and verified state. No inference spend. Claude
+credential preflight succeeded via model listing; no credential values logged.

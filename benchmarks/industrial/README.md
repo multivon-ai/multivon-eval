@@ -1,0 +1,74 @@
+# Industrial workflow experiments
+
+These are synthetic maintainer-run experiments. They test specific failure
+mechanisms and integration contracts; they do not establish customer usefulness
+or state-of-the-art model performance.
+
+## Process crash after a committed ledger write
+
+The first experiment reuses Inspect 0.3.263 for process recovery and SQLite for
+persisted state. There is no custom durable scheduler and no model API call.
+
+```bash
+pip install -e '.[inspect]'
+python benchmarks/industrial/run_recovery.py --output /tmp/my-fresh-recovery-run
+```
+
+Use a fresh output directory. The script launches and kills only its own child
+process, then calls Inspect's public `recover_eval_log` and `eval_retry` APIs.
+All ledger writes are inside that output directory.
+
+Two completed samples precede a third sample that commits its write and then
+waits. The controller sends SIGKILL at that point. The interrupted action is
+ambiguous from the runner's perspective: retrying may duplicate a committed
+operation. The experiment explicitly permits replay to compare two handlers:
+
+| Handler | Cases | Target invocations | Final ledger entries per invoice | Final-attempt policy |
+|---|---:|---|---|---|
+| Reused idempotency key | 3 | 1, 1, 2 | 1, 1, 1 | Accept |
+| New key per invocation (unsafe control) | 3 | 1, 1, 2 | 1, 1, 2 | Reject |
+
+These are deterministic observed counts for one crash per handler, **n=3 cases
+per handler**. No confidence interval or general recovery-success rate is
+claimed. The first two completed samples were preserved in both runs. Every
+final textual response said `posted`; only the independent ledger invariant
+detected the duplicate.
+
+The interrupted report is indeterminate. After recovery, importing the earlier
+log retains all four actual executions per handler. Under an all-attempts
+policy, the safe handler remains indeterminate because an earlier attempt was
+interrupted; the unsafe handler is rejected for the observed duplicate. The
+explicit final-attempt policy accepts the safe handler only after the persisted
+state assertion passes. It still rejects the unsafe handler.
+
+See [recorded results](results/inspect-recovery-2026-09-17.json). The output folder
+also contains native `.eval` logs, their recovered versions, SQLite state,
+invocation records, Multivon reports and decisions. No paid inference occurred.
+
+## What the experiment changed
+
+The initial bridge imported a single native log. Inspect's retry log preserves
+completed samples but does not itself include every abandoned attempt. Testing
+recovery exposed this evidence gap. The importer now accepts
+`from_inspect_log(final_log, previous_logs=[recovered_log])`, deduplicates preserved
+native sample UUIDs, and retains earlier failed attempts. Partial epoch retries
+are tested separately so a preserved epoch is not counted as another execution.
+
+## Limits
+
+- SQLite plus a unique key is one explicit replay-safe mechanism. Arbitrary
+  external actions cannot be assumed idempotent. Reconcile an uncertain action
+  or stop for review when safe replay cannot be established.
+- No OCR, document understanding, real agent, remote provider, network fault,
+  distributed worker, or real customer data was exercised here.
+- The existing native `EvalSuite` runner has not gained crash recovery from
+  this integration; the tested path uses Inspect.
+- The bridge cannot infer omitted historical logs. Keep the entire native log
+  chain and provide it when judging all attempts.
+- A plausible final answer does not prove persisted task success. This is an
+  established evaluation principle illustrated by a concrete fault injection,
+  not a new scientific contribution.
+
+Next: a document-to-ledger sandbox with independently specified outcomes,
+permissioned or clearly synthetic documents, held-out source groups, actual
+provider calls, matched baselines, explicit budgets and reviewed failures.

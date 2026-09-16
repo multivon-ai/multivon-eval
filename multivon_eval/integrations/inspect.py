@@ -119,7 +119,26 @@ def as_inspect_scorer(evaluator: Evaluator, *, name: str | None = None):
     return factory()
 
 
-def from_inspect_log(log: Any) -> EvalReport:
+def from_inspect_log(log: Any, *, previous_logs: list[Any] | None = None) -> EvalReport:
+    """Import a log, optionally including earlier retry logs oldest first.
+
+    Native retry logs can preserve completed samples while omitting failed
+    attempts. Supply those earlier logs to retain the complete provided history.
+    The bridge cannot infer that an omitted log exists. Keep native logs together.
+    """
+    current = _from_inspect_log(log)
+    if not previous_logs:
+        return current
+    if any(previous.status == "started" for previous in previous_logs):
+        raise ValueError("Recover started Inspect logs before importing retry history")
+    if any(previous.eval.task_id != log.eval.task_id or previous.eval.model != log.eval.model
+           for previous in previous_logs):
+        raise ValueError("Inspect retry history must use the same task ID and model")
+    from .inspect_history import merge_history
+    return merge_history(current, [_from_inspect_log(previous) for previous in previous_logs])
+
+
+def _from_inspect_log(log: Any) -> EvalReport:
     """Import a native EvalLog produced with this bridge, grouping epochs.
 
     Keeps an upstream sample content digest, log location, and model usage on
@@ -171,6 +190,7 @@ def from_inspect_log(log: Any) -> EvalReport:
                 "Multivon judge calls are not automatically instrumented as Inspect model calls",
                 "Inspect sample errors are not classified as model versus grader failures by this bridge",
                 "AgentStep is a text/tool projection; multimodal and timing detail remain upstream",
+                "Only provided logs are imported; omitted retry logs cannot be inferred",
             ]
             cr.trials = (TrialRecord.from_dict({**data, "digest": digest(data)}),)
         groups.setdefault(case.identity()[0], []).append((sample.epoch, case, cr))

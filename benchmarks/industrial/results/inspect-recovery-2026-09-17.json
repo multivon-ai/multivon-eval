@@ -1,0 +1,63 @@
+{
+  "schema": "multivon.recovery-experiment/v1",
+  "outcomes": [
+    {
+      "mode": "idempotent",
+      "samples": 3,
+      "completed_samples_preserved": [
+        "invoice-a",
+        "invoice-b"
+      ],
+      "target_invocations": {
+        "invoice-a": 1,
+        "invoice-b": 1,
+        "invoice-c": 2
+      },
+      "persisted_entries": {
+        "invoice-a": 1,
+        "invoice-b": 1,
+        "invoice-c": 1
+      },
+      "decision": "accept",
+      "interrupted_decision": "indeterminate",
+      "all_attempts_decision": "indeterminate",
+      "retained_execution_count": 4,
+      "api_calls": 0,
+      "api_spend_usd": 0,
+      "native_log": "idempotent/resumed/2026-09-16T20-27-48-00-00_recovery-probe_b3DB2eTSFbtczj4YZetod4.eval",
+      "note": "Synthetic local fault injection, not customer validation"
+    },
+    {
+      "mode": "unsafe",
+      "samples": 3,
+      "completed_samples_preserved": [
+        "invoice-a",
+        "invoice-b"
+      ],
+      "target_invocations": {
+        "invoice-a": 1,
+        "invoice-b": 1,
+        "invoice-c": 2
+      },
+      "persisted_entries": {
+        "invoice-a": 1,
+        "invoice-b": 1,
+        "invoice-c": 2
+      },
+      "decision": "reject",
+      "interrupted_decision": "indeterminate",
+      "all_attempts_decision": "reject",
+      "retained_execution_count": 4,
+      "api_calls": 0,
+      "api_spend_usd": 0,
+      "native_log": "unsafe/resumed/2026-09-16T20-27-52-00-00_recovery-probe_9LKv7F5DE7BHhXFy8gjKNk.eval",
+      "note": "Synthetic local fault injection, not customer validation"
+    }
+  ],
+  "claim": "This fixture tests sample preservation and a specific duplicate-write failure mode",
+  "runtime": {
+    "python": "3.12.13",
+    "inspect_ai": "0.3.263"
+  },
+  "native_logs": "Retained locally; regenerate with run_recovery.py. This summary contains no credentials."
+}

@@ -33,6 +33,10 @@ All notable changes to `multivon-eval`. The format follows [Keep a Changelog](ht
   retry scope, and accept/reject/indeterminate decision artifacts.
 - Preserve report-level evidence issues and block incomplete imported logs.
 - Forward `--allow-legacy-identity` through the public CLI entry point.
+- Import chronological Inspect retry histories without double-counting
+  preserved sample UUIDs; retain interrupted executions and partial-epoch
+  retries. Add a reproducible SIGKILL/SQLite ledger experiment demonstrating
+  completed-sample preservation and rejection of an unsafe duplicate write.
 
 ### Documentation
 

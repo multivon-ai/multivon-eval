@@ -55,9 +55,11 @@ assert len(report.case_results[0].trials) == 2
 The fixture performs no provider calls. For a real application, use an Inspect
 solver/agent and model, and define a registered `@task` factory so Inspect can
 reconstruct it for retries. Consult [Inspect's log and retry documentation](https://inspect.aisi.org.uk/eval-logs.html)
-for `eval_retry`, native request logging, and sample preservation. A deliberate
-kill/restart experiment for this bridge remains part of our validation program;
-the example above does not demonstrate crash recovery.
+for `eval_retry`, native request logging, and sample preservation. A
+[local crash experiment](https://github.com/multivon-ai/multivon-eval/tree/main/benchmarks/industrial)
+kills a process after a SQLite ledger write, preserves completed samples, and
+distinguishes safe replay from duplicate writes. It uses three synthetic cases
+per handler and no model API calls; it is not a production recovery guarantee.
 
 ## Evidence mapping
 
@@ -72,7 +74,14 @@ the example above does not demonstrate crash recovery.
 - Imported epochs are grouped by case. Each trial records the native log
   location, sample identity, sample digest, and model usage.
 - Incomplete upstream runs carry report-level evidence issues and cannot pass
-  a Multivon acceptance policy.
+a Multivon acceptance policy.
+
+For a retry chain, call `from_inspect_log(final_log, previous_logs=[earlier_log])`
+with earlier logs in chronological order. Preserved sample UUIDs are deduplicated;
+new executions remain distinct. `trial_scope="final_attempt"` selects the last
+attempt **per epoch** on imported Inspect evidence. The default all-attempts
+policy includes interrupted attempts and therefore can remain indeterminate
+after a successful retry. The bridge cannot discover omitted historical logs.
 
 Use [Inspect View](https://inspect.aisi.org.uk/log-viewer.html) for the full native
 conversation and events. The adapter does not implement another generic log UI.

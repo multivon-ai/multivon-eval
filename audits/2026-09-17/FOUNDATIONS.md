@@ -1,6 +1,7 @@
 # Evidence and interoperability checkpoint
 
 Development work after release 0.17.0. These changes are not a new PyPI release.
+This checkpoint precedes the later [crash/recovery experiment](../../benchmarks/industrial/README.md).
 
 ## Implemented
 
