@@ -1,0 +1,9 @@
+{
+  "sha256": "c32d0b11b315787b6c513293fc3dc23884c022378488c648a01fd96f15ca131e",
+  "bytes": 130136236,
+  "files": 167,
+  "original_manifest_verified": true,
+  "credential_pattern_scan": "no matches after decoding media data URIs",
+  "download_url": "https://github.com/multivon-ai/multivon-eval/releases/download/v0.18.0/document-ledger-2026-09-17.tar.gz",
+  "github_digest": "sha256:c32d0b11b315787b6c513293fc3dc23884c022378488c648a01fd96f15ca131e"
+}

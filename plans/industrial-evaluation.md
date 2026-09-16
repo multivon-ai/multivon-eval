@@ -17,10 +17,10 @@ Gymnasium at their established boundaries.
 
 | ID | Deliverable | Evidence needed | Status |
 |---|---|---|---|
-| R01 | Versioned cases/datasets: stable IDs, content revisions, source groups, split provenance | Reordering, duplicate inputs, changed contexts/labels, JSON round trips, split leakage and comparison compatibility tested; migration demonstrated | In progress: case/dataset identities, group splits, strict comparison pairing implemented; full grader/run compatibility remains |
+| R01 | Versioned cases/datasets: stable IDs, content revisions, source groups, split provenance | Reordering, duplicate inputs, changed contexts/labels, JSON round trips, split leakage and comparison compatibility tested; migration demonstrated | In progress: case/dataset identities, group splits, strict comparison pairing implemented; recorded grader/engine/calibration and repeat-count drift checked; opaque dependency compatibility remains |
 | R02 | Complete immutable trial evidence and regrading | All outputs, traces, grader results, retries/errors, effective requests, usage retained across sync/async/parallel paths; saved output regrading makes no target calls | In progress: per-run/retry snapshots and regrading implemented; provider requests, usage, interrupted attempts and execution configuration remain |
 | R03 | Resumable execution and resource controls | Kill/restart experiment preserves completed work; checkpoint compatibility, cancellation, bounded concurrency, deadlines and budget accounting; explicit policy for ambiguous side effects | In progress: Inspect SIGKILL/recovery experiment preserves completed work and rejects duplicate-write control; full compatibility, cancellation/deadline/budget validation remains |
-| R04 | Acceptance policies | Required-check coverage, critical invariants, per-slice thresholds, sample requirements, quality/error/indeterminate distinctions and machine-readable decisions verified | In progress: policy/CLI and failure-path tests implemented; industrial acceptance experiment remains |
+| R04 | Acceptance policies | Required-check coverage, critical invariants, per-slice thresholds, sample requirements, quality/error/indeterminate distinctions and machine-readable decisions verified | Delivered in 0.18.0: policy/CLI, failure-path tests and frozen document-workflow policy; task/domain validity tracked separately |
 | R05 | Review and calibration | Label import/export, review disagreements, development-only fitting, held-out evaluation, uncertainty/false-accept reporting and no leakage verified | Pending |
 | R06 | Trace interoperability | OpenTelemetry ingestion/export, documented schema/version handling, actual round trips with supported companion integrations | Pending |
 | R07 | Task/environment/outcome interfaces | Setup/reset/action/observation/cleanup, isolated repeated episodes, real end-state assertions, forbidden side effects, partial failures and recovery cases | Pending |
@@ -31,7 +31,7 @@ Gymnasium at their established boundaries.
 | R12 | FOSS extension/stability contract | Public plugin/environment protocols, versioned report schemas, optional heavy dependencies, contributor fixtures, compatibility matrix and release checks | Pending |
 | R13 | Industrial workflow and experiments | Document-to-ledger task, independent assertions, failures/benign controls, matched-budget baselines, held-out splits, actual provider runs, costs and uncertainty; results critique | In progress: CORD/pdfhell study completed with 39 held-out sources, two models, native recovery and explicit task-mapping critique; customer-domain contract validation remains |
 | R14 | Research contribution/popularization | Related-work comparison, bounded novelty statement, reproducibility bundle, diagrams when useful, worked demo and evidence-led website narrative | Pending |
-| R15 | Associated projects | multivon-mcp, pdfhell, eval-action compatibility and relevant integrations; cross-project end-to-end tests, docs/README, versions and releases as applicable | Pending |
+| R15 | Associated projects | multivon-mcp, pdfhell, eval-action compatibility and relevant integrations; cross-project end-to-end tests, docs/README, versions and releases as applicable | Foundation delivery: pdfhell 0.6.2, MCP 0.4.0 and action 2.0.0 published; actual MCP stdio and Docker/Git baseline tests passed; later adapters remain tied to R06/R09 |
 | R16 | Library/docs/site delivery | Cohesive API/migrations, runnable docs, visual website checks, supported-Python tests, packaging, verified pushes/releases, no overstated claims | Pending |
 | R17 | Industrial/customer validity | User-provided target or permissioned real-world cases; independently reviewed usefulness. Synthetic demonstration alone cannot prove production value or demand | Awaiting target; other work proceeds |
 
@@ -122,3 +122,19 @@ or prompts were changed after results. Public evidence and critique are in
 benchmarks/industrial/DOCUMENT_RESULTS.md; original logs/assets are archived in
 Documents/Multivon/document-ledger-2026-09-17. This does not complete customer
 validation, broader execution controls, review tooling or the remaining program.
+
+2026-09-17 release checkpoint: published multivon-eval 0.18.0, pdfhell 0.6.2,
+multivon-mcp 0.4.0 and eval-action 2.0.0; verified PyPI artifact hashes and Git
+releases. The action now runs actual application revisions and fails closed on
+missing evidence. MCP retains measurement/identity status and reuses acceptance
+policies. Core tests: 1,559 passed on Python 3.12, 1,558 on 3.10 with expected
+optional skips; 62 MDX pages compiled. Companion tests: 87 action tests on each
+Python version and 14 MCP tests including real stdio. The Docker image built
+and exercised actual target/baseline code from a mounted workspace. Website
+release information is pushed; broader feature work is still active.
+
+Published the 130,136,236-byte raw document-study archive as a v0.18.0 release
+asset, verified its original per-file checksums and GitHub SHA-256 digest, and
+reproduced the frozen analysis offline. Public dataset attribution is retained.
+This completes the raw-artifact gap for this study; no new model inference or
+claims of independent customer/human validation were added.

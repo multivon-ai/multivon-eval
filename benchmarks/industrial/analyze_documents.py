@@ -39,7 +39,7 @@ def analyze(paths: list[Path]) -> dict:
             ci = binomtest(k, n).proportion_ci(method="wilson") if n else None
             rates.append({"family": family, "modality": modality, "n": n, "passed": k,
                           "missing": len(values) - n, "wilson95": list(ci) if ci else None})
-        runs.append({**summary, "rates": rates, "failures": failures})
+        runs.append({**summary, "log": Path(summary["log"]).name, "rates": rates, "failures": failures})
         outcomes.append(results)
     paired = []
     if len(runs) == 2:

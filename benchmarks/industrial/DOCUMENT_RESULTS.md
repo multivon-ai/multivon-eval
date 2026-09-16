@@ -8,7 +8,8 @@ SoTA performance, production readiness, customer value or a defensible moat.
 [Protocol and deviations](DOCUMENT_PROTOCOL.md) ·
 [Machine-readable results](results/document-ledger-2026-09-17/heldout-analysis.json) ·
 [Failure review](results/document-ledger-2026-09-17/failure-review.json) ·
-[Attribution](THIRD_PARTY.md)
+[Attribution](THIRD_PARTY.md) ·
+[Raw evidence and offline reproduction](REPRODUCE_DOCUMENT_RESULTS.md)
 
 ## Frozen held-out results
 

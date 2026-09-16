@@ -69,6 +69,7 @@ are tested separately so a preserved epoch is not counted as another execution.
   established evaluation principle illustrated by a concrete fault injection,
   not a new scientific contribution.
 
-Next: a document-to-ledger sandbox with independently specified outcomes,
-permissioned or clearly synthetic documents, held-out source groups, actual
-provider calls, matched baselines, explicit budgets and reviewed failures.
+The follow-up [document-to-ledger study](DOCUMENT_RESULTS.md) now includes
+CORD/pdfhell sources, held-out comparisons, actual provider calls, costs and
+reviewed failures. [Raw artifacts and offline reproduction](REPRODUCE_DOCUMENT_RESULTS.md)
+are public; customer usefulness remains unproven.

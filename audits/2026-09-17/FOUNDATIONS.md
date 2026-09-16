@@ -98,3 +98,23 @@ limitations of using verbatim transcription labels as business outcomes.
 See [study and limitations](../../benchmarks/industrial/DOCUMENT_RESULTS.md).
 The broader R01–R17 program remains active; these checkpoints do not establish
 customer validation or completion of all execution, review and modality features.
+
+## Published foundation checkpoint
+
+- multivon-eval 0.18.0: retained-trial and recorded-configuration comparison
+  safeguards, exact small-sample paired statistics, missing-trace correction,
+  Hugging Face/Inspect bridges and explicit acceptance policies.
+- pdfhell 0.6.2: scoring and raster-cache fixes published; 170 tests passed on
+  Python 3.10 and 3.12 at release.
+- MCP 0.4.0: 23 tools, including acceptance from saved reports; original skip/error
+  metadata and identity warnings preserved; actual stdio protocol validated.
+- eval-action 2.0.0: real target execution in separate revision processes,
+  fail-closed evidence/configuration gates, engine reuse and pinned dependency.
+  Container smoke exercised head and Git baseline from the mounted workspace.
+- Raw study evidence is downloadable from the 0.18.0 GitHub release. Its checksum
+  and offline reproduction recipe are in benchmarks/industrial.
+
+These deliveries do not establish full callback/provider compatibility, customer
+usefulness, an independently reviewed dataset, a moat or SoTA performance. The
+industrial program remains active for review/calibration, OTel, environment and
+multimodal evidence interfaces, world-model experiments and subsequent delivery.
