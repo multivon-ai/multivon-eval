@@ -9,6 +9,13 @@ for unfinished work.
 
 ## Preserve the task definition
 
+Use [Hugging Face Datasets](https://huggingface.co/docs/datasets/en/loading)
+for loading, revision pinning, transforms, streaming and storage. Multivon's
+`CaseManifest` is a small snapshot of the selected evaluation cases; it does
+not replace your dataset pipeline. For grouped random splits, use established
+splitters such as [GroupShuffleSplit](https://scikit-learn.org/stable/modules/generated/sklearn.model_selection.GroupShuffleSplit.html)
+and supply the resulting assignments here for leakage validation.
+
 Two prompts can be identical while their source documents, expected answers,
 or permitted actions differ. `case_id` names a case across edits; its content
 digest detects edits. Without an explicit ID, the digest supplies the ID.
@@ -16,16 +23,16 @@ digest detects edits. Without an explicit ID, the digest supplies the ID.
 `revision` still changes the digest.
 
 ```python
-from multivon_eval import Dataset, EvalCase, EvalSuite, ExactMatch
+from multivon_eval import CaseManifest, EvalCase, EvalSuite, ExactMatch
 
-dataset = Dataset("invoice decisions", [
+dataset = CaseManifest("invoice decisions", [
     EvalCase("May this invoice be posted?", "post", context="Approved invoice",
              case_id="invoice-a", revision="1", source_id="document-a"),
     EvalCase("May this invoice be posted?", "hold", context="Missing approval",
              case_id="invoice-b", revision="1", source_id="document-b"),
 ], splits={"development": ["invoice-a"], "test": ["invoice-b"]})
-dataset.save("invoices.dataset.json")
-assert Dataset.load("invoices.dataset.json").digest == dataset.digest
+dataset.save("invoices.manifest.json")
+assert CaseManifest.load("invoices.manifest.json").digest == dataset.digest
 
 suite = EvalSuite("invoice decision strings")
 suite.add_cases(dataset.split("test")).add_evaluator(ExactMatch())
@@ -37,12 +44,41 @@ assert len(report.case_results[0].trials) == 3
 This is a synthetic decision-string fixture. It does not test document reading,
 ledger writes, or real customer requirements.
 
-`Dataset` detaches cases from mutable input objects, rejects duplicate IDs,
+`CaseManifest` detaches cases from mutable input objects, rejects duplicate IDs,
 and requires every case to belong to exactly one split when splits are supplied.
 Cases with the same `source_id` cannot cross split boundaries. It cannot infer
 that two differently named sources are related: supply source groups from your
 data pipeline. Group paraphrases, page variants, and repeated sessions before
 selecting held-out data.
+
+### Bring a Hugging Face dataset
+
+Install `multivon-eval[datasets]` from the development checkout. Load or transform
+your dataset with the upstream library, then adapt a bounded evaluation set:
+
+```python
+from datasets import Dataset, DatasetDict
+from multivon_eval import EvalCase
+from multivon_eval.integrations.huggingface import from_huggingface
+
+upstream = DatasetDict({"test": Dataset.from_list([
+    {"id": "doc-1", "question": "Amount?", "answer": "42.00", "source": "invoice-1"},
+])})
+manifest = from_huggingface(
+    upstream, name="invoice amount fixture",
+    record_to_case=lambda row: EvalCase(
+        row["question"], row["answer"], case_id=row["id"], source_id=row["source"]),
+    provenance={"kind": "local synthetic fixture"},
+)
+assert manifest.split("test")[0].expected_output == "42.00"
+```
+
+For Hub data, use `datasets.load_dataset(..., revision=COMMIT_SHA)` and record
+the repository and commit in `provenance`. A branch name can move. The bridge
+preserves upstream cache fingerprints, but they are not semantic case IDs.
+It accepts native split dictionaries and iterable datasets, and raises when a
+selection exceeds `max_cases` (10,000 by default). Select or sample upstream;
+the bridge will not silently truncate a dataset or decide your sampling policy.
 
 `load_jsonl` and `save_jsonl` preserve tool expectations, traces, reference
 outputs, IDs, revisions, and source groups. Unknown fields are rejected with

@@ -40,6 +40,8 @@ requests = ["requests>=2.28.0"]
 browser = ["playwright>=1.40.0", "requests>=2.28.0"]
 pytest = ["pytest>=7.0.0"]
 google = ["google-genai>=1.0.0"]
+datasets = ["datasets>=5.0.1,<6"]
+inspect = ["inspect-ai>=0.3.263,<0.4"]
 # Agent framework integrations — install only the one you use.
 langgraph = ["langgraph>=0.2.0", "langchain-core>=0.3.0"]
 openai-agents = ["openai-agents>=0.0.1"]

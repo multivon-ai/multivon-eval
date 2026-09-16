@@ -6,11 +6,11 @@ import json
 import pytest
 
 from multivon_eval import (
-    AgentStep, Dataset, EvalCase, EvalReport, EvalResult, EvalSuite, ExactMatch,
+    AgentStep, CaseManifest, EvalCase, EvalReport, EvalResult, EvalSuite, ExactMatch,
     JudgeRetry, ToolCall, TrialRecord, compare_reports, load_jsonl, regrade, save_jsonl,
 )
 from multivon_eval.compare import _cli
-from multivon_eval.datasets import case_from_dict, case_to_dict
+from multivon_eval.case_manifest import case_from_dict, case_to_dict
 from multivon_eval.evaluators.base import Evaluator
 from multivon_eval.exceptions import JudgeUnavailable
 from multivon_eval.result import CaseResult
@@ -58,8 +58,8 @@ def test_callable_reference_is_not_execution_identity_and_cannot_silently_export
 def test_dataset_detaches_inputs_and_is_order_independent(tmp_path):
     cases = [EvalCase("a", case_id="a", source_id="source-a"),
              EvalCase("b", case_id="b", source_id="source-b")]
-    dataset = Dataset("invoices", cases, splits={"dev": ["a"], "test": ["b"]})
-    assert dataset.digest == Dataset("invoices", cases[::-1],
+    dataset = CaseManifest("invoices", cases, splits={"dev": ["a"], "test": ["b"]})
+    assert dataset.digest == CaseManifest("invoices", cases[::-1],
                                      splits={"test": ["b"], "dev": ["a"]}).digest
     cases[0].metadata["changed"] = True
     dataset.cases[0].input = "mutated"
@@ -68,11 +68,11 @@ def test_dataset_detaches_inputs_and_is_order_independent(tmp_path):
     assert dataset.split("test")[0].input == "b"
     path = tmp_path / "dataset.json"
     dataset.save(path)
-    assert Dataset.load(path).manifest == dataset.manifest
+    assert CaseManifest.load(path).manifest == dataset.manifest
     corrupt = dataset.manifest
     corrupt["cases"][0]["case"]["expected_output"] = "tampered"
     with pytest.raises(ValueError, match="digest"):
-        Dataset.from_dict(corrupt)
+        CaseManifest.from_dict(corrupt)
 
 
 @pytest.mark.parametrize("splits,match", [
@@ -85,12 +85,12 @@ def test_dataset_rejects_leakage_and_bad_assignments(splits, match):
     cases = [EvalCase("a", case_id="a", source_id="same"),
              EvalCase("b", case_id="b", source_id="same")]
     with pytest.raises(ValueError, match=match):
-        Dataset("x", cases, splits=splits)
+        CaseManifest("x", cases, splits=splits)
 
 
 def test_duplicate_auto_identity_requires_explicit_ids():
     with pytest.raises(ValueError, match="Duplicate"):
-        Dataset("x", [EvalCase("a"), EvalCase("a")])
+        CaseManifest("x", [EvalCase("a"), EvalCase("a")])
 
 
 def _suite(cases):
@@ -271,5 +271,7 @@ def test_documented_evidence_workflow_runs(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     namespace = {}
     for block in re.findall(r"```python\n(.*?)```", source, re.S):
+        if "from datasets import" in block:
+            continue  # exercised with the real optional dependency in interoperability tests
         exec(compile(block, "versioned-evidence.mdx", "exec"), namespace)
     assert namespace["reviewed"].total == 3

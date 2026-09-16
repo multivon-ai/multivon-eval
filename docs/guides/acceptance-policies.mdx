@@ -1,0 +1,100 @@
+---
+title: Require evidence before accepting a release
+description: Set required checks, critical invariants, sample requirements, and task slices.
+---
+
+**Development branch: not included in PyPI 0.17.0.**
+
+An overall pass rate can hide a missing check or an untested slice.
+`AcceptancePolicy` makes these requirements explicit. It returns `accept`,
+`reject`, or `indeterminate`; it does not certify production readiness.
+
+```python
+import json
+from pathlib import Path
+from multivon_eval import (
+    AcceptancePolicy, CheckRequirement, EvalCase, EvalSuite, ExactMatch,
+    SliceRequirement,
+)
+
+suite = EvalSuite("invoice decisions")
+suite.add_cases([
+    EvalCase("approved invoice", "post", case_id="approved", source_id="doc-1"),
+    EvalCase("missing approval", "hold", case_id="hold", source_id="doc-2", tags=["authorization"]),
+])
+suite.add_evaluator(ExactMatch())
+outputs = {"approved invoice": "post", "missing approval": "hold"}
+report = suite.run(outputs.__getitem__, runs=2, verbose=False)
+policy = AcceptancePolicy(
+    checks=(CheckRequirement("exact_match", critical=True),),
+    slices=(SliceRequirement("authorization"),),
+    min_cases=2,
+    min_source_groups=2,
+)
+decision = policy.evaluate(report)
+assert decision.decision == "accept"
+report.save_json("release-report.json")
+Path("acceptance-policy.json").write_text(json.dumps(policy.to_dict(), indent=2))
+Path("decision.json").write_text(json.dumps(decision.to_dict(), indent=2))
+decision.assert_accepted()
+```
+
+These two synthetic fixtures test decision strings only. They do not prove an
+invoice was read correctly or a ledger write was authorized. A production task
+needs independent assertions against application state and representative cases.
+
+## What counts as evidence
+
+Each required check must be present, unskipped, and free of an error marker on
+every selected trial for a case to count as measured. A case passes that check
+only when every selected trial passes it. Repetitions do not increase the
+number of independent cases. `min_source_groups` additionally requires explicit
+source provenance and counts unique source IDs, rather than counting document
+variants as separate sources.
+
+Default requirements are full check coverage, all measured cases passing, no
+case errors, stable case identity, and retained trials. You can choose a lower
+`min_pass_rate`, lower `min_coverage`, or explicit `max_error_rate` when justified
+by the task. Missing data still never becomes a positive measurement.
+
+A critical check rejects on **any observed failure**, even when a repeated-run
+majority passes. Required slices apply the same checks within a named tag and
+can impose stricter thresholds. A missing slice is indeterminate.
+
+| Result | Meaning | Exit code |
+|---|---|---|
+| `accept` | All configured requirements are met by the observed evidence | 0 |
+| `reject` | A measured critical invariant or quality threshold failed | 1 |
+| `indeterminate` | Required evidence is missing, incomplete, or insufficient | 2 |
+
+When both quality failures and missing evidence exist, the result is `reject`
+and the artifact retains both kinds of findings. Either blocks acceptance.
+
+## Retries are part of the policy
+
+The default `trial_scope="all_attempts"` includes failed attempts before a
+successful retry. Recovery does not erase an observed unsafe execution.
+`trial_scope="final_attempt"` is available for workflows where earlier attempts
+can be disregarded under an explicit, justified recovery contract. It does not
+undo earlier side effects.
+
+Legacy reports require explicit `require_trials=False` and
+`require_identity=False` to use their aggregate verdicts. That bypass loses
+per-attempt and identity guarantees; rerun with retained evidence when possible.
+
+## Use the policy in CI
+
+```bash
+multivon-eval gate release-report.json \
+  --policy acceptance-policy.json --output decision.json
+```
+
+The command writes the decision artifact before returning its exit code. Keep
+the policy in version control and choose it before examining proposal results.
+The policy digest in each decision identifies that contract. Store the report
+and decision together.
+
+These are deterministic acceptance rules, not a significance test. Minimum
+sample counts do not establish representative sampling or a precise uncertainty
+bound. Use held-out cases, reviewed labels, and appropriate source-level
+uncertainty analysis alongside the decision.

@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 from collections import Counter
+
 from .result import CaseResult
+from .trials import trial_integrity_issues
 
 
 def pair_cases(baseline: list[CaseResult], proposal: list[CaseResult]):
-    issues: list[str] = []
+    issues = [issue for row in baseline + proposal for issue in trial_integrity_issues(row)]
     if any(not c.case_id or not c.case_digest or c.evidence_error
            for c in baseline + proposal):
         issues.append("Missing case identity or incomplete evidence; legacy prompt pairs are diagnostic only")

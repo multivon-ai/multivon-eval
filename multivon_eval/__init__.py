@@ -37,8 +37,9 @@ from .integrations import (
     LangGraphTracer, OpenAIAgentsTracer,
 )
 from .dataset import load, load_jsonl, load_csv, save_jsonl
-from .datasets import Dataset, case_from_dict, case_to_dict
+from .case_manifest import CaseManifest, case_from_dict, case_to_dict
 from .trials import TrialRecord, regrade
+from .acceptance import AcceptancePolicy, AcceptanceResult, CheckRequirement, SliceRequirement
 from .generate import (
     generate_from_text, generate_from_file, generate_hallucination_pairs,
     generate_contrast_pairs,
@@ -188,7 +189,8 @@ __all__ = [
     "LangSmithTracer", "LangSmithImporter",
     "LangGraphTracer", "OpenAIAgentsTracer",
     "load", "load_jsonl", "load_csv", "save_jsonl",
-    "Dataset", "case_from_dict", "case_to_dict", "TrialRecord", "regrade",
+    "CaseManifest", "case_from_dict", "case_to_dict", "TrialRecord", "regrade",
+    "AcceptancePolicy", "AcceptanceResult", "CheckRequirement", "SliceRequirement",
     # Generation
     "generate_from_text", "generate_from_file", "generate_hallucination_pairs",
     # Generation toolkit (0.13.0): mutators, template grids, contrast pairs

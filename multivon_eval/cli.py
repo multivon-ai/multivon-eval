@@ -1060,6 +1060,13 @@ def main():
                        help="Emit the diff as JSON")
     cmp_p.add_argument("--fail-on-regression", action="store_true",
                        help="Exit 1 if any regressions are detected")
+    cmp_p.add_argument("--allow-legacy-identity", action="store_true",
+                       help="Explicitly trust prompt-only pairing for legacy reports")
+
+    gate_p = sub.add_parser("gate", help="Apply a required-check and task-slice acceptance policy")
+    gate_p.add_argument("report", help="Evaluation report JSON")
+    gate_p.add_argument("--policy", required=True, help="Acceptance policy JSON")
+    gate_p.add_argument("--output", help="Save machine-readable decision before exiting")
 
     # discover — emit machine-readable capability catalog as JSON
     disc_p = sub.add_parser(
@@ -1411,7 +1418,12 @@ def _dispatch(args, parser) -> None:
             *(["--markdown"] if args.markdown else []),
             *(["--json"] if args.json else []),
             *(["--fail-on-regression"] if args.fail_on_regression else []),
+            *(["--allow-legacy-identity"] if args.allow_legacy_identity else []),
         ]))
+    elif args.command == "gate":
+        from .acceptance import _cli as gate_cli
+        sys.exit(gate_cli([args.report, "--policy", args.policy,
+                           *(["--output", args.output] if args.output else [])]))
     elif args.command == "discover":
         sys.exit(cmd_discover(args))
     elif args.command == "doctor":

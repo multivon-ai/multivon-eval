@@ -856,6 +856,7 @@ class EvalSuite:
                     result = EvalResult(
                         evaluator=ev_name, score=0.0, passed=False,
                         reason=f"[judge unavailable: {ju}]",
+                        metadata={"error_kind": "judge_error", "error_detail": str(ju)},
                     )
                 except Exception as ex:
                     if evaluator_err is None:
@@ -863,6 +864,7 @@ class EvalSuite:
                     result = EvalResult(
                         evaluator=ev_name, score=0.0, passed=False,
                         reason=f"[evaluator error: {type(ex).__name__}: {ex}]",
+                        metadata={"error_kind": "evaluator_error", "error_detail": str(ex)},
                     )
                 results.append(result)
             case_results.append(attach_trial(CaseResult(
@@ -1785,7 +1787,7 @@ def _aggregate_runs(case: EvalCase, single_runs: list[CaseResult]) -> CaseResult
         actual_output=single_runs[-1].actual_output,  # last run's output
         results=agg_results,
         latency_ms=avg_latency,
-        tags=case.tags,
+        tags=list(single_runs[0].tags),
         runs=n,
         all_scores=all_scores,
         pass_count=pass_count,

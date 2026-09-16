@@ -8,6 +8,11 @@ and establish a defensible contribution. This document preserves the full scope.
 
 Status: active. No requirement is complete merely because an API or test exists.
 
+Owner constraint added 2026-09-17: do not reinvent established dataset and
+infrastructure tools. See [reuse decisions](reuse-decisions.md). Integrations
+can satisfy requirements; prefer Hugging Face, Inspect, OpenTelemetry and
+Gymnasium at their established boundaries.
+
 ## Requirements and completion evidence
 
 | ID | Deliverable | Evidence needed | Status |
@@ -15,7 +20,7 @@ Status: active. No requirement is complete merely because an API or test exists.
 | R01 | Versioned cases/datasets: stable IDs, content revisions, source groups, split provenance | Reordering, duplicate inputs, changed contexts/labels, JSON round trips, split leakage and comparison compatibility tested; migration demonstrated | In progress: case/dataset identities, group splits, strict comparison pairing implemented; full grader/run compatibility remains |
 | R02 | Complete immutable trial evidence and regrading | All outputs, traces, grader results, retries/errors, effective requests, usage retained across sync/async/parallel paths; saved output regrading makes no target calls | In progress: per-run/retry snapshots and regrading implemented; provider requests, usage, interrupted attempts and execution configuration remain |
 | R03 | Resumable execution and resource controls | Kill/restart experiment preserves completed work; checkpoint compatibility, cancellation, bounded concurrency, deadlines and budget accounting; explicit policy for ambiguous side effects | Pending |
-| R04 | Acceptance policies | Required-check coverage, critical invariants, per-slice thresholds, sample requirements, quality/error/indeterminate distinctions and machine-readable decisions verified | Pending |
+| R04 | Acceptance policies | Required-check coverage, critical invariants, per-slice thresholds, sample requirements, quality/error/indeterminate distinctions and machine-readable decisions verified | In progress: policy/CLI and failure-path tests implemented; industrial acceptance experiment remains |
 | R05 | Review and calibration | Label import/export, review disagreements, development-only fitting, held-out evaluation, uncertainty/false-accept reporting and no leakage verified | Pending |
 | R06 | Trace interoperability | OpenTelemetry ingestion/export, documented schema/version handling, actual round trips with supported companion integrations | Pending |
 | R07 | Task/environment/outcome interfaces | Setup/reset/action/observation/cleanup, isolated repeated episodes, real end-state assertions, forbidden side effects, partial failures and recovery cases | Pending |
@@ -81,3 +86,13 @@ experiment or new release has occurred at this checkpoint. Main limitations:
 request/configuration capture, opaque callbacks, full comparison compatibility,
 and real industrial validation remain open. Case IDs are necessary evidence,
 not a moat or a claim of scientific novelty.
+
+2026-09-17 reuse checkpoint: owner explicitly requested reuse of credible
+upstream work. Renamed unreleased Dataset wrapper to CaseManifest; implemented
+a Hugging Face bridge with real Arrow/Parquet and streaming tests. Added
+Inspect-native scorer/sample/log interoperability, including tool messages and
+epoch grouping. Added required-check/slice acceptance policy and CLI with
+three-way decisions and explicit retry scope. These replace planned custom
+dataset/execution infrastructure where upstream behavior fits. Inspect
+kill/restart, complete provider/judge accounting and industrial experiments
+remain required; dependency-level capabilities alone do not complete R03.

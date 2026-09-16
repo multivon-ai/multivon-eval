@@ -7,8 +7,15 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from .case import EvalCase
-from .datasets import (canonical_json, case_from_dict, case_identity,
-                       case_to_dict, digest, trace_from_data, trace_to_data)
+from .case_manifest import (
+    canonical_json,
+    case_from_dict,
+    case_identity,
+    case_to_dict,
+    digest,
+    trace_from_data,
+    trace_to_data,
+)
 
 if TYPE_CHECKING:
     from .result import CaseResult, EvalReport
@@ -85,6 +92,8 @@ def attach_trial(result: CaseResult, snapshot: CaseSnapshot, *,
     result.evidence_error = snapshot.error
     if snapshot.payload is None:
         return result
+    result.case_input = json.loads(snapshot.payload)["input"]
+    result.tags = json.loads(snapshot.payload)["tags"]
     evaluation_snapshot = evaluation_snapshot or snapshot
     if evaluation_snapshot.error:
         result.evidence_error = evaluation_snapshot.error
@@ -110,6 +119,32 @@ def attach_trial(result: CaseResult, snapshot: CaseSnapshot, *,
     except (TypeError, ValueError, AttributeError) as exc:
         result.evidence_error = f"{type(exc).__name__}: {exc}"
     return result
+
+
+def trial_integrity_issues(result: CaseResult) -> list[str]:
+    """Detect detached headers or missing/duplicate recorded execution slots."""
+    if not result.trials:
+        return []
+    trials = [trial.data for trial in result.trials]
+    issues = []
+    if any((t["case_id"], t["case_digest"]) != (result.case_id, result.case_digest)
+           or t["case"]["input"] != result.case_input
+           or t["case"]["tags"] != result.tags for t in trials):
+        issues.append("Case headers do not match retained trial identities")
+    if result.actual_output != trials[-1]["output"]:
+        issues.append("Case output does not match its final retained trial")
+    if all(t["origin"] == "regrade" for t in trials):
+        return issues
+    attempts: dict[int, list[int]] = {}
+    for trial in trials:
+        attempts.setdefault(trial["attempt"], []).append(trial["run_index"])
+    if sorted(attempts) != list(range(1, result.retry_attempts + 2)):
+        issues.append("Retained trial attempts do not match retry history")
+    if any(sorted(indices) != list(range(1, len(indices) + 1)) for indices in attempts.values()):
+        issues.append("Retained trial positions are missing or duplicated")
+    if len(attempts[max(attempts)]) != result.runs:
+        issues.append("Retained final-attempt trial count does not match runs")
+    return issues
 
 
 def regrade(report: EvalReport, suite: EvalSuite) -> EvalReport:

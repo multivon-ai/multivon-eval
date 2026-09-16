@@ -3,7 +3,7 @@ import csv
 import json
 from pathlib import Path
 from .case import EvalCase
-from .datasets import case_from_dict, case_to_dict, canonical_json
+from .case_manifest import case_from_dict, case_to_dict, canonical_json
 
 
 def load_jsonl(path: str) -> list[EvalCase]:

@@ -61,7 +61,7 @@ class EvalCase:
         mutation changes the digest, so runners capture it before execution.
         Callable validation-only reference outputs do not enter this digest.
         """
-        from .datasets import case_identity
+        from .case_manifest import case_identity
         return case_identity(self)
 
     def context_str(self) -> str:

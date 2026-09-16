@@ -1,15 +1,16 @@
-"""Portable case snapshots and versioned, source-separated datasets."""
+"""Small evaluation-case manifests; bulk dataset operations belong upstream."""
 from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Iterable, Mapping
 from dataclasses import fields
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from typing import Any
 
 from .case import AgentStep, EvalCase, ToolCall
 
-DATASET_SCHEMA = "multivon.dataset/v1"
+CASE_MANIFEST_SCHEMA = "multivon.case-manifest/v1"
 
 
 def canonical_json(value: Any) -> str:
@@ -45,14 +46,14 @@ def trace_from_data(data: list[dict] | None) -> list[AgentStep] | None:
     if data is None:
         return None
     if not isinstance(data, list):
-        raise ValueError("agent_trace must be a list")
+        raise TypeError("agent_trace must be a list")
     result = []
     for step in data:
         if not isinstance(step, dict) or set(step) - {"thought", "output", "tool_calls"}:
             raise ValueError("Invalid agent trace step")
         calls = step.get("tool_calls", [])
         if not isinstance(calls, list):
-            raise ValueError("tool_calls must be a list")
+            raise TypeError("tool_calls must be a list")
         tools = []
         for call in calls:
             if (not isinstance(call, dict) or set(call) - {"name", "arguments", "result"}
@@ -83,12 +84,12 @@ def case_to_dict(case: EvalCase, *, include_reference: bool = True) -> dict:
 def case_from_dict(data: dict) -> EvalCase:
     """Parse a portable case without silently discarding unknown fields."""
     if not isinstance(data, dict):
-        raise ValueError("Case must be an object")
+        raise TypeError("Case must be an object")
     unknown = set(data) - {f.name for f in fields(EvalCase)}
     if unknown:
         raise ValueError(f"Unknown case fields: {', '.join(sorted(unknown))}")
     if not isinstance(data.get("input"), str):
-        raise ValueError("Case input must be a string")
+        raise TypeError("Case input must be a string")
     for name in ("expected_output", "reference_output", "case_id", "revision", "source_id"):
         value = data.get(name)
         if value is not None and not isinstance(value, str):
@@ -106,7 +107,7 @@ def case_from_dict(data: dict) -> EvalCase:
         if not isinstance(value, list) or not all(isinstance(x, str) for x in value):
             raise ValueError(f"{name} must be a list of strings")
     if not isinstance(data.get("metadata", {}), dict):
-        raise ValueError("metadata must be an object")
+        raise TypeError("metadata must be an object")
     conversation = data.get("conversation")
     if conversation is not None and (not isinstance(conversation, list) or any(
             not isinstance(m, dict) or not isinstance(m.get("role"), str)
@@ -124,7 +125,7 @@ def case_identity(case: EvalCase) -> tuple[str, str]:
     return explicit_id or f"sha256:{content_digest}", content_digest
 
 
-class Dataset:
+class CaseManifest:
     """An immutable snapshot with named splits and source-group leakage checks.
 
     Explicit IDs are recommended for cases that evolve. Supply source_id for
@@ -134,9 +135,10 @@ class Dataset:
     """
 
     def __init__(self, name: str, cases: Iterable[EvalCase], *,
-                 splits: Mapping[str, Iterable[str]] | None = None):
+                 splits: Mapping[str, Iterable[str]] | None = None,
+                 provenance: Mapping[str, Any] | None = None):
         if not isinstance(name, str) or not name.strip():
-            raise ValueError("Dataset name must be nonempty")
+            raise ValueError("CaseManifest name must be nonempty")
         rows = []
         ids: set[str] = set()
         for case in cases:
@@ -166,9 +168,10 @@ class Dataset:
                     sources[source] = split
         if split_map and set(assigned) != ids:
             raise ValueError("Splits must assign every case exactly once")
-        body = {"schema": DATASET_SCHEMA, "name": name,
+        body = {"schema": CASE_MANIFEST_SCHEMA, "name": name,
                 "cases": sorted(rows, key=lambda row: row["id"]),
-                "splits": {k: sorted(v) for k, v in split_map.items()}}
+                "splits": {k: sorted(v) for k, v in split_map.items()},
+                "provenance": dict(provenance or {})}
         self._snapshot = canonical_json({**body, "digest": digest(body)})
 
     @property
@@ -192,15 +195,15 @@ class Dataset:
         Path(path).write_text(self._snapshot + "\n", encoding="utf-8")
 
     @classmethod
-    def from_dict(cls, data: dict) -> Dataset:
-        if data.get("schema") != DATASET_SCHEMA:
+    def from_dict(cls, data: dict) -> CaseManifest:
+        if data.get("schema") != CASE_MANIFEST_SCHEMA:
             raise ValueError("Unsupported dataset schema")
         result = cls(data["name"], [case_from_dict(r["case"]) for r in data["cases"]],
-                     splits=data["splits"])
+                     splits=data["splits"], provenance=data.get("provenance"))
         if canonical_json(result.manifest) != canonical_json(data):
-            raise ValueError("Dataset manifest digest or contents do not match")
+            raise ValueError("CaseManifest manifest digest or contents do not match")
         return result
 
     @classmethod
-    def load(cls, path: str | Path) -> Dataset:
+    def load(cls, path: str | Path) -> CaseManifest:
         return cls.from_dict(json.loads(Path(path).read_text(encoding="utf-8")))

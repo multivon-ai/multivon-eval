@@ -1,0 +1,56 @@
+# Reuse decisions
+
+2026-09-17 — implementation constraint from the owner: reuse credible projects
+and their knowledge; do not rebuild commodity infrastructure.
+
+The purpose of Multivon is to make task-success evidence useful for release
+decisions. Dataset loading, telemetry transport, model serving, simulators, and
+general workflow scheduling are not differentiators.
+
+| Capability | Upstream foundation | Multivon's boundary | State |
+|---|---|---|---|
+| Dataset loading, Arrow/Parquet, media, Hub revisions, streaming | [Hugging Face Datasets](https://huggingface.co/docs/datasets/en/loading) | Adapt a bounded evaluation selection; validate case identity and source leakage | Bridge tested with Datasets 5.0.1 on Python 3.10/3.12 |
+| Dataset transformation/cache fingerprints | [HF fingerprint semantics](https://huggingface.co/docs/datasets/en/about_cache) | Preserve upstream fingerprint and repository revision; also hash the actual scoring inputs | Implemented in bridge; no new cache engine |
+| Grouped split construction | [scikit-learn GroupShuffleSplit](https://scikit-learn.org/stable/modules/generated/sklearn.model_selection.GroupShuffleSplit.html) | Validate supplied assignments and document group-level leakage; no custom random splitter | Decision made; worked example pending |
+| Durable agent evaluation, provider configuration, model API logs, retry/resume, sandboxing | [Inspect](https://inspect.aisi.org.uk/eval-logs.html) | Make Multivon graders usable in Inspect and import evidence for acceptance decisions | Native runner/log bridge tested with Inspect 0.3.263; kill/restart experiment pending |
+| General log inspection | [Inspect View](https://inspect.aisi.org.uk/log-viewer.html) | Add task/policy-specific views only where existing views are insufficient | Fit assessment pending |
+| Telemetry | [OpenTelemetry GenAI conventions](https://github.com/open-telemetry/semantic-conventions-genai/blob/main/docs/gen-ai/gen-ai-spans.md) | Map to standard spans; preserve schema version and unsupported fields | Adapter pending; conventions marked Development upstream |
+| Environment interaction | [Gymnasium Env](https://gymnasium.farama.org/api/env/) | Adapt reset/step/termination; add independent outcome assertions and evidence | Adapter pending |
+| World-model simulators | Existing Gymnasium environments and specialist simulators | Measure action-conditioned predictions against simulator state and planning outcomes | Experiment design pending |
+
+## Correction to the first foundation checkpoint
+
+The first development commit named a small snapshot wrapper `Dataset`. It is
+now named `CaseManifest` so the API clearly describes its limited role.
+It holds the selected evaluation cases, identities, split assignments and source
+provenance. It does not implement discovery, download, remote storage, streaming,
+joins, transformations, random splitting, or media decoding. Those stay upstream.
+The Hugging Face bridge consumes native Dataset/DatasetDict/IterableDataset
+objects instead of introducing a competing loader or repository protocol.
+
+Content digests and cache fingerprints serve different purposes. Hugging Face
+can assign a random cache fingerprint when a transformation cannot be hashed.
+Therefore an upstream cache key alone does not prove two scoring inputs match.
+The small case digest is retained for that evaluation-specific check.
+
+## Delivery rule for the remaining program
+
+Before implementing a new subsystem, record: the established alternatives,
+the upstream feature used, the actual missing behavior, and a failure test for
+the integration. Use public interfaces and optional dependencies. Preserve
+license/attribution requirements if source code is copied; currently these
+bridges use upstream APIs and original adapter code.
+
+The R01–R17 program remains in scope. Integrations can satisfy a requirement;
+it does not have to be implemented in Multivon's native runner. Do not build a
+second durable scheduler or general dataset platform merely to check a box.
+Test the concrete end-to-end workflows, including errors and missing evidence.
+
+## Novelty critique
+
+Stable IDs, manifests, retained logs, grouped splits and release gates are
+established engineering practices. They improve correctness, but they are not
+a research contribution or defensible moat by themselves. The hypothesis to
+test is the usefulness of independently verified task outcomes, controlled
+failure cases, and their connection to industrial release decisions. Publish
+negative findings and compare against the chosen upstream baseline.

@@ -20,6 +20,20 @@ All notable changes to `multivon-eval`. The format follows [Keep a Changelog](ht
 - Provider request capture and full experiment compatibility remain unfinished;
   trial evidence explicitly records missing instrumentation.
 
+### Interoperability and acceptance
+
+- Name the unreleased snapshot API `CaseManifest`, keeping dataset loading,
+  storage, streaming, transformations and revision pinning in Hugging Face
+  Datasets. Add an optional adapter for native datasets and bounded streams.
+- Add an optional Inspect scorer/dataset/log bridge. Inspect owns execution
+  and native logs; epochs, tool transcripts, errors, skips, sample identity
+  and upstream evidence references are preserved by the adapter.
+- Add `AcceptancePolicy` and `multivon-eval gate`: required-check coverage,
+  critical invariants across trials, named slices, case/source minima, explicit
+  retry scope, and accept/reject/indeterminate decision artifacts.
+- Preserve report-level evidence issues and block incomplete imported logs.
+- Forward `--allow-legacy-identity` through the public CLI entry point.
+
 ### Documentation
 
 - Rewrite the README around a runnable offline example, task success, and CI gates.

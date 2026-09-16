@@ -1,0 +1,95 @@
+---
+title: Use Inspect for execution and logs
+description: Run Multivon graders inside Inspect and apply acceptance policies to native logs.
+---
+
+**Development branch: not included in PyPI 0.17.0.** Tested with Inspect 0.3.263
+and Hugging Face Datasets 5.0.1 on Python 3.10 and 3.12.
+
+Use [Inspect](https://inspect.aisi.org.uk/) when you need its model providers,
+agent solvers, sandboxes, durable evaluation logs, or retry/resume workflow.
+Multivon supplies compatible graders and task-specific acceptance decisions.
+Inspect owns execution; its native log remains the authoritative artifact.
+
+```bash
+pip install -e '.[inspect,datasets]'
+```
+
+This command is for a development checkout. Keep these optional dependencies
+out of small deployments that only need Multivon's native offline runner.
+
+## An offline integration example
+
+```python
+from inspect_ai import Task, eval as inspect_eval
+from inspect_ai.model import ChatMessageAssistant, ModelOutput
+from inspect_ai.solver import solver
+from multivon_eval import (
+    AcceptancePolicy, CaseManifest, CheckRequirement, EvalCase, ExactMatch,
+)
+from multivon_eval.integrations.inspect import (
+    as_inspect_scorer, from_inspect_log, to_inspect_dataset,
+)
+
+@solver
+def fixture_answer():
+    async def solve(state, generate):
+        state.output = ModelOutput.from_content("fixture", "hold")
+        state.messages.append(ChatMessageAssistant(content="hold"))
+        return state
+    return solve
+
+manifest = CaseManifest("authorization fixture", [
+    EvalCase("Missing approval", "hold", case_id="approval-1", source_id="doc-1"),
+])
+task = Task(dataset=to_inspect_dataset(manifest), solver=fixture_answer(),
+            scorer=as_inspect_scorer(ExactMatch()), epochs=2)
+logs = inspect_eval(task, model="mockllm/model", log_dir="inspect-logs",
+                    display="none", log_model_api=True)
+report = from_inspect_log(logs[0])
+decision = AcceptancePolicy((CheckRequirement("exact_match"),)).evaluate(report)
+assert decision.decision == "accept"
+assert len(report.case_results[0].trials) == 2
+```
+
+The fixture performs no provider calls. For a real application, use an Inspect
+solver/agent and model, and define a registered `@task` factory so Inspect can
+reconstruct it for retries. Consult [Inspect's log and retry documentation](https://inspect.aisi.org.uk/eval-logs.html)
+for `eval_retry`, native request logging, and sample preservation. A deliberate
+kill/restart experiment for this bridge remains part of our validation program;
+the example above does not demonstrate crash recovery.
+
+## Evidence mapping
+
+- Case IDs, full definitions, and manifest digests become native sample metadata.
+- Text context is sent as a system message; conversation messages precede the
+  current input. Multimodal content needs explicit native task configuration.
+- Graders receive the actual native conversation and a projection of assistant
+  tool calls and tool responses. An authored static trace cannot stand in for
+  the actual execution trace.
+- Skip values remain null in Inspect scores. Grader exceptions remain sample
+  errors, rather than becoming failed quality judgments.
+- Imported epochs are grouped by case. Each trial records the native log
+  location, sample identity, sample digest, and model usage.
+- Incomplete upstream runs carry report-level evidence issues and cannot pass
+  a Multivon acceptance policy.
+
+Use [Inspect View](https://inspect.aisi.org.uk/log-viewer.html) for the full native
+conversation and events. The adapter does not implement another generic log UI.
+
+## Current boundaries
+
+The importer requires samples and scorer metadata produced by this bridge.
+Arbitrary native scorers need a deliberate score mapping; their numbers are not
+silently treated as compatible Multivon verdicts. Native multimodal content and
+event timing remain in Inspect's log; the text/tool projection is not lossless.
+
+Multivon LLM graders still use their configured judge providers. Those calls
+are **not automatically covered by Inspect model-call logging or its model
+cost limits**. Use deterministic graders until you explicitly account for judge
+requests and budgets. Imported sample errors are marked as infrastructure
+errors without claiming to distinguish model errors from grader errors.
+
+No average Inspect metric is registered by the scorer bridge: aggregating
+nullable scores without required-check coverage would hide missing evidence.
+Apply the [acceptance policy](/guides/acceptance-policies) after importing a log.

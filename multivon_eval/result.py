@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, TYPE_CHECKING
 from .trials import TrialRecord
-from .datasets import trace_from_data, trace_to_data
+from .case_manifest import trace_from_data, trace_to_data
 
 if TYPE_CHECKING:
     from .passk import PassKResult
@@ -326,6 +326,7 @@ class EvalReport:
     # Drives the saturation-monitor messaging: a capability suite at 100%
     # gets a graduation nudge; a regression suite inverts the warning.
     purpose: str = ""
+    evidence_issues: list[str] = field(default_factory=list)
 
     @property
     def total(self) -> int:
@@ -852,6 +853,7 @@ class EvalReport:
             judge_reliability=summary.get("judge_reliability"),
             costs=Costs.from_dict(summary["costs"]) if summary.get("costs") is not None else None,
             suite_lock=SuiteLock.from_dict(data["suite_lock"]) if data.get("suite_lock") else None,
+            evidence_issues=list(data.get("evidence_issues", [])),
         )
 
     def to_json(self) -> str:
@@ -901,6 +903,7 @@ class EvalReport:
         return json.dumps(
             {
                 "schema": "multivon.report/v2",
+                "evidence_issues": self.evidence_issues,
                 "suite": self.suite_name,
                 "model": self.model_id,
                 "suite_lock": self.suite_lock.to_dict() if self.suite_lock is not None else None,
