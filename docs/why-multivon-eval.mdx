@@ -1,118 +1,91 @@
 ---
 title: Why multivon-eval
-description: Head-to-head numbers vs DeepEval, RAGAS, and Promptfoo, with reproducible benchmarks you can rerun.
+description: Where the library fits, what the benchmark evidence shows, and what remains unproven.
 ---
 
-The eval-framework category has converged on a small set of primitives, so feature checkmarks won't separate the options. The question worth asking is: if I run the same task with my judge, do the numbers come out better?
+Use multivon-eval when you want a Python suite that can run locally, produce
+inspectable reports, and block a release when required evidence is missing.
+The goal is to determine whether a system change improves a specific task
+without unacceptable regressions. A large evaluator catalog alone cannot
+answer that question.
 
-Below is what we can show from the public OSS repo. Every number links to a JSON file you can rerun.
+## What is available today
 
-## Hallucination detection — HaluEval QA, N=100, human labels
+- Deterministic checks, LLM judges, and agent/conversation evaluators in one suite.
+- Separate quality failures, infrastructure errors, and skipped measurements.
+- Repeated runs, confidence intervals, and comparisons against saved reports.
+- Local HTML/JSON/JUnit artifacts, suite snapshots, and prompt-change tracking.
+- Bootstrap proposals to help start a suite, with thresholds and generated cases
+  that still need review against task-specific examples.
 
-All runs use `claude-haiku-4-5-20251001` as the judge ([source](https://github.com/multivon-ai/multivon-eval/blob/main/benchmarks/results/hallucination.json)).
+Start with [task success](/guides/task-success), then use the
+[offline quickstart](/quickstart). For behavior changes in the current release,
+read the [0.17.0 migration guide](/guides/migration-0-17).
 
-| Evaluator | Precision | False positives | F1 |
+## Historical evidence: hallucination detection
+
+These are maintainer-run measurements from earlier versions, not an independent
+ranking or a benchmark of 0.17.0. The new verdict parser and removal of refusal
+shortcuts can change results; the live benchmarks have not been rerun for this
+release.
+
+The QA slice contains 100 outputs from 50 source examples. HaluEval's task
+subsets pair reference outputs with generated hallucinations; they are not
+all independently human-annotated examples. See the
+[upstream dataset construction](https://github.com/RUCAIBox/HaluEval#data-generation).
+
+| Configuration | Precision | False positives | F1 |
 |---|---:|---:|---:|
-| **multivon-eval (QAG)**[^indist] | **0.788 [0.68–0.87]** | **11** | **0.804 [0.71–0.88]** |
-| DeepEval (GPT-4o-mini)  | 0.456 [0.36–0.56] | 49 | 0.586 [0.48–0.68] |
-| Simple LLM judge (1-10) | 0.617 [0.51–0.71] | 31 | 0.763 [0.66–0.84] |
-| Keyword overlap          | 0.605 [0.45–0.74] | 15 | 0.523 [0.41–0.63] |
+| multivon-eval QAG / Haiku | 0.788 | 11 | 0.804 |
+| DeepEval / GPT-4o-mini | 0.456 | 49 | 0.586 |
+| Numeric judge / Haiku | 0.617 | 31 | 0.763 |
+| Keyword overlap | 0.605 | 15 | 0.523 |
 
-[^indist]: In-distribution number — HaluEval-QA, the same dataset whose distribution thresholds are tuned against. See the held-out cross-distribution result in the next section.
+[Stored results](https://github.com/multivon-ai/multivon-eval/blob/main/benchmarks/results/hallucination.json).
+Multivon's threshold was selected using this same QA slice. Different judge
+models also confound the DeepEval comparison. These measurements describe
+these configurations; they do not establish general QAG or framework superiority.
 
-**What this means.** Binary yes/no questions (QAG) are a more reliable scoring signal than numeric rubrics. The simple 1-10 judge ships ~3× more false positives at the same precision — every false positive in a CI gate is wasted developer time.
+## Cross-task result: HaluEval summarization
 
-## Cross-distribution held-out F1 — HaluEval-Sum, N=60
+The QA-selected Hallucination threshold of 0.55 was applied to 60 outputs
+from 30 summarization source examples without retuning on that slice:
 
-The in-distribution F1 above is the headline; the held-out number is the answer to *"did you tune thresholds on the data you're testing against?"* The Hallucination evaluator's threshold is calibrated on HaluEval-QA (threshold `0.55` for `claude-haiku-4-5`). We then test it against a different task family — HaluEval-Sum (summarization hallucination) — without changing anything else.
+| F1 | Precision | Recall | TP | FP | FN | TN |
+|---:|---:|---:|---:|---:|---:|---:|
+| 0.830 | 0.957 | 0.733 | 22 | 1 | 8 | 29 |
 
-| Setup | F1 | Precision | Recall | TP | FP | FN | TN |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| **Hallucination, calibrated threshold 0.55, held-out HaluEval-Sum** | **0.830 [0.70–0.92]** | **0.957** | **0.733** | 22 | 1 | 8 | 29 |
+[Stored result](https://github.com/multivon-ai/multivon-eval/blob/main/benchmarks/results/hallucination_held_out.json).
+This is evidence of transfer to one other task slice. It does not establish
+performance on customer data or rule out exposure of a judge model to public
+benchmark data during training.
 
-[Source — `benchmarks/results/hallucination_held_out.json`](https://github.com/multivon-ai/multivon-eval/blob/main/benchmarks/results/hallucination_held_out.json).
+The historical F1 interval [0.70–0.92] uses a case-level bootstrap reconstructed
+from aggregate counts. It does not account for shared source documents,
+threshold selection, judge variation, or parser changes. A new comparison
+should retain paired predictions and resample at the source-example level.
 
-A calibrated evaluator that holds its precision (0.957) when moved to a different task distribution is the actual product claim. Anyone can score well on the validation set they tuned against.
+## Costs and repeatability
 
-## Three-framework agreement — κ=0.03
+A stored run of 50 cases with four LLM evaluators reported $0.00127 per case
+and 17.1 judge calls per case. This is a historical configuration-specific
+estimate, not a current price or latency promise.
+[Run evidence](https://github.com/multivon-ai/multivon-eval/blob/main/benchmarks/results/cost_latency.json).
 
-We ran multivon-eval, DeepEval, and RAGAS on the same 100 HaluEval-QA cases. Pairwise Cohen's κ across all three pairings: **κ=0.03**, essentially independent. Despite the marketing copy, the frameworks are not measuring the same thing on the same task. Pick the one whose calibration trail and held-out generalization you can audit.
+A cache reduces repeated calls for identical requests; it does not measure
+independent judge reliability. In 0.17.0 the explicit judge reliability sample
+bypasses the response cache. Native Anthropic/OpenAI paths also have a
+[temperature forwarding limitation](/evaluators/llm-judge#configuration).
 
-## The 0.9.4→0.9.7 self-correction sequence
+## What remains to be demonstrated
 
-A framework that publishes numbers has to publish corrections. The four-release sequence below is the discipline we hold ourselves to:
+We do not currently establish state-of-the-art evaluator accuracy. A credible
+claim needs independent held-out tasks, reviewed labels, matched judge and
+budget comparisons, repeated measurements, and error/skip coverage alongside
+quality metrics. Agent task completion also needs evidence of the resulting
+state, not only a convincing transcript.
 
-- **0.9.5** caught that 0.9.4's *"held-out HaluEval-Sum F1 0.783"* was actually in-distribution — Faithfulness's threshold is calibrated on HaluEval-Sum, so testing it back against HaluEval-Sum is leakage. Relabeled with a correction note same-day. [CHANGELOG 0.9.5](https://github.com/multivon-ai/multivon-eval/blob/main/CHANGELOG.md).
-- **0.9.6** noticed the eval_suite.py emitted by `bootstrap` called `suite.run(cases=...)` (non-existent kwarg) and `report.print_summary()` (non-existent method) — both fixed, regression test added.
-- **0.9.7** caught that 0.9.5's held-out test was reporting threshold `0.7` in stderr but the calibrated value for Haiku on Hallucination is `0.55`. Same dataset, same model — different F1 (0.852 vs 0.830). The threshold-vs-default gotcha is now an explicit reproducibility note in [`benchmarks/README.md`](https://github.com/multivon-ai/multivon-eval/blob/main/benchmarks/README.md).
-- **0.9.8** propagated the corrected numbers and the κ=0.03 finding to the README.
-
-Same-day correction with a public trail is the standard we try to hold.
-
-## Multi-judge agreement — HaluEval QA, N=50, temp=0
-
-Different judges disagree more than you'd expect. The calibrated-thresholds layer matters precisely because the underlying judge is non-uniform. [Source](https://github.com/multivon-ai/multivon-eval/blob/main/benchmarks/results/multi_judge_agreement.json).
-
-| Judge | Accuracy vs human | Precision | F1 |
-|---|---:|---:|---:|
-| **gemini-2.5-flash**  | **0.860 [0.74–0.93]** | **0.950 [0.83–0.99]** | **0.844 [0.74–0.91]** |
-| gpt-4o-mini           | 0.820 [0.69–0.90] | 0.900 [0.77–0.96] | 0.800 [0.69–0.88] |
-| claude-haiku-4-5      | 0.800 [0.67–0.89] | 0.895 [0.76–0.96] | 0.773 [0.65–0.86] |
-| gpt-4o                | 0.780 [0.65–0.87] | 0.792 [0.65–0.89] | 0.776 [0.65–0.86] |
-| claude-sonnet-4-6     | 0.720 [0.58–0.83] | 0.720 [0.58–0.83] | 0.720 [0.58–0.83] |
-
-Pairwise Cohen's κ: 0.60–0.80 — substantial agreement on most pairs. `gemini-2.5-flash` leads every metric in this run; `claude-haiku-4-5` and `gpt-4o-mini` are close seconds with cheaper tokens. Pick by your cost / latency / sovereignty constraints — calibrated thresholds ship for each. claude-sonnet-4-6 is a useful diversity judge in multi-judge runs, not a default.
-
-## Cost — 50 cases × 4 LLM-judge evaluators
-
-`workers=1` (sequential), real Anthropic API. [Source](https://github.com/multivon-ai/multivon-eval/blob/main/benchmarks/results/cost_latency.json).
-
-| Metric | Value |
-|---|---|
-| Cost per case (4 evaluators) | **$0.00127** |
-| Judge calls per case | 17.1 |
-| Wall-clock for 50 cases | 15 min |
-| Linear extrapolation to 5,000 cases | **$6.35** |
-
-QAG generates multiple yes/no questions per criterion then verifies each — so 4 evaluators ≈ 17 LLM calls. Trade-off is fully auditable scoring (every question / answer is in the report) for a few cents per case.
-
-## Cache speedup on re-runs
-
-Same suite, sequential, with `set_cache(JudgeCache(...))`:
-
-| Run | Wall-clock | Judge calls |
-|---|---|---|
-| Rep 1 (cold) | 2.9 s | 4 |
-| Rep 2 (hot)  | 0 ms | 0 |
-
-Speedup: **2,271×** — read that as paid API calls vs local cache hits (4 → 0), expected by construction, not a model-quality claim. CI re-runs (same git SHA + same dataset) converge to zero LLM calls. `set_cache()` auto-enables caching for every JudgeConfig — no need to thread `cache=True` through every evaluator.
-
-## Where competitors lead
-
-We're not better at everything.
-
-- If you want the widest evaluator catalog, DeepEval has more pre-built metrics for niche tasks (e.g. summarization-specific G-Eval variants).
-- If you want a vendor-managed cloud UI: DeepEval (Confident AI) and Promptfoo Cloud both ship hosted dashboards. We're SDK-first, and the HTML viewer is local-only.
-- For pure prompt-comparison testing — "which prompt template wins on these N cases" — Promptfoo is purpose-built for that single job.
-
-## What multivon-eval is built for
-
-- **Trusting the score.** QAG plus calibrated thresholds plus multi-run flakiness detection means a single number from `pass_rate` survives scrutiny.
-- **CI/CD on every PR.** `multivon-eval init --ci github` ships the workflow, with distinct exit codes for quality vs infra failures.
-- **Regulated AI.** Hash-chained NDJSON audit logs with Article-level EU AI Act / NIST AI RMF / HIPAA mappings. `audit-package` produces an auditor-attachable zip; [download a real sample (5.5 KB)](https://github.com/multivon-ai/multivon-eval/raw/main/docs/sample-audit-package.zip).
-- **Agents.** Tool-call accuracy, trajectory efficiency, and step faithfulness, framework-agnostic via `AgentTracer`.
-- **Multi-judge setups.** Ships with `anthropic`, `openai`, `google`, and `litellm` providers, plus any OpenAI-compatible endpoint (Ollama, vLLM, LM Studio, Azure, Bedrock via LiteLLM). Threshold packs are calibrated per (judge × evaluator), so you can swap providers without re-tuning.
-
-## Reproduce everything
-
-```bash
-git clone https://github.com/multivon-ai/multivon-eval
-cd multivon-eval/benchmarks
-pip install -e .. deepeval python-dotenv
-export ANTHROPIC_API_KEY=...
-python run_all_benchmarks.py
-```
-
-All datasets are public. Judge model versions are pinned. If a number on this page diverges from what you measure, [open an issue](https://github.com/multivon-ai/multivon-eval/issues) — we'll fix it.
-
-> Comparison numbers reflect each project's public releases as of July 2026. All CIs are Wilson 95% on precision/recall and 1000-resample bootstrap 95% on F1 (seed `20260603`).
+Use the library with your existing tracing or observability system. Compare
+alternatives on your own tasks, operational needs, and cost budget. The
+[benchmark guide](https://github.com/multivon-ai/multivon-eval/blob/main/benchmarks/README.md)
+contains scripts, historical results, and methodological limitations.

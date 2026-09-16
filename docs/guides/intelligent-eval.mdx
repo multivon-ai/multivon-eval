@@ -61,7 +61,8 @@ def auto_evaluators(
     include_pii: bool = False,
     pii_jurisdiction: str = "all",
     include_safety: bool = False,
-) -> list[EvaluatorRecommendation]
+) -> list[EvaluatorRecommendation]:
+    ...
 ```
 
 - `task_type="auto"` infers from case shape. Pin explicitly when the shape is ambiguous (e.g., a case with both `context` and `expected_output` could be RAG or fact-check).
@@ -132,7 +133,8 @@ def generate_adversarial_cases(
     n: int = 5,
     *,
     judge: JudgeConfig | None = None,
-) -> list[EvalCase]
+) -> list[EvalCase]:
+    ...
 ```
 
 Each returned case carries:
@@ -187,9 +189,9 @@ for r in reports:
 
 ### What this catches
 
-Single-shot validation can't distinguish a hard case from judge noise on one observation. With N≥3 shots the failure rate has enough granularity for the band to filter on real signal.
+Repeated shots give a coarse empirical failure rate; three shots do not establish statistical reliability. Results depend on both the baseline model and grader. Judge caching can reuse verdicts for identical outputs; disable it when measuring independent judge variation.
 
-**Validated live**: +0.80 mean failure-rate separation between weak (always-confabulate) and strong (always-refuse) baselines on `ungrounded_claim` cases. Judge noise is visible at the per-shot level as `[1.00, 0.00, 1.00]` score arrays and gets filtered out by the band.
+The earlier +0.80 separation claim used an always-refuse baseline and a refusal shortcut that has since been removed from the grounding evaluators. It is not evidence for 0.17.0. Revalidate with task-appropriate good and bad outputs, including mixed refusals and unsupported factual claims.
 
 ### Signature
 
@@ -201,7 +203,8 @@ def validate_adversarial_cases(
     n_shots: int = 3,
     hardness_band: tuple[float, float] = (0.5, 1.0),
     judge: JudgeConfig | None = None,
-) -> tuple[list[EvalCase], list[HardnessReport]]
+) -> tuple[list[EvalCase], list[HardnessReport]]:
+    ...
 ```
 
 - `n_shots` — how many times to sample baseline + evaluator per case. Default 3 dampens judge noise; setting to 1 reproduces single-shot behavior (NOT recommended).

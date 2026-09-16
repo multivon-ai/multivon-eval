@@ -44,7 +44,7 @@
         "groups": [
           {
             "group": "Getting Started",
-            "pages": ["introduction", "quickstart", "why-multivon-eval"]
+            "pages": ["introduction", "quickstart", "guides/task-success", "why-multivon-eval"]
           },
           {
             "group": "Evaluators",

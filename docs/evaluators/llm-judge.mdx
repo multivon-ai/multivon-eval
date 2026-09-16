@@ -5,7 +5,7 @@ description: QAG-based scoring for quality you can't measure with strings.
 
 LLM judge evaluators use a secondary model to assess output quality. multivon-eval uses **QAG scoring** (Question-Answer Generation) — generating binary yes/no questions about the output instead of asking for a numeric 1-10 rating.
 
-**Why QAG?** Binary questions are easier for LLMs to get right, fully auditable (you see which questions passed), and cheaper (shorter prompts).
+**Why QAG?** Binary questions make the grading criteria inspectable and avoid numeric scale ambiguity. They can require several model calls per output. Accuracy and cost depend on the task, generated questions, and judge; QAG is not a general accuracy guarantee.
 
 ## Configuration
 
@@ -14,7 +14,7 @@ LLM judge evaluators use a secondary model to assess output quality. multivon-ev
 The judge model is fully decoupled from your pipeline model. Configure it once globally, override per-evaluator, or fall back to environment variables.
 
 ```python
-from multivon_eval import configure, JudgeConfig
+from multivon_eval import configure, JudgeConfig, Faithfulness
 
 # Set globally at startup — all evaluators use this unless overridden
 configure(JudgeConfig(provider="openai", model="gpt-4o-mini"))
@@ -38,10 +38,10 @@ export JUDGE_MODEL=claude-haiku-4-5
 
 | JudgeConfig field | Default | Description |
 |-------------------|---------|-------------|
-| `provider` | `"anthropic"` | `"anthropic"` or `"openai"` |
+| `provider` | `"anthropic"` | `anthropic`, `openai`, `google`, `ollama`, or `litellm` |
 | `model` | `"claude-haiku-4-5"` | Model name for the chosen provider |
 | `base_url` | `""` | Custom endpoint for local/self-hosted servers (see below) |
-| `temperature` | `None` = inherit, effective `0.0` | Sampling temperature (0 = deterministic) |
+| `temperature` | `None` = inherit, effective `0.0` | Configured sampling temperature; see transport limitation below |
 | `max_tokens` | `None` = inherit, effective `1024` | Token budget for judge responses |
 | `timeout` | `None` = inherit, effective `30` | Request timeout in seconds |
 
@@ -58,10 +58,19 @@ export JUDGE_MODEL=claude-haiku-4-5
   running gpt-5.5 as the judge. The per-call ceiling is now floored at 2048
   tokens when the judge model is reasoning-tier (`gpt-5`/`o1`/`o3`/`o4`
   prefixes). Every other judge is unaffected — its cap passes through
-  untouched, and an explicit larger `max_tokens` is never lowered.
+  untouched. Evaluator-specific per-call caps take precedence over the global
+  `JudgeConfig.max_tokens`; the reasoning-model floor applies to that per-call cap.
 </Note>
 
 The model under test and the judge model can be different providers.
+
+<Warning>
+In 0.17.0 the native Anthropic and OpenAI text-judge request paths do not forward
+`JudgeConfig.temperature`; Ollama uses the OpenAI path and shares this limitation.
+Google and LiteLLM do forward it. The resolved configuration is therefore not
+a complete record of effective sampling behavior. Temperature zero also does
+not guarantee identical outputs. `timeout` is forwarded to supported clients.
+</Warning>
 
 ### Local and self-hosted models
 
@@ -94,14 +103,21 @@ configure(JudgeConfig(
 
 ### Calibrated thresholds
 
-`Faithfulness`, `Hallucination`, and `Relevance` automatically apply the optimal threshold for the configured judge model, derived from benchmarks against human-labeled datasets. You don't need to tune this manually.
+`Faithfulness`, `Hallucination`, and `Relevance` look up historical threshold
+packs for the configured judge. These are starting points, not proof of
+calibration on your task. HaluEval task subsets include generated hallucinations;
+see the [benchmark methodology](https://github.com/multivon-ai/multivon-eval/blob/main/benchmarks/README.md).
+Validate thresholds against separate, human-reviewed development and test sets
+for your domain, especially after changing the judge or parser.
 
 | Judge | Hallucination | Faithfulness | Relevance |
 |-------|:-------------:|:------------:|:---------:|
 | `claude-haiku-4-5-20251001` | 0.55 | 0.90 | 0.30 |
 | `claude-sonnet-4-6`         | 0.30 | 0.90 | 0.30 |
 | `gpt-4o-mini`               | 0.30 | 0.90 | 0.30 |
-| Other models                | 0.70 | 0.70 | 0.70 |
+| Models without a calibration entry | 0.70 | 0.70 | 0.70 |
+
+This table is an excerpt; `threshold_table()` lists all shipped entries.
 
 Pass `threshold=` explicitly to override:
 
@@ -120,7 +136,7 @@ print(threshold_table())
 
 New in 0.16.0. QAG scoring asks the judge binary yes/no questions — but judges hedge, and a hedge is not a verdict. The parser now has three outcomes per question:
 
-- A reply starting with "yes"/"no", or containing exactly one unambiguous verdict word, parses as before — the calibrated thresholds above were fit under these semantics, and they are unchanged.
+- In 0.17.0, a leading "yes"/"no" verdict or a complete explicit phrase such as "The answer is yes." parses as a verdict. Mentions inside explanations ("I cannot say yes") and "yes or no" are UNKNOWN. Historical threshold measurements predate this stricter parser and need revalidation.
 - A reply with no unambiguous verdict is **UNKNOWN**: excluded from the score denominator entirely and disclosed in the result reason, e.g. `1 of 3 question(s) UNKNOWN — excluded from score denominator`. An UNKNOWN never counts for or against the model.
 - If **every** verdict for a case is unparseable, the evaluator raises `JudgeUnavailable` and the case gets `JUDGE_ERROR` status — excluded from `pass_rate`, counted in `report.errors`.
 
@@ -128,7 +144,7 @@ One honest sentence about the past: before 0.16.0 the parser fell back to "does 
 
 ### Error budget: `max_error_rate`
 
-New in 0.16.0. `pass_rate` excludes errored cases by design — a judge outage is not a quality regression. The blind spot: 90 judge errors plus 10 passes is a 100% pass rate, and a `fail_threshold` gate would wave it through. `max_error_rate` closes it:
+`pass_rate` excludes errored cases by design — a judge outage is not a quality regression. Since 0.17.0, an active `fail_threshold` gate rejects any error by default. An explicit `max_error_rate` permits a chosen error budget:
 
 ```python
 from multivon_eval import EvalSuite, EvalCase, EvalGateFailure
@@ -153,7 +169,7 @@ except EvalGateFailure as e:
 # before trusting this gate.
 ```
 
-Available on `suite.run`, `run_async`, and `run_on_cases`. With `max_error_rate` unset, a `fail_threshold` gate still warns loudly on stderr when the error rate reaches 10% — the same threshold `view --dir` flags. `report.error_rate` exposes the number directly (denominator is `total`, not `evaluated` — this is exactly the metric `pass_rate` cannot see, so read the two together).
+Available on `suite.run`, `run_async`, and `run_on_cases`. With `max_error_rate` unset, an active `fail_threshold` gate uses a zero-error budget. Empty and skipped coverage also make the gate indeterminate (exit code 2). A completed quality failure exits 1. Runs with neither gate configured still return a report for inspection. `report.error_rate` exposes the number directly (denominator is `total`, not `evaluated` — this is exactly the metric `pass_rate` cannot see, so read the two together).
 
 ## Faithfulness
 

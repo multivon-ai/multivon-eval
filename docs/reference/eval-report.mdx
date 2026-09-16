@@ -5,16 +5,16 @@ description: Programmatic interface for the object returned by suite.run(). Ever
 
 `EvalReport` is the object returned by `EvalSuite.run()`. It exposes the run's
 results both as flat attributes (the common readouts) and as derived methods
-(breakdowns, exports, comparisons). This page is the complete public API — if
-something isn't on this page, treat it as internal and don't rely on it.
+(breakdowns, exports, comparisons). The reference below covers the main public
+attributes and methods in 0.17.0.
 
 ```python
 report: EvalReport = suite.run(my_model_fn)
 print(report.pass_rate)                  # float, 0.0–1.0
 print(report.pass_rate_ci())             # (lo, hi) Wilson 95% CI
-print(report.costs.by_model[0].cost_usd) # USD spent on the judge
+print(report.costs.total_cost_usd if report.costs else None)  # estimated judge USD
 for case in report.failed_cases:         # CaseResult objects
-    print(case.input, case.score)
+    print(case.case_input, case.score)
 ```
 
 ## Quick reference
@@ -24,15 +24,15 @@ for case in report.failed_cases:         # CaseResult objects
 | `suite_name` | `str` | Suite name passed to `EvalSuite(name)`. |
 | `model_id` | `str` | Identifier of the model under test (set automatically when known). |
 | `total` | `int` | Total cases run. |
-| `evaluated` | `int` | Cases that produced at least one evaluator result. |
-| `passed` | `int` | Cases where every evaluator passed. |
-| `failed` | `int` | Cases where at least one evaluator failed. |
+| `evaluated` | `int` | Cases with status `PASSED` or `FAILED_QUALITY`; errors and all-skipped cases excluded. |
+| `passed` | `int` | Completed cases where every applicable evaluator passed. |
+| `failed` | `int` | Completed cases where at least one applicable evaluator failed. |
 | `errors` | `int` | Cases that errored before scoring (model or judge crash). |
 | `skipped` | `int` | Cases skipped because the case shape didn't fit. |
 | `pass_rate` | `float` | `passed / evaluated` — errors and skips excluded; read with `error_rate`. |
 | `error_rate` | `float` | `errors / total` — fraction of all cases that errored; the metric `pass_rate` is blind to by design, so read the two together. |
 | `pass_rate_ci(confidence=0.95)` | `tuple[float, float]` | Wilson CI on the pass rate. |
-| `avg_score` | `float` | Mean score across all cases. |
+| `avg_score` | `float` | Mean score across evaluated cases. |
 | `avg_score_ci(confidence=0.95)` | `tuple[float, float]` | CI on the mean score. |
 | `score_percentiles(percentiles=[10,50,90])` | `dict[str,float]` | `{"p10": …, "p50": …, "p90": …}`. |
 | `case_results` | `list[CaseResult]` | The per-case results — see below. |
@@ -45,7 +45,7 @@ for case in report.failed_cases:         # CaseResult objects
 | `passed_by_tag()` | `dict[str,float]` | Same shape, grouped by case tag. |
 | `scores_by_tag()` | `dict[str,float]` | Average score per tag. |
 | `count_by_tag()` | `dict[str,int]` | Case count per tag. |
-| `costs` | `Costs` | Token / call / USD totals. See below. |
+| `costs` | `Costs \| None` | Recorded judge token / call / estimated USD totals. See below. |
 | `pass_at_k(k, confidence=0.95)` | `PassKResult` | pass@k over evaluated cases — "succeeds at least once in k tries". Unbiased combinatorial estimator with a cluster-bootstrap CI; honest UNKNOWN (`value is None`) when `k > runs_per_case`. |
 | `pass_hat_k(k, confidence=0.95)` | `PassKResult` | pass^k over evaluated cases — "succeeds all k tries". Exact hypergeometric estimator (not the upward-biased plug-in) with a cluster-bootstrap CI; UNKNOWN when `k > runs_per_case`. |
 | `assert_pass_hat_k(k, min_ci_low)` | `None` | Raise `EvalGateFailure` when the pass^k CI lower bound falls below `min_ci_low` — or when pass^k is UNKNOWN. CI-friendly gate. |
@@ -58,7 +58,7 @@ for case in report.failed_cases:         # CaseResult objects
 | `judge_reliability` | `float \| None` | Judge agreement rate when `JudgeConfig.reliability_check` is enabled. |
 | `runs_per_case` | `int` | How many times each case was rerun (from `suite.run(runs=N)`). |
 | `errors_by_kind` | `dict[str,int]` | `{ "model_error": 2, "judge_error": 1, ... }`. |
-| `suite_lock` | `SuiteLock` | Hash chain over evaluators + cases. Use for reproducibility. |
+| `suite_lock` | `SuiteLock \| None` | Suite configuration snapshot when attached; not a complete provider request record. |
 | `compare(other)` | `Any` | Diff vs another `EvalReport`. Use for regression detection. |
 | `assert_budget(**limits)` | `None` | Raise if total cost / latency exceeds a limit. CI-friendly. |
 | `save_json(path)` | `None` | Write the report as JSON. |
@@ -69,6 +69,14 @@ for case in report.failed_cases:         # CaseResult objects
 | `to_html()` | `str` | Same as `save_html` but returns the string. |
 | `to_junit_xml()` | `str` | Same as `save_junit_xml` but returns the string. |
 | `from_dict(data)` | classmethod | Re-hydrate from a `to_json()` payload. |
+
+Quality aggregates exclude errored and skipped cases. Per-evaluator aggregates
+also exclude that evaluator’s skips. Tag quality aggregates use evaluated cases,
+while `count_by_tag()` counts all cases. Read the counts alongside the averages.
+
+A case with one measured check and another skipped check still counts as evaluated.
+The built-in gate blocks wholly skipped cases; enforce per-check coverage separately
+when every evaluator is required.
 
 ## Common gotchas
 
@@ -115,16 +123,16 @@ The objects in `report.case_results`.
 | `case_input` | `str` | The case's input string. |
 | `actual_output` | `str` | What the model produced. |
 | `results` | `list[EvalResult]` | One per evaluator that ran on this case. |
-| `evaluators` | alias of `results` | Same list — older code uses this name. |
-| `passed` | `bool` | All evaluators on this case passed. |
-| `score` | `float` | Average of evaluator scores on this case. |
+| `status` | `EvalStatus` | `PASSED`, `FAILED_QUALITY`, `MODEL_ERROR`, `JUDGE_ERROR`, `EVALUATOR_ERROR`, `TIMEOUT` (reserved), or `SKIPPED`. |
+| `passed` | `bool` | Every applicable evaluator passed, with no case error. |
+| `score` | `float` | Average of applicable evaluator scores; zero placeholder when none apply. Check `status` before interpreting it. |
 | `latency_ms` | `float` | Wall time of the model call only. |
 | `tags` | `list[str]` | Case tags inherited from `EvalCase.tags`. |
 | `model_error` | `str \| None` | Set when the model function raised. |
 | `judge_error` | `str \| None` | Set when a judge call raised. |
 | `evaluator_error` | `str \| None` | Set when an evaluator raised. |
-| `skipped` | `bool` | Case was skipped end-to-end. |
-| `agent_trace` | `list[AgentStep]` | Populated when an `AgentTracer` instrumented the model. |
+| `skipped` | `bool` | Explicit case-skip flag. Use `status == EvalStatus.SKIPPED` to also detect all-evaluator skips. |
+| `agent_trace` | `list[AgentStep] \| None` | Populated when an `AgentTracer` instrumented the model. |
 | `runs` | `int` | Number of times this case was rerun (from `suite.run(runs=N)`). |
 | `all_scores` | `list[float]` | Per-run scores; empty unless `runs > 1`. |
 | `pass_count` | `int` | Across runs; -1 when `runs == 1`. |
@@ -139,7 +147,7 @@ The objects in `case_result.results` (per-evaluator).
 |---|---|---|
 | `evaluator` | `str` | Evaluator name. |
 | `score` | `float` | 0.0–1.0. |
-| `passed` | `bool` | `score >= evaluator.threshold`. |
+| `passed` | `bool` | Evaluator verdict; skipped results use `False` and must be excluded via metadata. |
 | `reason` | `str` | Human-readable reason. Strings starting with `[skipped]` mean the case shape didn't fit this evaluator (returns `passed=False` with skip metadata and is excluded from quality aggregates). |
 | `metadata` | `dict` | `{"skipped": True}` is set when the evaluator skipped. Free-form otherwise. |
 
@@ -153,7 +161,7 @@ The dataclass on `report.costs`.
 | `total_output_tokens` | `int` | Sum across all judge calls. |
 | `total_tokens` | `int` | Convenience sum. |
 | `total_calls` | `int` | Number of judge requests issued. |
-| `total_cost_usd` | `float` | USD spent at provider list price. |
+| `total_cost_usd` | `float \| None` | Estimate from recorded usage and bundled pricing; `None` if a recorded model lacks pricing. Excludes your model-under-test costs. |
 | `by_model` | `list[ProviderUsage]` | Per (provider, model) breakdown. |
 
 `ProviderUsage` has `provider`, `model`, `input_tokens`, `output_tokens`,
@@ -161,21 +169,18 @@ The dataclass on `report.costs`.
 
 ## CI examples
 
-Fail the build on regressions:
+Fail below an absolute quality threshold, on errors, or on incomplete coverage:
 
 ```python
-report = suite.run(model_fn)
+report = suite.run(model_fn, fail_threshold=0.85, save_json="report.json")
 report.assert_budget(max_total_cost_usd=2.0, max_p95_latency_ms=5000)
-
-if report.pass_rate < 0.85:
-    sys.exit(1)
 ```
 
 Compare vs a baseline run:
 
 ```python
 prev = EvalReport.from_dict(json.loads(Path("baseline.json").read_text()))
-delta = report.compare(prev)
+delta = prev.compare(report)  # baseline.compare(proposal)
 print(f"pass_rate Δ = {delta.pass_rate_delta:+.2%}")
 ```
 
@@ -184,5 +189,6 @@ Filter by tag (e.g. only the adversarial subset):
 ```python
 for c in report.filter_by_evaluator("hallucination"):
     if not c.passed and "adversarial:ungrounded_claim" in c.tags:
-        print(c.case_input, c.results[0].reason)
+        verdict = next(r for r in c.results if r.evaluator == "hallucination")
+        print(c.case_input, verdict.reason)
 ```

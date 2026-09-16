@@ -28,28 +28,24 @@ run_v2 = exp.record(report_v2, tags={"model": "gpt-4o", "prompt_v": "3"})
 exp.compare(run_v1, run_v2)
 ```
 
-## Compare output
+## Interpret a comparison
 
+`exp.compare()` prints before/after metrics, coverage counts, confidence
+intervals, and approximate significance tests. These records are summaries:
+they do not preserve per-case pairing. A higher pass rate with more errors
+may reflect missing evidence instead of an improvement.
+
+For a paired comparison, keep the full reports:
+
+```python
+diff = report_v1.compare(report_v2)  # baseline, then proposal
+print(diff.pass_rate_delta)
 ```
-============================================================
-Experiment comparison: a1b2c3d4 → e5f6g7h8
-============================================================
 
-Metric                   Before           After
-------------------------------------------------------------
-Model                    gpt-4o           gpt-4o
-Pass rate                  84.0%  →   91.0%  ↑   +7.0%
-Avg score                 0.8210  →   0.8890  ↑  +0.0680
-Passed                        42  →       46
-Failed                         8  →        4
-
-Evaluator scores         Before           After
-------------------------------------------------------------
-faithfulness             0.7800  →   0.8600  ↑  +0.0800
-relevance                0.9100  →   0.9300  ↑  +0.0200
-
-Verdict: IMPROVED — pass rate up +7.0%
-```
+This pairs cases by input text and uses McNemar's test over completed quality
+pairs. Identical input text is not a stable identity for cases whose context
+or expected output changed. Keep case definitions fixed and inspect unmatched
+cases and coverage. See [statistical limitations](/guides/statistical-rigor).
 
 ## View run history
 
@@ -61,7 +57,7 @@ exp.print_history(n=10)
 Experiment: rag-pipeline
 Run ID       Timestamp              Model                 Pass rate  Avg score Tags
 ------------------------------------------------------------------------------------------
-e5f6g7h8     2026-04-25 15:30:12    gpt-4o                   91.0%     0.8890 prompt_v=3
+e5f6g7h8     2026-04-25 15:30:12    gpt-4o                   92.0%     0.8890 prompt_v=3
 a1b2c3d4     2026-04-24 10:15:44    gpt-4o                   84.0%     0.8210 prompt_v=2
 ```
 
@@ -102,20 +98,26 @@ export MULTIVON_HOME=/your/custom/path
 
 ## CI/CD integration
 
-Track every CI run automatically:
+Save the full report before a gate can raise, then record it even on gate failure:
 
 ```python
+import json
 import os
-from multivon_eval import Experiment
+from pathlib import Path
+from multivon_eval import EvalReport, Experiment
 
 exp = Experiment("prod-eval")
-report = suite.run(model_fn, fail_threshold=0.85)
-
-exp.record(report, tags={
-    "git_sha": os.getenv("GITHUB_SHA", "local"),
-    "branch": os.getenv("GITHUB_REF_NAME", "local"),
-    "run_number": os.getenv("GITHUB_RUN_NUMBER", "0"),
-})
+artifact = Path("eval_results.json")
+artifact.unlink(missing_ok=True)  # prevent recording an artifact from an older run
+try:
+    suite.run(model_fn, fail_threshold=0.85, save_json=str(artifact))
+finally:
+    if artifact.exists():
+        exp.record(EvalReport.from_dict(json.loads(artifact.read_text())), tags={
+            "git_sha": os.getenv("GITHUB_SHA", "local"),
+            "branch": os.getenv("GITHUB_REF_NAME", "local"),
+        })
 ```
 
-This gives you a full history of pass rates across every CI run, queryable by branch or commit.
+The original gate exception still exits nonzero after recording. Upload the
+JSON artifact with an `always()` CI step as shown in [CI/CD](/guides/ci-cd).

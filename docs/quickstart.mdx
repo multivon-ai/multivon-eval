@@ -3,16 +3,31 @@ title: Quickstart
 description: Run your first eval in 5 minutes, or let multivon-eval pick your evaluators for you.
 ---
 
-## The fastest path: `multivon-eval bootstrap`
+## First run: no API key required
 
-Don't know what to eval for your specific LLM product? Describe it and hand over a few sample traces. `multivon-eval bootstrap` proposes a tuned suite in a few minutes.
+```python
+from multivon_eval import EvalCase, EvalSuite, ExactMatch
+
+suite = EvalSuite("capital lookup")
+suite.add_cases([EvalCase(input="Capital of France?", expected_output="Paris")])
+suite.add_evaluators(ExactMatch())
+report = suite.run(lambda prompt: "Paris", verbose=False, fail_threshold=1.0)
+assert report.passed == 1 and report.errors == 0
+```
+
+Replace the lambda with your application and write cases for the task you
+actually need it to complete. See [Define task success](/guides/task-success).
+
+## Propose a suite with `multivon-eval bootstrap`
+
+Don't know what to eval for your specific LLM product? Describe it and hand over a few sample traces. `multivon-eval bootstrap` proposes a starter suite in a few minutes.
 
 ```bash
 pip install multivon-eval
 multivon-eval bootstrap --product product.md --traces traces.jsonl --output ./eval-bootstrap/
 ```
 
-Returns five files: `eval_suite.py` (runnable), `seed_cases.jsonl` (30 adversarial cases), `thresholds.yaml` (calibrated from your traces), `DISCOVERY_REPORT.md` (an eval design review), and `prompt_baseline.json` (a prompt call-site baseline written at the repo root for staleness tracking). Cost: ~$0.12 default, or free with `--judge-provider ollama`. **[Full walkthrough →](/guides/bootstrap)**
+Returns five files: `eval_suite.py` (runnable), `seed_cases.jsonl` (up to 30 accepted synthetic cases), `thresholds.yaml` (provisional p25 score thresholds to review), `DISCOVERY_REPORT.md` (an eval design review), and `prompt_baseline.json` (a prompt call-site baseline written at the repo root for staleness tracking). Cost depends on judge calls and pricing; local Ollama avoids hosted API charges. Threshold suggestions are not validated acceptance criteria. **[Full walkthrough →](/guides/bootstrap)**
 
 Run it fully offline with a local judge:
 
@@ -115,7 +130,7 @@ report = suite.run(my_model, verbose=True)
 ## Option B — Define cases manually
 
 ```python
-from multivon_eval import EvalSuite, EvalCase, NotEmpty, Contains, Faithfulness
+from multivon_eval import EvalSuite, EvalCase, NotEmpty, Faithfulness
 
 suite = EvalSuite("My First Eval")
 
@@ -123,6 +138,7 @@ suite.add_cases([
     EvalCase(
         input="What is the capital of France?",
         expected_output="Paris",
+        context="Paris is the capital of France.",
     ),
     EvalCase(
         input="Summarize this article.",
@@ -132,7 +148,6 @@ suite.add_cases([
 
 suite.add_evaluators(
     NotEmpty(),
-    Contains(["Paris"]),
     Faithfulness(),
 )
 

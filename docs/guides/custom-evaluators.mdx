@@ -46,43 +46,27 @@ class SentenceCount(Evaluator):
 
 ## Example: LLM-based custom check
 
-```python
-import anthropic
-from multivon_eval.evaluators.base import Evaluator
-
-class ToneCheck(Evaluator):
-    name = "tone_check"
-
-    def __init__(self, expected_tone: str, threshold: float = 1.0):
-        super().__init__(threshold)
-        self.expected_tone = expected_tone
-        self.client = anthropic.Anthropic()
-
-    def evaluate(self, case: EvalCase, output: str) -> EvalResult:
-        response = self.client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=10,
-            messages=[{
-                "role": "user",
-                "content": f"Is the following text {self.expected_tone} in tone? Answer only yes or no.\n\n{output}"
-            }]
-        )
-        answer = response.content[0].text.strip().lower()
-        passed = answer.startswith("yes")
-        return self._result(
-            1.0 if passed else 0.0,
-            f"Tone is {'correct' if passed else 'incorrect'} ({self.expected_tone})",
-        )
-```
-
-Use it:
+For a custom LLM criterion, reuse `CheckEvaluator` so your check participates
+in configured judge routing, error accounting, cost tracking, and UNKNOWN
+verdict handling:
 
 ```python
-suite.add_evaluators(
-    ToneCheck("professional and friendly"),
-    ToneCheck("concise"),
+from multivon_eval import CheckEvaluator
+
+professional_tone = CheckEvaluator(
+    "The response should be professional and respectful",
+    questions=["Is the response professional and respectful?"],
+    name="professional_tone",
+    threshold=1.0,
 )
+suite.add_evaluators(professional_tone)
 ```
+
+If you implement a provider call yourself, set `uses_llm_judge = True`, raise
+`JudgeUnavailable` when no verdict can be obtained, and explicitly handle
+usage tracking and configuration. Do not turn an unparseable reply into a
+quality failure. Grader prompts can themselves be manipulated by the output
+being graded; test adversarial outputs and review disagreements.
 
 ## EvalResult fields
 
@@ -93,6 +77,7 @@ class EvalResult:
     score: float        # 0.0 to 1.0
     passed: bool        # score >= threshold
     reason: str         # human-readable explanation
+    metadata: dict      # includes skipped=True for unmeasured results
 ```
 
 ## Accessing case fields
@@ -107,3 +92,8 @@ def evaluate(self, case: EvalCase, output: str) -> EvalResult:
     case.tags            # list[str]
     case.metadata        # dict
 ```
+
+When required evidence is absent, return `self._skipped("missing final state")`
+instead of fabricating a pass or failure. Skipped scores are placeholders.
+A case with another applicable grader can still be evaluated; enforce coverage
+for every required check in your application’s release policy.

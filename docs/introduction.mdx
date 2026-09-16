@@ -1,13 +1,13 @@
 ---
 title: Introduction
-description: AI evaluation for teams that need to prove their model is safe to ship.
+description: Measure task success, compare changes, and inspect missing evidence before shipping.
 ---
 
 ## The problem
 
 The question every team building with AI eventually hits: did this change make the model better or worse? Numeric scores drift, judges hallucinate, and regressions reach users before anyone notices.
 
-multivon-eval gives you eval scoring you can trust and defend. Scores are calibrated against human labels, every report carries confidence intervals, and the audit trail holds up when you ship into regulated environments.
+multivon-eval runs task-specific checks, records errors separately from quality failures, and compares results across system changes. Start by [defining task success](/guides/task-success), then select graders and review their agreement with human judgments. Reports and audit artifacts support that decision; they do not certify safety or compliance.
 
 ```python
 # pip install multivon-eval
@@ -22,15 +22,17 @@ report = suite.run(my_model_fn, save_json="report.json")
 print(f"Pass rate {report.pass_rate:.0%}  ({report.evaluated} evaluated, {report.errors} errored)")
 ```
 
-Install, import, run. The default judge is `claude-haiku-4-5` (F1 0.804 [0.71–0.88] on HaluEval QA in-distribution; F1 0.830 [0.70–0.92] held-out on HaluEval-Sum; $0.00127 per case). Swap in any judge via `JudgeConfig`, or run fully offline with a local Ollama: `JudgeConfig(provider="ollama", model="qwen2.5:14b")`.
+The example uses an LLM judge and requires your `my_model_fn` plus a provider
+key. For a fully runnable first check without a key, see the [quickstart](/quickstart).
+The default judge is `claude-haiku-4-5`; configure another through `JudgeConfig`.
+Historical benchmark results and their limits are in [Why multivon-eval](/why-multivon-eval).
 
 Want a runnable eval suite from a one-paragraph product description? `multivon-eval bootstrap`. Want it wired into Claude Code as auto-invoking skills? `multivon-eval install-skills`.
 
-<Tip>
-  **Why trust the numbers?** Every shipped benchmark cites Wilson + bootstrap 95% CIs, and thresholds are calibrated per (judge × evaluator) with provenance. When our own measurement catches us, we publish it: a PDF leaderboard that nearly inverted once we sent pixels instead of text, a determinacy gate we set at 50% and missed at 20.9%, and the 0.9.4→0.9.7 self-correction trail. See [Why multivon-eval](/why-multivon-eval).
-</Tip>
-
-**New in 0.16.0:** [`multivon-eval validate`](/guides/validate) grades your graders against reference outputs before any model is blamed, [pass@k and pass^k](/guides/reliability-metrics) separate capability from reliability with real CIs, and a [saturation monitor](/guides/statistical-rigor#what-a-100-pass-rate-actually-tells-you) quantifies what a 100% pass rate can still claim. The release-to-recommendation mapping is in [Demystifying evals, operationalized](/guides/anthropic-evals-checklist).
+**New in 0.17.0:** skipped checks no longer count as passes; active quality
+gates reject errors and incomplete coverage by default; judge reliability
+checks bypass the response cache. Read the [migration guide](/guides/migration-0-17)
+before comparing new results with old reports.
 
 ## What it does
 
@@ -39,7 +41,7 @@ Want a runnable eval suite from a one-paragraph product description? `multivon-e
     String matching, regex, JSON schema, BLEU, ROUGE, latency. Instant, free, no LLM.
   </Card>
   <Card title="LLM-as-judge" icon="brain">
-    QAG scoring — yes/no questions instead of unreliable 1-10 ratings. Faithfulness, hallucination, relevance, and more.
+    QAG scoring through explicit yes/no questions. Faithfulness, hallucination, relevance, and more.
   </Card>
   <Card title="Agent trace" icon="route">
     Tool call accuracy, plan quality, step faithfulness, task completion. Framework-agnostic.
@@ -62,13 +64,13 @@ The full catalog spans seven families — see the [Evaluators reference](/evalua
 
 ## Key features
 
-**QAG scoring.** Instead of asking a judge "rate this 1-10", we generate binary yes/no questions about the output and score by fraction answered correctly. Binary questions eliminate scale ambiguity and are easier for LLMs to answer consistently. Every score is auditable down to which questions passed or failed.
+**QAG scoring.** Instead of asking a judge "rate this 1-10", we generate binary yes/no questions about the output and score by fraction answered correctly. Binary questions reduce scale ambiguity. Inspect the generated questions and judge reasons; grading errors and omitted claims are still possible.
 
 **Plain-English checks.** `suite.add_check("Response should mention the return policy")` is all you need to write your first eval. The SDK generates yes/no questions from your criterion automatically — no evaluator class to pick, no QAG questions to craft.
 
 No cold start, either: point `generate_from_file()` at your docs and get eval cases in seconds, no labeled dataset required.
 
-**Reliability and flakiness detection.** Run each case N times with `suite.run(runs=5)` and flaky cases (inconsistent pass/fail) are flagged automatically. Experiment comparison shows statistical significance, so you know whether a regression is real or sampling noise. NAACL 2025 research found single-run eval scores unreliable enough that variance alone can reverse model rankings.
+**Reliability and flakiness detection.** Run each case N times with `suite.run(runs=5)` and flaky cases (inconsistent pass/fail) are flagged automatically. Comparison tests help assess sampling uncertainty under their assumptions. They do not detect every source of grader bias or dataset error.
 
 For tracking over time, every run can be recorded to `~/.multivon/experiments/`; compare two runs side-by-side and get a pass rate delta with p-values.
 
@@ -76,7 +78,7 @@ For tracking over time, every run can be recorded to `~/.multivon/experiments/`;
 
 **Shareable HTML reports.** `report.save_html("report.html")` produces a self-contained HTML file with per-case breakdowns, evaluator scores, and flakiness indicators. No server required.
 
-**CI/CD first.** One line exits with code 1 if your pass rate drops below a threshold. Evals that don't run in CI catch nothing.
+**CI/CD first.** An active quality gate exits 1 for a completed quality failure and 2 for indeterminate evidence. By default, errors and skipped coverage block the gate.
 
 **Prompt-drift staleness and provenance.** `multivon-eval staleness` diffs a committed baseline of every prompt call site in your repo against a live scan and tells you which prompts changed since your cases were authored: CHANGED, REMOVED, ADDED, or UNKNOWN, never overclaiming what static analysis can know. An opt-in runtime recorder (`pytest --record-prompts`) captures the prompts your code actually rendered, with verdicts phrased as "matched k of N observed renderings". See [Prompt-drift staleness](/guides/staleness).
 

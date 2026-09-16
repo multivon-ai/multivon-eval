@@ -3,7 +3,7 @@ title: Statistical Rigor
 description: Confidence intervals, power analysis, multiple comparison correction, and judge calibration.
 ---
 
-Single-run benchmark scores are unreliable. NAACL 2025 research showed that variance between runs is large enough to reverse model rankings — a model that looks 5% better in one run may simply be lucky.
+An evaluation estimates performance on a particular case distribution with a particular grader. Sampling variation, repeated outputs, and grader mistakes can all affect the result. Separate these sources of uncertainty before using a score to approve a release.
 
 multivon-eval operationalizes this: CIs on every report by default, power warnings, multiple comparison correction, and judge calibration against human ground truth.
 
@@ -32,7 +32,7 @@ The percentiles reveal what `avg_score` hides. A model that scores 0.95 or 0.40 
 
 ## Why single-run scores lie
 
-LLMs are non-deterministic. Even with `temperature=0`, hosted APIs introduce variance through hardware parallelism and batching. A 91% pass rate on 50 cases could be anywhere from 80% to 97% if you ran the same cases again.
+LLMs are non-deterministic. Even with `temperature=0`, hosted APIs introduce variance through hardware parallelism and batching. A confidence interval across sampled cases does not predict the range of repeated runs on a fixed suite. Repeated trials measure a different source of variation.
 
 **The fix:** run more cases, run each case multiple times, and use confidence intervals to understand what your score actually means.
 
@@ -40,7 +40,7 @@ LLMs are non-deterministic. Even with `temperature=0`, hosted APIs introduce var
 
 ## Confidence intervals with `wilson_interval`
 
-The Wilson score interval is the most reliable CI for binomial proportions — it handles small n and extreme pass rates much better than the normal approximation.
+The Wilson score interval is an approximate interval for a binomial proportion. It behaves better than the simple normal approximation near zero or one, but assumes independent observations. Correlated cases from the same document or conversation require analysis at that cluster level.
 
 ```python
 from multivon_eval import wilson_interval
@@ -75,7 +75,7 @@ Before running an eval, calculate whether your test suite is large enough to det
 ```python
 from multivon_eval import runs_needed
 
-# How many test cases to detect a 10% improvement (80% power)?
+# How many test cases to detect a 10 percentage-point improvement (80% power)?
 n = runs_needed(delta=0.10)
 # → 291
 
@@ -96,12 +96,12 @@ n = runs_needed(delta=0.10, baseline=0.85)
 
 | Effect size | Min cases needed |
 |-------------|-----------------|
-| 15% improvement | ~118 |
-| 10% improvement | ~291 |
-| 5% improvement | ~1,248 |
-| 2% improvement | ~8,077 |
+| 15 percentage-point improvement | ~118 |
+| 10 percentage-point improvement | ~291 |
+| 5 percentage-point improvement | ~1,248 |
+| 2 percentage-point improvement | ~8,077 |
 
-A 2% improvement requires ~8,000 cases to confirm statistically. Most teams shouldn't chase differences that small.
+A 2 percentage-point improvement requires ~8,000 cases to confirm statistically. Most teams shouldn't chase differences that small.
 
 ---
 
@@ -111,7 +111,7 @@ When `compare()` finds a difference that doesn't reach p < 0.05, it tells you ho
 
 ```
   Statistical significance: p=0.23 not significant (likely noise)
-  Hint: need ≥291 test cases to detect this 10% delta at 80% power.
+  Hint: need ≥291 test cases to detect this 10 percentage-point delta at 80% power.
   Verdict: NO MEANINGFUL CHANGE (delta +10.0%, not significant)
 ```
 
@@ -128,7 +128,7 @@ report.saturated                    # True when every EVALUATED task passed
 report.min_detectable_regression    # smallest pass-rate DROP detectable at 80% power
 ```
 
-`saturated` is built on `evaluated`, not `total` — a 100% assembled from judge outages doesn't count. `min_detectable_regression` anchors its variance near the observed rate, capped at a 0.95 baseline, so a perfect score can't flatter its own sensitivity. Concretely, a 40-task suite at 100%:
+`saturated` is built on `evaluated`, not `total`. An all-error run is not saturated, but a run with one pass and nine errors can be. Inspect errors and skips separately; saturation does not establish coverage. `min_detectable_regression` anchors its variance near the observed rate, capped at a 0.95 baseline, so a perfect score can't flatter its own sensitivity. Concretely, a 40-task suite at 100%:
 
 ```
   ⚠ Saturated: 40/40 trials passed. All this run can claim is a pass rate
@@ -147,7 +147,7 @@ suite = EvalSuite("smoke-tests", purpose="capability")   # saturation = nag to g
 suite = EvalSuite("smoke-tests", purpose="regression")   # saturation = expected; warning inverts
 ```
 
-A saturated capability suite (n ≥ 3) gets the graduation warning above. A `purpose='regression'` suite inverts it: 100% is the expected steady state, and any task below ceiling prints a triage warning instead ("N previously-passing task(s) below ceiling — something broke; triage before shipping"). The purpose is copied onto the report and serialized in the JSON summary alongside `saturated` and `min_detectable_regression`; `view --dir` shows a saturated badge.
+A saturated capability suite (n ≥ 3) gets the graduation warning above. A `purpose='regression'` suite inverts it: 100% is the expected steady state, and any task below ceiling prints a triage warning instead ("N previously-passing task(s) below ceiling — something broke; triage before shipping"). That warning assumes you intend these cases to pass; the purpose flag does not load or verify a historical baseline. The purpose is copied onto the report and serialized in the JSON summary alongside `saturated` and `min_detectable_regression`; `view --dir` shows a saturated badge.
 
 The 0% end of the scale has its own detector — see [zero-pass suspects](/guides/validate#zero-pass-suspects-in-normal-runs).
 
@@ -172,14 +172,19 @@ The same multi-run data also yields pass@k (capability) and pass^k (consistency)
 
 ---
 
-## Recommended defaults
+The intervals above do not include uncertainty from missing cases, grader
+bias, or changes to the case distribution. Do not treat repeated cases as
+independent new tasks, or repeatedly stop at the first significant result
+without a sequential-testing procedure.
+
+## Starting configurations (not acceptance guarantees)
 
 | Scenario | Setting |
 |----------|---------|
 | Quick iteration | `runs=1`, 20–50 cases (fast, coarse) |
 | Pre-ship check | `runs=3`, 100+ cases |
 | Regression gate | `runs=5`, 200+ cases, `fail_threshold=0.85` |
-| Significance test | `runs=1`, ≥291 cases for 10% delta detection |
+| Significance test | `runs=1`, ≥291 cases for 10 percentage-point delta detection |
 | Flakiness audit | `runs=10`, any case count |
 
 ---
@@ -188,7 +193,13 @@ The same multi-run data also yields pass@k (capability) and pass^k (consistency)
 
 Running N evaluators and reporting N raw p-values inflates the false positive rate. At α=0.05 with 10 evaluators, you'd expect ~0.5 spurious "significant" results per run just by chance.
 
-`exp.compare()` applies Benjamini-Hochberg correction automatically when comparing evaluator scores, showing adjusted p-values with `*` for those that survive correction:
+`exp.compare()` displays Benjamini-Hochberg-adjusted p-values derived from
+per-evaluator pass rates (the nearby score columns are descriptive). Its summary
+comparison uses an unpaired two-proportion approximation. Per-evaluator tests
+use total case counts, which can overstate evidence when evaluators skipped
+cases or runs had errors. Use complete, comparable runs; for matched cases,
+prefer `baseline_report.compare(proposal_report)` and its McNemar test.
+The following output is illustrative:
 
 ```
   Evaluator scores         Before           After    BH-adj p
@@ -218,7 +229,10 @@ BH is less conservative than Bonferroni — it controls the *rate* of false disc
 
 ## Judge calibration
 
-A passing eval score only means something if your judge actually agrees with human judgment. `suite.calibrate()` measures this directly.
+`suite.calibrate()` measures agreement with labeled examples. Despite the
+name, it does not fit or update thresholds. Choose thresholds on a development
+split, then measure performance on a separate test split. Review missing
+evaluator coverage as well as the reported agreement.
 
 ```python
 result = suite.calibrate([
@@ -242,9 +256,9 @@ Judge Calibration — 50 labeled cases
 
 **Interpreting the results:**
 
-- **Agreement ≥ 85%**: judge is reliable for CI gating
-- **Agreement 70–85%**: usable for iteration but don't gate deploys on it alone
-- **Agreement < 70%**: judge and humans disagree too often — reconsider your evaluator or threshold
+- Inspect false accepts and false rejects separately, with sample sizes and uncertainty.
+- Check each consequential task slice; overall agreement can hide rare failures.
+- Set acceptance criteria from the consequences of a mistake. No universal agreement percentage establishes fitness for CI gating.
 
 Low precision means the judge passes cases humans would reject (over-permissive). Low recall means the judge rejects cases humans would pass (over-strict). Both affect CI reliability differently.
 
@@ -255,9 +269,9 @@ Low precision means the judge passes cases humans would reject (over-permissive)
 Before trusting an eval result, ask:
 
 1. **Is the improvement statistically significant?** (`exp.compare()` shows p-value)
-2. **Are the confidence intervals non-overlapping?** If CI(before) and CI(after) overlap, the difference is inconclusive.
+2. **Did I test the difference directly?** Separate confidence intervals can overlap even when a paired difference is significant. Use a comparison appropriate to the sampling design.
 3. **Do I have enough cases?** The power warning tells you automatically; use `runs_needed()` to plan ahead.
 4. **Are there flaky cases inflating the variance?** Check `report.flaky_count`.
 5. **Are multi-evaluator comparisons corrected?** `exp.compare()` applies BH correction automatically; watch the `*` markers.
-6. **Is my judge calibrated?** Run `suite.calibrate()` once on a labeled sample before using eval scores to gate deploys.
+6. **Is my judge calibrated?** Measure agreement on held-out labeled samples and repeat after changes to the judge, rubric, parser, or task distribution.
 7. **Is the suite saturated?** A 100% pass rate only proves a Wilson floor; check `report.min_detectable_regression` for what the suite can still see, and graduate it to `purpose='regression'`.

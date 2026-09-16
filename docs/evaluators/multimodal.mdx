@@ -47,17 +47,15 @@ case = EvalCase(
     metadata={"image_path": "scans/chest-xray-001.png"},
 )
 
-suite = EvalSuite()
-suite.add_evaluators(VQAFaithfulness(judge=JudgeConfig(
+evaluator = VQAFaithfulness(judge=JudgeConfig(
     provider="google", model="gemini-2.5-flash", temperature=0.0,
-)))
-
-result = suite.run_case(case, output="The scan shows bilateral infiltrates...")
+))
+result = evaluator.evaluate(case, "The scan shows bilateral infiltrates...")
 ```
 
 ### Signature
 
-```python
+```text
 VQAFaithfulness(threshold: float | None = None, judge: JudgeConfig | None = None)
 ```
 
@@ -99,12 +97,11 @@ case = EvalCase(
     ]},
 )
 
-suite = EvalSuite()
-suite.add_evaluators(DocumentGrounding(judge=JudgeConfig(
+evaluator = DocumentGrounding(judge=JudgeConfig(
     provider="anthropic", model="claude-haiku-4-5",
-)))
+))
 
-result = suite.run_case(case, output=(
+result = evaluator.evaluate(case, (
     "Liability is capped at 12 months of fees, with uncapped "
     "carve-outs for Sections 4.2 (data breach) and 7.1 (IP infringement)."
 ))
@@ -112,7 +109,7 @@ result = suite.run_case(case, output=(
 
 ### Signature
 
-```python
+```text
 DocumentGrounding(threshold: float | None = None, judge: JudgeConfig | None = None)
 ```
 

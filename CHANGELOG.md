@@ -4,6 +4,14 @@ All notable changes to `multivon-eval`. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+### Documentation
+
+- Rewrite the README around a runnable offline example, task success, and CI gates.
+- Correct report fields, comparison direction, multimodal examples, and failed-run recording.
+- Explain calibration, sampling, partial coverage, provider settings, and budget limits.
+- Correct historical benchmark label provenance and unsupported superiority claims.
+- Add documentation checks for navigation, Python imports, API keywords, and runnable examples.
+
 ## [0.17.0] — 2026-09-17
 
 ### Measurement integrity and migration

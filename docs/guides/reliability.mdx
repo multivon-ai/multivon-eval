@@ -62,33 +62,19 @@ Cases run concurrently; each case's 5 repetitions run sequentially. Good default
 
 ## Statistical significance in experiment comparison
 
-When comparing two runs, `exp.compare()` now shows whether the difference is real or sampling noise:
+`exp.compare()` reports an approximate two-proportion test using run summaries.
+A p-value describes compatibility with the no-difference hypothesis under the
+sampling assumptions; it is not the probability that a regression is real.
+A nonsignificant result is not proof of no regression.
 
 ```python
 exp.compare(run_v1, run_v2)
 ```
 
-```
-Pass rate           84.0%  →   91.0%  ↑  +0.0700
-
-Statistical significance: p=0.03 ✦ significant
-Verdict: IMPROVED — pass rate up +7.0%
-```
-
-vs a smaller dataset:
-
-```
-Statistical significance: p=0.29 not significant (likely noise)
-Verdict: IMPROVED — pass rate up +7.0%
-```
-
-Same delta, different conclusions — because with 10 cases, a 7% change is within noise. With 100 cases, it's real.
-
-**Significance levels:**
-- `p<0.01 ✦✦` — highly significant, very unlikely to be noise
-- `p<0.05 ✦` — significant at the standard threshold
-- `p<0.10` — marginal, treat with caution
-- `p≥0.10` — not significant, likely sampling noise
+For matched cases, save the full reports and use
+`baseline_report.compare(proposal_report)`. Read the
+[statistical guide](/guides/statistical-rigor) for paired tests, missing coverage,
+multiple comparisons, and limits of the summary-level approximation.
 
 ## CI/CD: fail on instability
 
@@ -138,7 +124,8 @@ configure(JudgeConfig(
 ))
 
 report = suite.run(model_fn)
-print(f"Judge consistency: {report.judge_reliability:.0%}")
+if report.judge_reliability is not None:
+    print(f"Judge consistency: {report.judge_reliability:.0%}")
 ```
 
 The terminal output shows it automatically:
@@ -147,11 +134,15 @@ The terminal output shows it automatically:
   Judge consistency: 91% agreement across repeated judge calls
 ```
 
-**What it measures:** After the main eval, the SDK re-runs all evaluators on a random sample of (case, output) pairs and measures how often the judge gives the same pass/fail decision. Low agreement means your eval scores contain noise from the judge, not just from your model.
+**What it measures:** In 0.17.0 the SDK re-evaluates eligible LLM graders
+on a sample of completed (case, output) pairs and bypasses cached judge
+responses. Deterministic graders and skipped measurements do not inflate
+agreement. When no eligible measurements exist, the value is `None`.
 
-**Thresholds:**
-- **≥ 85%**: reliable for CI gating
-- **70–85%**: usable for iteration; add more cases to average out judge variance
-- **< 70%**: judge is significantly non-deterministic — lower temperature, use a larger judge model, or pin `questions=` in `CheckEvaluator`
+Agreement measures repeatability, not correctness. A consistently wrong grader
+can score 100%. Inspect sample size, disagreements, and agreement with independent
+human labels before gating. There is no universal percentage that establishes
+fitness for a release decision. See the [temperature transport limitation](/evaluators/llm-judge#configuration)
+before relying on configured sampling values.
 
 **Note:** `reliability_check=True` makes additional LLM calls (one re-evaluation pass over `reliability_sample` cases). Keep `reliability_sample` low (5–10) for routine runs; increase for audits.

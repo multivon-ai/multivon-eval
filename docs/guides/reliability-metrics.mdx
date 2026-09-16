@@ -10,13 +10,13 @@ New in 0.16.0. A single pass rate hides a distinction that matters in production
 | **pass@k** | "Does at least one of k trials succeed?" | Capability — can the agent do it at all |
 | **pass^k** | "Do all k trials succeed?" | Reliability — what a user hitting this feature k times experiences |
 
-A demo selects for pass@k. A production SLA is pass^k. The gap between them is your flakiness, quantified.
+The gap distinguishes occasional success from repeated success on the sampled tasks. Neither metric alone establishes a production SLA.
 
 ---
 
 ## The estimators
 
-Both are computed per task from its n recorded trials (c of which passed), then averaged over tasks.
+Both are computed per task from its n recorded trials (c of which passed), then averaged over tasks. Their interpretation as probabilities for future trials assumes comparable, independent sampling within a task. Caching, shared state, and adaptive retries can violate that assumption.
 
 **pass@k** uses the unbiased combinatorial estimator from the HumanEval paper:
 
@@ -94,9 +94,9 @@ Errored and skipped tasks are excluded from the case pool — the same denominat
 
 ## Why the CI resamples cases, not trials
 
-The confidence intervals are a **cluster bootstrap**: tasks are resampled with replacement, the mean of per-task estimators is recomputed, and a percentile interval is taken. Trials within a task are correlated — the same prompt, the same failure modes — so resampling raw trials would treat 20 tasks × 5 trials as 100 independent observations and fake precision the data doesn't have. The unit of independence is the task; the CI respects that.
+The confidence intervals are a **cluster bootstrap**: tasks are resampled with replacement, the mean of per-task estimators is recomputed, and a percentile interval is taken. Trials within a task are correlated — the same prompt, the same failure modes — so resampling raw trials would treat 20 tasks × 5 trials as 100 independent observations and fake precision the data doesn't have. The implementation treats tasks as independent. If several cases share a source document, conversation, or customer, this interval does not account for that larger cluster.
 
-Degenerate suites (every per-task estimate identical, including all-pass) fall back to a Wilson interval on the mean, so a perfect score still reports `ci_low < 1.0` — the same honesty as `pass_rate_ci()`.
+Degenerate suites (every per-task estimate identical, including all-pass) fall back to a Wilson interval on the mean, so a perfect score still reports `ci_low < 1.0`. For fractional per-task estimates this is a heuristic fallback, not an exact binomial coverage guarantee.
 
 ---
 
@@ -129,7 +129,7 @@ for cr in report.lottery_cases()[:3]:
 # deploy service 3: 3/5 trials passed
 ```
 
-These are your best debugging targets: read the transcripts of a 4/5 task and diff the passing trial against the failing one.
+Use these cases to target debugging. Current aggregated reports do not retain every trial transcript; capture trial outputs separately in your application if you need to compare passing and failing attempts.
 
 ---
 

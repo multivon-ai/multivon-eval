@@ -10,7 +10,6 @@ from pathlib import Path
 import multivon_eval
 from multivon_eval.evaluators.base import Evaluator
 
-
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -48,10 +47,9 @@ def test_readme_leads_with_current_release_and_public_surfaces() -> None:
     assert f"Current release — {multivon_eval.__version__}" in readme
     assert "September 17, 2026" in readme
     assert "eval-framework-benchmark" not in readme
-    assert "Four public packages plus one closed early-access product" in readme
     assert len(readme.splitlines()) < 350
-    assert readme.index("## Start in 30 seconds") < readme.index("## Why teams choose it")
-    assert readme.index("## Why teams choose it") < readme.index("## Pick your path")
+    assert readme.index("## Start in 30 seconds") < readme.index("## Why use it")
+    assert readme.index("## Why use it") < readme.index("## Pick your path")
     assert "## Earlier release highlights" not in readme
 
 
@@ -165,3 +163,139 @@ def test_bootstrap_docs_account_for_all_artifacts() -> None:
         text = _read(path)
         assert "prompt_baseline.json" in text
         assert "four" in text.lower()
+
+
+def _python_blocks(text: str):
+    import textwrap
+
+    for match in re.finditer(
+        r"^(`{3,})(?:python|py)[^\n]*\n(.*?)^\1\s*$", text, re.MULTILINE | re.DOTALL
+    ):
+        yield textwrap.dedent(match.group(2))
+
+
+def test_documented_python_imports_and_call_keywords_exist() -> None:
+    import ast
+    import importlib
+
+    known_receivers = {
+        "suite": multivon_eval.EvalSuite,
+        "report": multivon_eval.EvalReport,
+        "case": multivon_eval.EvalCase,
+        "exp": multivon_eval.Experiment,
+    }
+    for path in sorted((ROOT / "docs").rglob("*.mdx")):
+        for source in _python_blocks(path.read_text()):
+            tree = ast.parse(source, filename=str(path))
+            imported = {}
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.ImportFrom):
+                    continue
+                if not node.module or not node.module.startswith("multivon_eval"):
+                    continue
+                module = importlib.import_module(node.module)
+                for alias in node.names:
+                    imported[alias.asname or alias.name] = getattr(module, alias.name)
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Call):
+                    continue
+                target = None
+                if isinstance(node.func, ast.Name):
+                    target = imported.get(node.func.id)
+                elif isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name):
+                    receiver = known_receivers.get(node.func.value.id)
+                    if receiver:
+                        assert hasattr(receiver, node.func.attr), (path, node.func.attr)
+                        target = getattr(receiver, node.func.attr)
+                if not callable(target):
+                    continue
+                parameters = inspect.signature(target).parameters
+                if any(p.kind == p.VAR_KEYWORD for p in parameters.values()):
+                    continue
+                for keyword in node.keywords:
+                    if keyword.arg:
+                        assert keyword.arg in parameters, (path, keyword.arg)
+
+
+def test_docs_navigation_and_internal_links_resolve() -> None:
+    import json
+
+    docs = ROOT / "docs"
+
+    def check_navigation(value):
+        if isinstance(value, dict):
+            for key, child in value.items():
+                if key == "pages":
+                    for page in child:
+                        if isinstance(page, str):
+                            assert (docs / f"{page}.mdx").exists(), page
+                        else:
+                            check_navigation(page)
+                else:
+                    check_navigation(child)
+        elif isinstance(value, list):
+            for child in value:
+                check_navigation(child)
+
+    check_navigation(json.loads((docs / "docs.json").read_text()))
+    for path in docs.rglob("*.mdx"):
+        for href in re.findall(r'(?:\]\(|href=")(/[^)#"\s]+)', path.read_text()):
+            target = docs / href.lstrip("/")
+            assert target.exists() or target.with_suffix(".mdx").exists(), (path, href)
+
+
+def test_report_reference_fields_exist() -> None:
+    from dataclasses import fields
+
+    from multivon_eval.costs import Costs
+    from multivon_eval.result import CaseResult, EvalReport, EvalResult
+
+    text = _read("docs/reference/eval-report.mdx")
+    sections = [
+        ("## Quick reference", "## Common gotchas", EvalReport),
+        ("## `CaseResult` shape", "## `EvalResult` shape", CaseResult),
+        ("## `EvalResult` shape", "## `Costs` shape", EvalResult),
+        ("## `Costs` shape", "## CI examples", Costs),
+    ]
+    for start, end, cls in sections:
+        section = text.split(start, 1)[1].split(end, 1)[0]
+        known = set(dir(cls)) | {field.name for field in fields(cls)}
+        for field in re.findall(r"^\| `([a-z_]+)(?:\([^`]*\))?` \|", section, re.MULTILINE):
+            assert field in known, (cls.__name__, field)
+
+
+def test_offline_documented_examples_execute(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    for path, end in [
+        ("README.md", "## Why use it"),
+        ("docs/quickstart.mdx", "## Propose a suite"),
+        ("docs/guides/task-success.mdx", None),
+    ]:
+        text = _read(path)
+        if end:
+            text = text.split(end, 1)[0]
+        blocks = list(_python_blocks(text))
+        assert blocks, path
+        for source in blocks:
+            namespace = {}
+            exec(compile(source, path, "exec"), namespace)  # noqa: S102 — selected repository examples
+            report = namespace["report"]
+            assert report.evaluated > 0 and report.pass_rate == 1
+            assert report.errors == 0 and report.skipped == 0
+
+
+def test_reference_comparison_example_uses_baseline_first(tmp_path) -> None:
+    import json
+
+    from multivon_eval.result import CaseResult, EvalReport, EvalResult
+
+    prev = EvalReport("baseline", [CaseResult("same input", "bad", [EvalResult("check", 0, False)])])
+    current = EvalReport("proposal", [CaseResult("same input", "good", [EvalResult("check", 1, True)])])
+    baseline_path = tmp_path / "baseline.json"
+    baseline_path.write_text(prev.to_json())
+    text = _read("docs/reference/eval-report.mdx").split("Compare vs a baseline run:", 1)[1]
+    source = next(_python_blocks(text)).replace('Path("baseline.json")', 'Path(baseline_path)')
+    namespace = {"EvalReport": EvalReport, "json": json, "Path": Path,
+                 "baseline_path": baseline_path, "report": current}
+    exec(compile(source, "comparison example", "exec"), namespace)  # noqa: S102
+    assert namespace["delta"].pass_rate_delta == 1.0

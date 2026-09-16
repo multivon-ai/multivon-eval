@@ -3,8 +3,8 @@ name: eval-bootstrap
 description: |
   Auto-generate an evaluation suite for an LLM-touching codebase using
   multivon-eval. Reads the project description + sample traces, picks
-  the right evaluators, calibrates thresholds, emits a runnable
-  eval_suite.py + 30 adversarial seed cases + EVALS.md.
+  candidate evaluators, suggests provisional thresholds, emits a runnable
+  eval_suite.py + up to 30 accepted synthetic seed cases + EVALS.md.
 
   Invoke when the user says "add evals to this project", "set up
   evaluation", "eval this codebase", "evaluate this project", or "what
@@ -25,7 +25,7 @@ allowed-tools: Bash, Read, Edit, Write, Glob
 
 Turns a one-paragraph product description + a handful of sample traces
 into a runnable eval suite, so a fresh project can go from no eval
-scaffolding to a first eval running in under three minutes.
+scaffolding to a first runnable eval for review.
 
 ## When to invoke
 
@@ -74,8 +74,8 @@ Do NOT auto-invoke if:
        --pii-policy redact
    ```
    The bootstrap CLI emits four files in the output directory: `eval_suite.py` (runnable),
-   `seed_cases.jsonl` (30 adversarial cases), `thresholds.yaml`
-   (calibrated from traces), `DISCOVERY_REPORT.md` (rationale for
+   `seed_cases.jsonl` (up to 30 accepted synthetic cases), `thresholds.yaml`
+   (provisional p25 score thresholds; not human-labeled calibration), `DISCOVERY_REPORT.md` (rationale for
    each evaluator). It also writes `prompt_baseline.json` at the
    repository root for staleness checks.
 5. **Rewrite `stub_model`** — `eval_suite.py` ships with a placeholder
@@ -89,16 +89,15 @@ Do NOT auto-invoke if:
    - The CLI command to re-run the suite
    - The CI wiring TODO (link to `/eval-audit` skill for PR gating)
 7. **Sanity-check** — run `python eval_suite.py --runs 1` once. If it
-   fails on the first 1-2 cases, surface the error to the user with a
-   clear "this is a config issue at line N, not a model issue" framing.
+   fails, inspect whether the cause is configuration, the grader, or model
+   quality. Do not infer the cause merely from an early failure.
 
 ## Local-judge path (no API key)
 
 If no cloud API key is in env, check for a running Ollama instance
 (`curl -s http://localhost:11434/api/tags`). If present, run `ollama list`
 first to see what the user has actually pulled, then pick the strongest
-instruction-tuned model available. Common picks (in rough order of judge
-quality): `qwen2.5:72b`, `llama3.3:70b-instruct`, `deepseek-r1:32b`,
+instruction-tuned model available. Examples to review against the task (not a measured ranking): `qwen2.5:72b`, `llama3.3:70b-instruct`, `deepseek-r1:32b`,
 `qwen2.5:14b`. Pass it via `--judge-model`:
 
 ```bash
@@ -110,18 +109,13 @@ multivon-eval bootstrap \
     --judge-model <picked_model>                     # e.g. qwen2.5:72b
 ```
 
-Bootstrap with a local judge is slower (~5× wall-clock vs Haiku) but
-runs entirely offline. The calibrated thresholds in the shipped
-`_calibration_data/v2.json` are for cloud judges — flag this and
-suggest re-running calibration locally if the user cares about
-threshold accuracy:
-
-```bash
-# The calibration sweep script ships in the GitHub repo, not the pip wheel:
-git clone --depth 1 https://github.com/multivon-ai/multivon-eval /tmp/mv-eval
-python /tmp/mv-eval/benchmarks/run_calibration_v2.py \
-    --judges "ollama:qwen2.5:72b-instruct"
-```
+Local bootstrap can run without hosted calls when Ollama and the selected
+model are already available. Runtime depends on local hardware. Cloud-judge
+threshold packs do not validate a local judge; unmatched models use fallback
+thresholds. Bootstrap's p25 suggestions are not labeled calibration. Recommend
+reviewing human-labeled examples, choosing thresholds on a development split,
+and checking a separate test split. `suite.calibrate()` measures agreement but
+does not fit thresholds.
 
 ## What it doesn't do
 
@@ -136,8 +130,9 @@ python /tmp/mv-eval/benchmarks/run_calibration_v2.py \
 
 ## Costs
 
-Default bootstrap (claude-haiku judge): ~$0.12 per run, hard ceiling
-$0.15. Local judge (Ollama): free, ~5× wall-clock.
+Cost depends on model pricing and calls. `--budget-usd` checks estimated
+seed-generation cost only; it does not cap total bootstrap or validation spend.
+Local Ollama avoids hosted API charges but uses local compute.
 
 ## Verification
 

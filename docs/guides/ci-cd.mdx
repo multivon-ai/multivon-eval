@@ -5,7 +5,11 @@ description: Run evals as a quality gate in your deployment pipeline.
 
 ## The pattern
 
-Pass `fail_threshold` to `suite.run()`. If the pass rate drops below it, the process exits with code 1 — blocking the deployment.
+Pass `fail_threshold` to `suite.run()`. A completed quality failure raises
+`EvalGateFailure` with exit code 1. Since 0.17.0, an active gate defaults to
+zero tolerated errors and blocks empty or skipped coverage with exit code 2
+(indeterminate). Set `max_error_rate` explicitly only if you intend to permit
+an error budget. A high pass rate alone does not establish sufficient coverage.
 
 ```python
 # eval.py
@@ -30,6 +34,10 @@ report = suite.run(
   after it never execute — exactly the runs whose artifacts you need most.
   The kwargs write the report before the gate is evaluated.
 </Warning>
+
+A case with one measured check and another skipped check still counts as evaluated.
+The built-in gate blocks wholly skipped cases; enforce per-check coverage separately
+when every evaluator is required.
 
 ## GitHub Actions
 
@@ -69,6 +77,17 @@ jobs:
             eval_results.json
             eval_results.html
 ```
+
+## Compare against a baseline
+
+```bash
+multivon-eval compare baseline.json proposal.json --fail-on-regression
+```
+
+This returns 0 for complete, paired results with no regressions, 1 for a
+quality regression, and 2 for incomplete evidence (including errors, skips,
+or unmatched cases). It does not prove equivalence or require a significant
+p-value before flagging a case regression.
 
 ## Speed up CI with parallel workers
 

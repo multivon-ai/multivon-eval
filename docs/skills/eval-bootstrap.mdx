@@ -1,6 +1,6 @@
 ---
 title: eval-bootstrap
-description: Claude Code skill that turns a product description plus a handful of traces into a runnable eval suite in under three minutes.
+description: Claude Code skill that turns a product description plus a handful of traces into a runnable eval suite for review.
 icon: rocket
 ---
 
@@ -50,13 +50,13 @@ The skill runs the bootstrap CLI in a fresh terminal the user can inspect, reads
     A short doc the next Claude Code session reads first. It lists which evaluators were picked and why (one sentence each), the CLI command to re-run the suite, and a TODO link to [`eval-audit`](/skills/eval-audit) for PR gating.
   </Step>
   <Step title="Sanity-check">
-    Runs `python eval_suite.py --runs 1` once. If the first one or two cases fail, the skill surfaces the error with a clear "this is a config issue at line N, not a model issue" framing.
+    Runs `python eval_suite.py --runs 1` once. Inspect failures and distinguish configuration errors, grader errors, and model quality failures; an early failure alone does not identify the cause.
   </Step>
 </Steps>
 
 ## Local-judge path — no API key required
 
-If no `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GOOGLE_API_KEY` is in env, the skill checks for a running Ollama instance via `curl -s http://localhost:11434/api/tags`. If Ollama responds, it runs `ollama list` first to see what models you have actually pulled, then picks the strongest instruction-tuned model available. Rough order of judge quality:
+If no `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GOOGLE_API_KEY` is in env, the skill checks for a running Ollama instance via `curl -s http://localhost:11434/api/tags`. If Ollama responds, it runs `ollama list` first to see what models you have actually pulled, then picks the strongest instruction-tuned model available. Example installed-model preferences in the bundled skill (not a benchmark ranking):
 
 1. `qwen2.5:72b`
 2. `llama3.3:70b-instruct`
@@ -75,20 +75,19 @@ multivon-eval bootstrap \
 ```
 
 <Warning>
-The shipped thresholds in `_calibration_data/v2.json` are calibrated for cloud judges. Local-judge bootstrap is roughly 5× wall-clock and uses those same thresholds — if you care about per-judge threshold accuracy, re-run calibration locally:
-
-```bash
-python -m multivon_eval.benchmarks.run_calibration_v2 \
-    --judges "ollama:qwen2.5:72b-instruct"
-```
+Cloud-judge threshold packs do not establish accuracy for a local judge.
+Models without a matching entry use fallback thresholds; bootstrap may also
+suggest p25 thresholds from trace scores. Validate your selected model against
+human-reviewed development and test examples. `suite.calibrate()` measures
+agreement; it does not learn thresholds automatically.
 </Warning>
 
 ## Costs
 
-| Path | Cost | Wall-clock |
-|---|---|---|
-| Cloud (claude-haiku-4-5 judge, default) | ~$0.12 per run, hard ceiling $0.15 | a few minutes (judge-API wait) |
-| Local (Ollama) | free | ~5× cloud wall-clock |
+Cloud cost depends on proposal, scoring, generation, and optional validation
+calls. `--budget-usd` checks estimated seed-generation cost, not the total bill.
+Local Ollama avoids hosted API charges; runtime and compute cost depend on your
+hardware. There is no guaranteed $0.15 total ceiling.
 
 ## How to extend
 

@@ -1,0 +1,92 @@
+---
+title: Define task success
+description: Start with the user outcome, then choose cases, graders, and a release policy.
+---
+
+An eval should answer a decision: **did this change improve the intended task
+without unacceptable regressions, and is the evidence sufficient to ship?**
+A plausible answer, a successful tool call, and a completed user goal are
+three different observations.
+
+## Write the goal before choosing metrics
+
+For a refund assistant, “be helpful” is too broad. A testable goal is:
+
+> Given an order and the applicable policy, issue the correct authorized
+> refund once, record it against that order, and accurately tell the customer
+> what happened. If required information is missing, ask for it before acting.
+
+Record the initial state, permitted actions, success conditions, unacceptable
+side effects, and evidence the grader can inspect. Include both cases where
+the assistant should act and cases where it should abstain or ask a question.
+
+| Requirement | Evidence | Useful check |
+|---|---|---|
+| Explain the policy accurately | Policy version and answer | Reference/rule checks plus reviewed Faithfulness judgments |
+| Refund the correct amount | Persisted transaction amount and currency | Deterministic comparison against expected state |
+| Avoid duplicate refunds | Transaction count before and after | Deterministic state invariant |
+| Use only authorized actions | Authorization and tool trace | Application assertions; tool-call checks as supporting evidence |
+| Report the result truthfully | Final answer and verified transaction | Consistency with observed state |
+
+`ToolCallAccuracy` measures the expected tool sequence or set. A tool name in
+a trace does not prove that the transaction committed. `TaskCompletion` is an
+LLM judgment, not an external-state verifier. Collect final state from a test
+sandbox or application adapter and implement a [custom evaluator](/guides/custom-evaluators)
+when that state determines success.
+
+## Build cases that distinguish good from bad
+
+Start from real successful tasks and failures with permission to use the data.
+Add boundaries: missing inputs, conflicting instructions, repeated requests,
+partial tool failures, stale context, unsupported claims, and required abstention.
+Synthetic cases can expand coverage but need review before becoming acceptance
+criteria. Keep the source document or conversation identifier so related cases
+stay in the same split.
+
+Separate the cases used to design prompts, rubrics, and thresholds from a
+held-out test set. Do not inspect that test set repeatedly while tuning. Save
+fixed case definitions for baseline/proposal comparisons; current report
+pairing uses input text and cannot reliably identify changed context or labels.
+
+## Verify the grader
+
+Run `multivon-eval validate` on reference outputs to catch graders that reject
+known-good answers. Also test known-bad and mixed answers, including a refusal
+followed by an unsupported claim. A grader that accepts everything can pass
+reference validation.
+
+Use `suite.calibrate()` to measure agreement on human-reviewed examples; it
+does not fit thresholds. Report false accepts, false rejects, errors, skips,
+and important task slices alongside overall agreement. Bootstrap's p25 score
+suggestions are provisional distribution summaries, not labeled calibration.
+
+## Set a release policy
+
+Choose the policy before examining the proposed change. Separate critical
+invariants from softer quality metrics. Decide how much regression matters,
+which slices must pass, and how much evidence is required.
+
+```python
+from multivon_eval import EvalCase, EvalSuite, ExactMatch
+
+# A minimal deterministic contract. Real applications supply their own outputs.
+suite = EvalSuite("refund decision", purpose="regression")
+suite.add_cases([
+    EvalCase(input="eligible order", expected_output="approved"),
+    EvalCase(input="already refunded", expected_output="no duplicate"),
+])
+suite.add_evaluators(ExactMatch())
+outputs = {"eligible order": "approved", "already refunded": "no duplicate"}
+report = suite.run(outputs.__getitem__, fail_threshold=1.0, verbose=False)
+assert report.evaluated == 2 and report.errors == 0 and report.skipped == 0
+```
+
+This example checks the decision string only. It is not a test of a real refund
+transaction. Replace the fixture and add state checks before using this policy
+for an agent with side effects.
+
+In 0.17.0 an active quality gate blocks errors and skipped coverage by default.
+That still does not guarantee enough cases, representative coverage, or an
+accurate grader. Inspect [uncertainty](/guides/statistical-rigor), repeat trials
+when needed, and keep the report, case definitions, application version, and
+actual provider request settings with each release decision.
