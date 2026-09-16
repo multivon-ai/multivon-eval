@@ -1,0 +1,128 @@
+---
+title: Evaluate retained OpenTelemetry traces
+description: Reuse native OTLP evidence and emit standard evaluation events without replacing your telemetry infrastructure.
+---
+
+**Development preview on `main`; not included in PyPI 0.18.0.** Install a
+checkout with `pip install -e '.[otel]'`. Instrumentation, collection, transport,
+storage, and backend access stay with OpenTelemetry and your existing tools.
+
+The bridge grades a captured text/tool execution without running the target
+again. It retains original OTLP bytes alongside the projected case, so resource
+metadata, schema URLs, errors, usage attributes and unsupported fields survive.
+Your suite's LLM graders can still make judge calls; use deterministic graders
+for an entirely offline analysis.
+
+## Import a bounded execution
+
+Capture native, uncompressed `ExportTraceServiceRequest` bodies through your
+existing exporter or Collector. Supply the trace ID and the span that bounds
+the task. Do not pass compressed HTTP bodies, a whole JSONL file, or generic
+protobuf JSON with base64 IDs as one request.
+
+```python
+from pathlib import Path
+from multivon_eval import EvalCase, EvalSuite, ExactMatch, ToolCallAccuracy
+from multivon_eval.integrations.otel import GENAI_PROFILE, OtelTrace, score_otel_trace
+
+# trace_id/root_span_id come from the captured application execution.
+trace = OtelTrace(
+    payloads=(Path("trace-request.pb").read_bytes(),),
+    trace_id=trace_id,
+    root_span_id=root_span_id,
+    profile=GENAI_PROFILE,
+    tool_coverage_complete=False,
+)
+case = EvalCase("Look up order 7", "shipped", case_id="order-7",
+                source_id="order-7-source", expected_tool_calls=["lookup_order"])
+suite = EvalSuite("order workflow").add_evaluators(ExactMatch(), ToolCallAccuracy())
+report = score_otel_trace(suite, trace, case)
+report.save_json("order-report.json")
+```
+
+For the Collector file exporter's newline-delimited OTLP JSON, use
+`payloads=tuple(Path("traces.jsonl").read_bytes().splitlines())` and
+`encoding="json"`. Standard OTLP JSON uses hexadecimal trace/span IDs and integer
+enum values. The bridge adapts these IDs for the upstream protobuf JSON parser;
+it preserves the original bytes, including unknown fields. The Collector file
+exporter is alpha upstream: pin its version and verify your export format.
+
+The root's last user message must match `case.input`. Output comes from the
+root unless you select a descendant with `output_span_id=`. Input/output use
+`gen_ai.input.messages` / `gen_ai.output.messages` with text parts. Multiple
+assistant candidates and media parts require a richer evaluation path; this
+adapter cannot silently flatten them into one answer. Missing/redacted output
+is unmeasured, and a selected operation's native error remains an execution error.
+
+## Understand capture completeness
+
+`tool_coverage_complete=True` is an explicit assertion by the caller about
+instrumentation and collection for this execution. Use it only when you have
+established that boundary. A sampling flag or an empty span list cannot prove
+that no uninstrumented tool ran. The example leaves this assertion false:
+tool checks remain unmeasured and an acceptance policy returns indeterminate.
+
+Tool projection recognizes `gen_ai.operation.name="execute_tool"` and MCP
+`mcp.method.name="tools/call"`. It needs a tool name, object arguments and a
+captured result. Instrumentation must opt into capturing this content. Treat
+argument/result retention according to your application's data policy.
+
+Dropped data, missing parents, invalid timestamps, unsupported status, tool
+errors and overlapping/nested tool spans become evidence issues. The adapter
+does not guess a total order, merge client/server spans into an assumed single
+call, or replace absent arguments with `{}`. Exact transport retries are
+deduplicated by span identity; conflicting duplicates are rejected.
+
+The saved trial keeps the original case identity separate from its observed
+trace. Native request batches may include other traces: their bytes also remain
+in the saved evidence. Select and retain batches with that scope in mind.
+Hashes detect changes relative to retained artifacts; they do not authenticate
+instrumentation, the caller's assertion, or externally changed state.
+
+## Export evaluation events through your logger
+
+```python
+from multivon_eval.integrations.otel_export import emit_evaluation_events
+
+# logger_provider is your configured OpenTelemetry SDK LoggerProvider.
+submitted = emit_evaluation_events(report, logger_provider.get_logger("my.evals"))
+flushed = logger_provider.force_flush()
+```
+
+Each saved grader emits a standard `gen_ai.evaluation.result` **log event**.
+Measured events include a score and pass/fail label; skipped/error measurements
+have an `unmeasured` label and no invented numeric score. A separate
+`multivon.evaluation.trial` event preserves trial status even when no grader ran.
+Imported events link to the evaluated native trace and selected output span.
+Other reports emit unparented events instead of attaching an unrelated ambient
+request. Explanations are opt-in with `include_explanations=True`.
+
+The function validates retained trial integrity before submitting events and
+does not install global providers. The returned count means submitted to the
+logger, not delivered to a backend. Your processors/exporters own retries,
+limits, delivery and shutdown. Native usage attributes remain available in the
+retained trace; this bridge does not yet reconcile provider billing or capture
+judge requests automatically.
+
+## Reproduce the interoperability check
+
+```bash
+python examples/otel_evidence.py --output-dir otel-demo
+```
+
+This offline fixture uses the official Python SDK and OTLP HTTP exporters for
+trace and event round trips. To exercise published `multivon-mcp` over real stdio,
+install the MCP client SDK in the example environment and pass
+`--mcp-python /path/to/python-with-multivon-mcp`. It checks both complete and
+incomplete reports through `eval_acceptance_report`, without model calls.
+See the [validation record](https://github.com/multivon-ai/multivon-eval/blob/main/benchmarks/industrial/OTEL_VALIDATION.md)
+for versions, the actual Collector fixture, and compatibility limits.
+
+The profile pins the upstream
+[GenAI conventions revision c88d504](https://github.com/open-telemetry/semantic-conventions-genai/tree/c88d504ab3d9879f8e50d3cc87e69775e11db234).
+Those conventions are **Development**, not stable. SDK version, convention
+revision and OTLP schema URLs are separate identifiers. Unsupported profiles
+are rejected; schema URLs are retained without automatic migration. The
+[OTLP JSON specification](https://opentelemetry.io/docs/specs/otlp/#json-protobuf-encoding)
+and [Collector file exporter](https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/v0.161.0/exporter/fileexporter)
+define the upstream formats used here.

@@ -1,6 +1,6 @@
 # multivon-eval examples
 
-Six focused case studies. Each script is self-contained — no shared
+Six numbered case studies plus the integration demonstrations below. Each script is self-contained — no shared
 utilities, no relative imports. Run with `python <name>.py` after setting the
 required environment variables.
 
@@ -38,3 +38,18 @@ Example 5 demonstrates the complete staleness lifecycle and intentionally exits
 0 after showing the nested CI gate's exit code. Example 6 runs an adaptive
 persona simulation and gates on goal completion; it prints its report but does
 not create a results JSON or a captured output file.
+
+## Development integration demonstrations
+
+These examples require a checkout of `main`; the review and OTel previews are
+not in PyPI 0.18.0. They use synthetic fixtures and make no model API calls.
+
+| Script | What it checks | Installation |
+|---|---|---|
+| `review_saved_trials.py` | Native Label Studio task/review exchange and missing coverage | `pip install -e .` |
+| `calibrate_reviewed_scores.py` | Frozen development fitting and source-disjoint held-out analysis | `pip install -e '.[review]'` |
+| `otel_evidence.py` | Official SDK/OTLP trace and evaluation-event round trip; optional real MCP stdio | `pip install -e '.[otel]'` |
+
+Run each with `--output-dir` pointing to a new directory. The OTel example's
+optional `--mcp-python` selects a Python executable with multivon-mcp installed;
+its calling environment also needs the official `mcp` client package.

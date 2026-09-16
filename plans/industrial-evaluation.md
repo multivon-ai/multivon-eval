@@ -22,7 +22,7 @@ Gymnasium at their established boundaries.
 | R03 | Resumable execution and resource controls | Kill/restart experiment preserves completed work; checkpoint compatibility, cancellation, bounded concurrency, deadlines and budget accounting; explicit policy for ambiguous side effects | In progress: Inspect SIGKILL/recovery experiment preserves completed work and rejects duplicate-write control; full compatibility, cancellation/deadline/budget validation remains |
 | R04 | Acceptance policies | Required-check coverage, critical invariants, per-slice thresholds, sample requirements, quality/error/indeterminate distinctions and machine-readable decisions verified | Delivered in 0.18.0: policy/CLI, failure-path tests and frozen document-workflow policy; task/domain validity tracked separately |
 | R05 | Review and calibration | Label import/export, review disagreements, development-only fitting, held-out evaluation, uncertainty/false-accept reporting and no leakage verified | Development preview: native Label Studio server/browser round trip and saved-score development/held-out source analysis validated with synthetic fixtures; mobile/accessibility limits documented; independent task-label validity remains under R17 |
-| R06 | Trace interoperability | OpenTelemetry ingestion/export, documented schema/version handling, actual round trips with supported companion integrations | Pending |
+| R06 | Trace interoperability | OpenTelemetry ingestion/export, documented schema/version handling, actual round trips with supported companion integrations | Development preview: native SDK/OTLP protobuf, actual Collector JSON and published MCP 0.4.0 round trips verified; convention profile and unsupported projections documented; production capture authenticity remains outside the bridge |
 | R07 | Task/environment/outcome interfaces | Setup/reset/action/observation/cleanup, isolated repeated episodes, real end-state assertions, forbidden side effects, partial failures and recovery cases | Pending |
 | R08 | Failure investigation UI | Trial comparison, evidence references, slices, review, case promotion, local security and accessibility; rendered desktop/mobile verification | Pending |
 | R09 | Typed multimodal artifacts | Images/pages/audio/video, content identity, timestamps/regions, actual artifact rendering and grounded verdict references, extraction-versus-perception comparisons | Pending |
@@ -170,3 +170,16 @@ UI overflow and one non-blocking browser error are disclosed in
 benchmarks/industrial/REVIEW_WORKFLOW_VALIDATION.md. The latest focused checks
 passed 60 tests on Python 3.12, 59 on Python 3.10 (one optional SDK skip), and
 64 MDX pages compiled. No API inference spend or new PyPI release at this checkpoint.
+
+
+2026-09-17 telemetry checkpoint: reuse OpenTelemetry Python 1.44.0 SDK,
+protobuf types and HTTP exporters, plus official Collector Contrib 0.161.0.
+The bridge retains original protobuf/JSON bytes and native context while
+separating original case identity from observed tool evidence. Actual MCP 0.4.0
+stdio calls reproduce accept versus indeterminate for complete versus unasserted
+capture. Standard evaluation log events retain trace/span IDs, and missing/error
+measurements have no invented score. The Collector's actual JSON output is a
+committed fixture with image digest and content hash. Full Python 3.12 tests:
+1,642 passed, 4 skipped, 7 warnings; 23 focused tests passed on Python 3.10;
+65 MDX pages compiled. No inference calls or new PyPI release. See
+benchmarks/industrial/OTEL_VALIDATION.md for scope and upstream limitations.

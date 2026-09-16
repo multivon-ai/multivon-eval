@@ -4,6 +4,20 @@ All notable changes to `multivon-eval`. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+### OpenTelemetry interoperability
+
+- Add an optional native OTLP protobuf/JSON bridge using upstream protobuf
+  types and SDK exporters. Preserve original request bytes, unknown fields,
+  resource/scope metadata and schema URLs; pin Development GenAI conventions.
+- Keep original case identity separate from observed traces. Missing capture,
+  dropped data, tool errors and ambiguous tool ordering block acceptance;
+  absent output/latency cannot become successful measurements.
+- Emit standard GenAI evaluation log events with native trace/span correlation
+  through a caller-owned logger. Skipped/error measurements have no numeric
+  score; trial status survives even when no graders run. No automatic billing
+  reconciliation or completeness authentication is claimed.
+- Add offline SDK/OTLP/MCP examples and an actual Collector JSON fixture.
+
 ### Calibration audit
 
 - Stop legacy threshold sweeps on missing/invalid/skipped measurements instead

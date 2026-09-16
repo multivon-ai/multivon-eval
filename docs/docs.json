@@ -102,6 +102,7 @@
               "guides/versioned-evidence",
               "guides/acceptance-policies",
               "guides/inspect-integration",
+              "guides/otel-evidence",
               "guides/review-labels",
               "guides/review-calibration",
               "guides/document-workflows",

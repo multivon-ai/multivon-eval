@@ -1,0 +1,10 @@
+{
+  "fixture": "Local synthetic task with an actual multivon-mcp 0.4.0 stdio call",
+  "provider_calls": 0,
+  "trace_id": "0a5f00c7d3afaba356cc5f47be479fd8",
+  "root_span_id": "575ba23d67fd0220",
+  "otel_python_version": "1.44.0",
+  "collector_version": "0.161.0",
+  "collector_image": "otel/opentelemetry-collector-contrib@sha256:fd328de2552466ad78385e1b1289c3f2402b1c45f265b252aab1955b42845ac1",
+  "sha256": "9fd8d33700bc682bdac0ef827d21d7e1dbedfecfd76fffbeefa35af87d8ba8a1"
+}

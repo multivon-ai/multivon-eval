@@ -66,6 +66,8 @@ For development builds, the [Label Studio review bridge](docs/guides/review-labe
 exchanges saved text/trace trials and preserves review disagreements and missing
 coverage. [Saved-score calibration](docs/guides/review-calibration.mdx) reuses
 scikit-learn and SciPy for development fitting and held-out source analysis.
+[OpenTelemetry interoperability](docs/guides/otel-evidence.mdx) grades retained
+OTLP traces and emits standard evaluation events through your existing SDK.
 These previews are not included in PyPI 0.18.0.
 
 ## A real workflow example
