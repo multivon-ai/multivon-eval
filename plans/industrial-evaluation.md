@@ -23,7 +23,7 @@ Gymnasium at their established boundaries.
 | R04 | Acceptance policies | Required-check coverage, critical invariants, per-slice thresholds, sample requirements, quality/error/indeterminate distinctions and machine-readable decisions verified | Delivered in 0.18.0: policy/CLI, failure-path tests and frozen document-workflow policy; task/domain validity tracked separately |
 | R05 | Review and calibration | Label import/export, review disagreements, development-only fitting, held-out evaluation, uncertainty/false-accept reporting and no leakage verified | Development preview: native Label Studio server/browser round trip and saved-score development/held-out source analysis validated with synthetic fixtures; mobile/accessibility limits documented; independent task-label validity remains under R17 |
 | R06 | Trace interoperability | OpenTelemetry ingestion/export, documented schema/version handling, actual round trips with supported companion integrations | Development preview: native SDK/OTLP protobuf, actual Collector JSON and published MCP 0.4.0 round trips verified; convention profile and unsupported projections documented; production capture authenticity remains outside the bridge |
-| R07 | Task/environment/outcome interfaces | Setup/reset/action/observation/cleanup, isolated repeated episodes, real end-state assertions, forbidden side effects, partial failures and recovery cases | Pending |
+| R07 | Task/environment/outcome interfaces | Setup/reset/action/observation/cleanup, isolated repeated episodes, real end-state assertions, forbidden side effects, partial failures and recovery cases | Development preview: native Gymnasium lifecycle plus immutable state evidence and outcome checks; 14 actual SQLite environment instances validate separate resources, forbidden history, partial commits and explicit recovery; security isolation and durable execution stay upstream under R03 |
 | R08 | Failure investigation UI | Trial comparison, evidence references, slices, review, case promotion, local security and accessibility; rendered desktop/mobile verification | Pending |
 | R09 | Typed multimodal artifacts | Images/pages/audio/video, content identity, timestamps/regions, actual artifact rendering and grounded verdict references, extraction-versus-perception comparisons | Pending |
 | R10 | Controlled robustness suite | Validated invariant-preserving and semantic-changing transformations; reviewed or code-derived answers; no transformations that silently corrupt the oracle | Pending |
@@ -183,3 +183,20 @@ committed fixture with image digest and content hash. Full Python 3.12 tests:
 1,642 passed, 4 skipped, 7 warnings; 23 focused tests passed on Python 3.10;
 65 MDX pages compiled. No inference calls or new PyPI release. See
 benchmarks/industrial/OTEL_VALIDATION.md for scope and upstream limitations.
+
+
+2026-09-17 environment checkpoint: reuse Gymnasium 1.3.0 lifecycle/spaces and
+the existing document-study SQLite posting handler. Capture detached state
+observations before/after actions, including writes committed before exceptions;
+retain cleanup and execution gaps, and bind versioned outcome checks. Real
+FrozenLake/CartPole checks validate native spaces and termination semantics.
+The ledger fixture ran 14 environment instances across 12 databases; three
+published MCP 0.4.0 calls reproduced accept/reject/indeterminate. The complete
+48,069-byte evidence archive includes SQLite state, reports, executed sources
+and verified hashes. Exploratory ablation: final text accepted 7 invalid complete
+episodes out of 12, final-posting-only checks missed 2 forbidden-change episodes.
+This supports the need for the specified state/history contract, not superiority
+over a good bespoke checker. Full Python 3.12 checks: 1,661 passed, 4 skipped,
+7 warnings; focused Python 3.10: 86 passed. Also fixed regrading to retain prior
+capture issues and upstream provenance. No model calls or new PyPI release.
+See benchmarks/industrial/ENVIRONMENT_VALIDATION.md; the wider program remains active.

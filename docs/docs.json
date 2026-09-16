@@ -103,6 +103,7 @@
               "guides/acceptance-policies",
               "guides/inspect-integration",
               "guides/otel-evidence",
+              "guides/environment-outcomes",
               "guides/review-labels",
               "guides/review-calibration",
               "guides/document-workflows",

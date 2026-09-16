@@ -4,7 +4,6 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
-import re
 import sqlite3
 from pathlib import Path
 
@@ -13,32 +12,10 @@ from inspect_ai.model import ContentDocument, ContentImage, ContentText, Generat
 from inspect_ai.solver import generate, solver
 from inspect_ai.tool import tool
 
+from benchmarks.industrial.ledger_store import initialize, post
 from multivon_eval import CaseManifest, EvalResult
 from multivon_eval.evaluators.base import Evaluator
 from multivon_eval.integrations.inspect import as_inspect_scorer, to_inspect_dataset
-
-
-def initialize(database: Path) -> None:
-    with sqlite3.connect(database) as db:
-        db.execute("CREATE TABLE IF NOT EXISTS entries (case_id TEXT PRIMARY KEY, amount TEXT, currency TEXT)")
-
-
-def post(database: Path, case_id: str, amount: str, currency: str) -> dict:
-    if not isinstance(amount, str) or not amount.strip() or len(amount) > 80:
-        raise ValueError("amount must be a nonempty string of at most 80 characters")
-    if currency not in {"USD", "UNSPECIFIED"}:
-        raise ValueError("Unsupported currency for this task")
-    if currency == "USD" and not re.fullmatch(r"\d+\.\d{2}", amount):
-        raise ValueError("USD amount requires two decimals and no grouping")
-    with sqlite3.connect(database) as db:
-        prior = db.execute("SELECT amount,currency FROM entries WHERE case_id=?", (case_id,)).fetchone()
-        if prior and prior != (amount, currency):
-            raise ValueError("Idempotency conflict: existing entry differs")
-        db.execute("INSERT OR IGNORE INTO entries VALUES (?,?,?)", (case_id, amount, currency))
-    # Separate connection checks committed state rather than echoing arguments.
-    with sqlite3.connect(database) as db:
-        row = db.execute("SELECT amount,currency FROM entries WHERE case_id=?", (case_id,)).fetchone()
-    return {"status": "posted", "amount": row[0], "currency": row[1]}
 
 
 @tool

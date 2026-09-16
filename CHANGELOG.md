@@ -4,7 +4,23 @@ All notable changes to `multivon-eval`. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+### Environment outcomes
+
+- Reuse Gymnasium's Env/Wrapper lifecycle and native space JSON codecs to
+  retain bounded episode evidence. Capture state after partial-failure writes,
+  preserve termination versus truncation, and attempt cleanup on exceptions.
+- Add versioned outcome checks over saved state with explicit unknown verdicts,
+  evaluator errors and coverage issues. Record contracts in the report lock;
+  reward and a successful tool acknowledgement cannot automatically prove success.
+- Validate actual SQLite outcomes, forbidden audit history, isolated repeat
+  resources and explicit recovery with the document study's existing handler.
+  Publish raw databases, reports and an exploratory baseline ablation. Execution
+  sandboxing and durable retries remain upstream; no automatic replay is added.
+
 ### OpenTelemetry interoperability
+
+- Preserve original evidence issues, native provenance and recorded gaps when
+  regrading saved trials; a new text grade cannot erase incomplete capture.
 
 - Add an optional native OTLP protobuf/JSON bridge using upstream protobuf
   types and SDK exporters. Preserve original request bytes, unknown fields,

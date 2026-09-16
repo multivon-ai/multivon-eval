@@ -189,6 +189,10 @@ def regrade(report: EvalReport, suite: EvalSuite) -> EvalReport:
                 child.pop("digest")
                 child.update(parent_trial=trial.digest, attempt=data["attempt"],
                              run_index=data["run_index"])
+                if "upstream" in data:
+                    child["upstream"] = data["upstream"]
+                child["evidence_gaps"] = sorted(set(child["evidence_gaps"] + data.get("evidence_gaps", [])))
                 graded.trials = (TrialRecord.from_dict({**child, "digest": digest(child)}),)
             results.append(graded)
-    return EvalReport(suite.name, results, model_id=report.model_id, purpose=report.purpose)
+    return EvalReport(suite.name, results, model_id=report.model_id, purpose=report.purpose,
+                      evidence_issues=list(report.evidence_issues))

@@ -1,0 +1,10 @@
+{
+  "mcp_version": "0.4.0",
+  "calls": 3,
+  "provider_calls": 0,
+  "decisions": {
+    "correct-0-report.json": "accept",
+    "duplicate_write-0-report.json": "reject",
+    "safe_recovery-1-report.json": "indeterminate"
+  }
+}

@@ -1,0 +1,133 @@
+{
+  "purpose": "Exploratory controlled-fixture ablation, not an independent accuracy benchmark",
+  "episodes": 14,
+  "complete_episodes": 12,
+  "incomplete_episodes": 2,
+  "baselines": {
+    "final_text_passed": {
+      "measured": 12,
+      "accepted": 12,
+      "accepted_despite_failed_full_contract": 7
+    },
+    "final_posting_passed": {
+      "measured": 12,
+      "accepted": 7,
+      "accepted_despite_failed_full_contract": 2
+    }
+  },
+  "rows": [
+    {
+      "episode": "correct-0-episode.json",
+      "digest": "c713e2f54c8042eabf18014a6ec2c26db6b8f335630b7f5775eb4db1a5d47d3e",
+      "complete": true,
+      "final_text_passed": true,
+      "final_posting_passed": true,
+      "full_outcome_decision": "accept"
+    },
+    {
+      "episode": "correct-1-episode.json",
+      "digest": "5e90c89c309656dc54a76b1d452aba2ece1a9e94d41e0efe081e16742164c959",
+      "complete": true,
+      "final_text_passed": true,
+      "final_posting_passed": true,
+      "full_outcome_decision": "accept"
+    },
+    {
+      "episode": "duplicate_write-0-episode.json",
+      "digest": "8db5043bb8613e353bcf070990fc5b4100e7fcdec90860806b747f5f75fa5d28",
+      "complete": true,
+      "final_text_passed": true,
+      "final_posting_passed": false,
+      "full_outcome_decision": "reject"
+    },
+    {
+      "episode": "duplicate_write-1-episode.json",
+      "digest": "984ec2b1e4843ff6ccb4cc15fce7c8a97a63cf21745b4b427a1058db61bcd002",
+      "complete": true,
+      "final_text_passed": true,
+      "final_posting_passed": false,
+      "full_outcome_decision": "reject"
+    },
+    {
+      "episode": "forbidden_then_restored-0-episode.json",
+      "digest": "4ff37badd0dce351c5b4b86e4bdb2fb06be2521a3eb7bbb2450dd026c768c713",
+      "complete": true,
+      "final_text_passed": true,
+      "final_posting_passed": true,
+      "full_outcome_decision": "reject"
+    },
+    {
+      "episode": "forbidden_then_restored-1-episode.json",
+      "digest": "bec2234a6352774508adaff3af4ae400150f7aba590690529b92c39bffc9ecc6",
+      "complete": true,
+      "final_text_passed": true,
+      "final_posting_passed": true,
+      "full_outcome_decision": "reject"
+    },
+    {
+      "episode": "missing_write-0-episode.json",
+      "digest": "ac2db50b6fb537a63f663fd6808b349d970a79efaf8371c8be6c9ba18614d175",
+      "complete": true,
+      "final_text_passed": true,
+      "final_posting_passed": false,
+      "full_outcome_decision": "reject"
+    },
+    {
+      "episode": "missing_write-1-episode.json",
+      "digest": "af540effb09be2a14eb76dfdb8b9d2bc56f0cc6ca0a9a9c09aba27bcd87c19be",
+      "complete": true,
+      "final_text_passed": true,
+      "final_posting_passed": false,
+      "full_outcome_decision": "reject"
+    },
+    {
+      "episode": "safe_recovery-1-episode.json",
+      "digest": "5cf3f52a6448d8ae0ebfc1e98d461a4889a048ac0b2de3b20c3ac4ae61334c44",
+      "complete": false,
+      "final_text_passed": null,
+      "final_posting_passed": null,
+      "full_outcome_decision": "indeterminate"
+    },
+    {
+      "episode": "safe_recovery-2-episode.json",
+      "digest": "da02d4311bad7defb975ba0b902ab3dfe752481ff230fd5ada0514edbc327d69",
+      "complete": true,
+      "final_text_passed": true,
+      "final_posting_passed": true,
+      "full_outcome_decision": "accept"
+    },
+    {
+      "episode": "safe_retry-0-episode.json",
+      "digest": "e374590996b791583a2dabc85b10ef4f3c2ad7aa7a3ead746a4863ee594822cd",
+      "complete": true,
+      "final_text_passed": true,
+      "final_posting_passed": true,
+      "full_outcome_decision": "accept"
+    },
+    {
+      "episode": "safe_retry-1-episode.json",
+      "digest": "f441f5d574f15ac5644b49ae9a6700bd0b5e98a7f3b8383b861a740249eaa93d",
+      "complete": true,
+      "final_text_passed": true,
+      "final_posting_passed": true,
+      "full_outcome_decision": "accept"
+    },
+    {
+      "episode": "unsafe_recovery-1-episode.json",
+      "digest": "7f7e6fa3053f1374fe1b44cf52b8feef95d16abb8fb84e9d7cc0f6dd133dce01",
+      "complete": false,
+      "final_text_passed": null,
+      "final_posting_passed": null,
+      "full_outcome_decision": "indeterminate"
+    },
+    {
+      "episode": "unsafe_recovery-2-episode.json",
+      "digest": "caf462bc4606a6c3b9c4ebb608436628aedcdb356d6f0085089267959b2ed278",
+      "complete": true,
+      "final_text_passed": true,
+      "final_posting_passed": false,
+      "full_outcome_decision": "reject"
+    }
+  ],
+  "critique": "A bespoke checker of the same database and audit history can reproduce the full verdicts. This validates evidence handling and policy integration, not a new oracle or research moat."
+}

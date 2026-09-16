@@ -1,0 +1,9 @@
+{
+  "archive": "evidence.tar.gz",
+  "bytes": 48069,
+  "sha256": "18a0891ece5f239b405e2a6b579d12d46ac58588a29e36e7051b9c0273ba07a9",
+  "files": 52,
+  "provider_calls": 0,
+  "source_hashes_verified": true,
+  "native_sqlite_databases": 12
+}

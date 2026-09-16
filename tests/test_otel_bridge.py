@@ -208,6 +208,20 @@ def test_native_evidence_mutation_is_detected(native_trace):
         OtelTrace.from_dict(value)
 
 
+def test_regrading_cannot_erase_incomplete_native_capture(native_trace):
+    from multivon_eval.trials import regrade
+    suite, case = suite_case()
+    incomplete = OtelTrace(native_trace.payloads, native_trace.trace_id, native_trace.root_span_id, GENAI_PROFILE)
+    report = score_otel_trace(suite, incomplete, case)
+    regraded = regrade(report, EvalSuite('text regrade').add_evaluator(ExactMatch()))
+    assert regraded.evidence_issues == report.evidence_issues
+    parent = report.case_results[0].trials[0].data
+    child = regraded.case_results[0].trials[0].data
+    assert child['upstream'] == parent['upstream']
+    assert set(parent['evidence_gaps']) <= set(child['evidence_gaps'])
+    assert AcceptancePolicy((CheckRequirement('exact_match'),)).evaluate(regraded).decision == 'indeterminate'
+
+
 def test_invalid_native_latency_cannot_pass_a_latency_requirement(native_trace):
     from multivon_eval import MaxLatency
     def corrupt(span, *_):

@@ -1,0 +1,38 @@
+{
+  "synthetic_fixture": true,
+  "provider_calls": 0,
+  "gymnasium_version": "1.3.0",
+  "environment_instances": 14,
+  "databases": 12,
+  "decisions": {
+    "correct": [
+      "accept",
+      "accept"
+    ],
+    "missing_write": [
+      "reject",
+      "reject"
+    ],
+    "safe_retry": [
+      "accept",
+      "accept"
+    ],
+    "duplicate_write": [
+      "reject",
+      "reject"
+    ],
+    "forbidden_then_restored": [
+      "reject",
+      "reject"
+    ],
+    "safe_recovery": [
+      "indeterminate",
+      "accept"
+    ],
+    "unsafe_recovery": [
+      "indeterminate",
+      "reject"
+    ]
+  },
+  "limitation": "Recovery attempts share state intentionally; they are not independent samples. The original failure remains indeterminate. No automatic retry or deployment approval."
+}

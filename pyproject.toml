@@ -44,6 +44,7 @@ datasets = ["datasets>=5.0.1,<6"]
 inspect = ["inspect-ai>=0.3.263,<0.4"]
 review = ["scikit-learn>=1.5,<2", "scipy>=1.11,<2"]
 otel = ["opentelemetry-sdk>=1.44,<2", "opentelemetry-exporter-otlp-proto-http>=1.44,<2"]
+gymnasium = ["gymnasium>=1.2,<2"]
 # Agent framework integrations — install only the one you use.
 langgraph = ["langgraph>=0.2.0", "langchain-core>=0.3.0"]
 openai-agents = ["openai-agents>=0.0.1"]

@@ -53,3 +53,15 @@ not in PyPI 0.18.0. They use synthetic fixtures and make no model API calls.
 Run each with `--output-dir` pointing to a new directory. The OTel example's
 optional `--mcp-python` selects a Python executable with multivon-mcp installed;
 its calling environment also needs the official `mcp` client package.
+
+For actual environment state and partial-failure checks, run from the repository
+root with `pip install -e '.[gymnasium]'`:
+
+```bash
+python -m benchmarks.industrial.gymnasium_ledger --output-dir ledger-outcomes
+python -m benchmarks.industrial.analyze_environment ledger-outcomes
+```
+
+This reuses the document study's SQLite handler, retains the databases and
+observations, and compares answer-only checks with the explicit outcome contract.
+See the [validation and critique](../benchmarks/industrial/ENVIRONMENT_VALIDATION.md).

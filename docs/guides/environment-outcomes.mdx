@@ -1,0 +1,150 @@
+---
+title: Evaluate actual environment outcomes
+description: Reuse Gymnasium's lifecycle and verify persisted state independently of an agent's answer or reward.
+---
+
+**Development preview on `main`; not included in PyPI 0.18.0.** Install the
+checkout with `pip install -e '.[gymnasium]'`. This adapter uses native
+[Gymnasium environments and spaces](https://gymnasium.farama.org/api/env/).
+Use [Inspect](/guides/inspect-integration) for durable execution and its existing
+sandbox providers for untrusted code.
+
+An agent can say “posted” without saving a record, save it twice, or alter a
+protected record and then restore it. Evaluate the required state and forbidden
+side effects separately from the final answer. A reward is useful evidence;
+it is not automatically your business success criterion.
+
+## Capture one task lifecycle
+
+`capture_episode` creates an environment from your factory, resets it once,
+calls your interaction function, and attempts cleanup. Each independent repeat
+should receive a fresh environment and its own external resources. The helper
+does not provision a security sandbox or authenticate that isolation.
+
+```python
+from multivon_eval import EvalCase
+from multivon_eval.integrations.gymnasium import capture_episode
+
+def interact(env, observation, info):
+    while True:
+        action = your_agent(observation, info)
+        observation, reward, terminated, truncated, info = env.step(action)
+        if terminated or truncated:
+            return "finished"
+
+episode = capture_episode(
+    make_fresh_environment,
+    interact,
+    case=EvalCase("Post invoice once", case_id="invoice-17", source_id="document-17"),
+    environment_id="invoice-environment-v1",
+    observer_id="ledger-readonly-v1",
+    observe=read_committed_state,
+    seed=17,
+    max_steps=20,
+)
+```
+
+The factory and observer above are application-specific functions you supply.
+`read_committed_state()` takes no arguments and returns a portable JSON object.
+It should use a read-only database connection or state API, independently of the
+tool acknowledgement. Supply explicit environment/observer versions and
+portable `options=` for reset configuration. Version labels are caller
+assertions; they do not discover hidden implementation changes.
+
+The agent receives native Gymnasium observations and actions. Saved values use
+the spaces' existing **batched** `to_jsonable` format, preserving numeric arrays
+without inventing another space codec. Recorded space descriptions are diagnostic;
+to decode values, use the same declared upstream spaces and `from_jsonable`.
+Reset/step `info`, observer state and options must be portable JSON. Unsupported
+values become capture errors rather than silently stringified data.
+
+The evidence retains the initial observation and independently read state,
+every attempted step, successful transitions, observations after exceptions,
+final state before cleanup, and cleanup status. An invalid action rejected before
+execution has no native action encoding; its error remains recorded. The original
+case identity stays bound to the episode. `episode.data` returns a detached copy;
+`EpisodeEvidence.from_dict(...)` verifies its digest and schema when restoring it.
+
+## Define outcome checks over saved evidence
+
+```python
+from multivon_eval import AcceptancePolicy, CheckRequirement
+from multivon_eval.episode import OutcomeCheck, OutcomeVerdict, evaluate_episode
+
+def posted_once(episode):
+    state = episode.data["final_state"]
+    if state is None:
+        return OutcomeVerdict(None, "No committed-state observation", {})
+    rows = state["invoice_rows"]
+    passed = rows == [{"invoice_id": "invoice-17", "amount_cents": 1234}]
+    return OutcomeVerdict(passed, "Require exactly one correct posting", {"rows": rows})
+
+report = evaluate_episode(episode, [
+    OutcomeCheck("posted_once", "invoice-once-v1", posted_once),
+])
+decision = AcceptancePolicy((CheckRequirement("posted_once", critical=True),)).evaluate(report)
+report.save_json("invoice-outcome.json")
+print(decision.decision)
+```
+
+Checks receive only saved evidence. They do not need to call the target again.
+Return `True` or `False` for a measured outcome and `None` when the required
+observation is missing. A raised exception is an evaluator error. Explicit check
+versions and recorded environment settings enter the report lock, so changing
+them blocks paired significance. Opaque callback behavior still requires review.
+
+Check forbidden side effects using the whole relevant history, not only final
+values. For example, inspect a database audit table or every captured state to
+detect a forbidden change followed by restoration. State snapshots between steps
+cannot detect an unrecorded transient change inside one step; use authoritative
+audit history when that distinction matters.
+
+## Completion, truncation and recovery
+
+Gymnasium's `terminated` means the environment reached a natural terminal state;
+it can represent failure, such as falling into a hole. `truncated` means execution
+ended outside that natural termination rule, such as reaching a time limit.
+The bridge preserves both flags. Returning early, truncation, observation errors,
+invalid transitions, or unconfirmed cleanup leave coverage issues.
+
+An otherwise passing report with these issues is indeterminate. A known measured
+failure can still reject under the acceptance policy even when other evidence is
+incomplete. Your check must decide which observations justify a verdict: a
+terminal-goal check should return `None` when a partial episode does not establish
+the answer. Do not treat an intermediate state as a completed task by accident.
+
+`max_steps` blocks further actions before calling the environment. This is a
+step bound, not a wall-clock timeout, memory limit or cancellation mechanism.
+A blocked synchronous callback cannot be interrupted by this helper. Ordinary
+exceptions are retained; cancellation such as `KeyboardInterrupt` propagates
+after cleanup, without promising a durable episode artifact. A factory that
+fails before returning an environment must clean up its own partial construction.
+Cleanup success means `close()` returned, not an independent resource-leak audit.
+
+A step can commit a write and then raise. The observer still runs, so that write
+is retained as partial-failure evidence. The bridge never automatically retries
+or assumes rollback. For recovery, preserve the failed attempt, deliberately
+reuse the intended persisted state, and apply an idempotency policy. Use Inspect
+when you need durable retry history, process-level deadlines and sandboxing.
+A passing recovery attempt does not erase or approve the failed history.
+
+## Run the real SQLite fixture
+
+From the repository root:
+
+```bash
+python -m benchmarks.industrial.gymnasium_ledger --output-dir ledger-outcomes
+```
+
+The experiment reuses the document study's posting handler. It tests correct and
+missing writes, idempotent and duplicate retries, forbidden changes followed by
+restoration, and explicit recovery after a committed write raises. It saves
+SQLite databases, episode evidence, reports, policy, protocol and hashes.
+There are no model calls. Native FrozenLake and CartPole checks also exercise
+discrete and array observations, terminal failures and truncation.
+
+The [validation record](https://github.com/multivon-ai/multivon-eval/blob/main/benchmarks/industrial/ENVIRONMENT_VALIDATION.md)
+contains the results and downloadable evidence. These are synthetic lifecycle
+checks, not production validation, a new benchmark dataset or a world-model
+quality result. World-model prediction and planning evaluation remain separate
+work in the implementation program.

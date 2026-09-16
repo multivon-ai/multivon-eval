@@ -73,3 +73,14 @@ The follow-up [document-to-ledger study](DOCUMENT_RESULTS.md) now includes
 CORD/pdfhell sources, held-out comparisons, actual provider calls, costs and
 reviewed failures. [Raw artifacts and offline reproduction](REPRODUCE_DOCUMENT_RESULTS.md)
 are public; customer usefulness remains unproven.
+
+
+## Environment lifecycle validation (development preview)
+
+[Gymnasium/SQLite validation](ENVIRONMENT_VALIDATION.md) reuses the existing
+posting handler and standard environment interfaces. The raw archive retains
+14 environment instances across 12 databases, including duplicate writes,
+forbidden changes followed by restoration and failure after commit. This is
+synthetic integration evidence, not model accuracy or production validation.
+The offline ablation makes the comparison against simple answer/state checks
+explicit and does not claim an advantage over a complete bespoke outcome checker.
