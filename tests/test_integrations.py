@@ -385,28 +385,27 @@ class TestLangSmithImporterAsModelFn(unittest.TestCase):
         self.importer = LangSmithImporter(project_name="test")
 
     def test_as_model_fn_replays_in_order(self):
-        """as_model_fn() replays outputs positionally — order matches cases."""
+        """Direct calls replay unambiguous inputs without consuming outputs."""
         cases = [
             EvalCase(input="What is 2+2?", metadata={"_output": "4"}),
             EvalCase(input="Capital of France?", metadata={"_output": "Paris"}),
         ]
         fn = self.importer.as_model_fn(cases)
-        # Input arg is ignored — outputs come out in case order
-        self.assertEqual(fn("What is 2+2?"), "4")
         self.assertEqual(fn("Capital of France?"), "Paris")
+        self.assertEqual(fn("What is 2+2?"), "4")
 
-    def test_as_model_fn_exhausted_returns_empty(self):
-        """as_model_fn() returns empty string after all outputs consumed."""
+    def test_as_model_fn_repeated_input_is_stable(self):
+        """Repeated grading must not silently consume another case's output."""
         cases = [EvalCase(input="q", metadata={"_output": "a"})]
         fn = self.importer.as_model_fn(cases)
         self.assertEqual(fn("q"), "a")
-        self.assertEqual(fn("q"), "")  # exhausted
+        self.assertEqual(fn("q"), "a")
 
-    def test_as_model_fn_missing_output_key_returns_empty(self):
-        """as_model_fn() handles cases where _output key is absent."""
+    def test_as_model_fn_missing_output_key_raises(self):
+        """Missing evidence must not be replaced with an invented empty response."""
         cases = [EvalCase(input="query", metadata={})]
-        fn = self.importer.as_model_fn(cases)
-        self.assertEqual(fn("query"), "")
+        with self.assertRaises(ValueError):
+            self.importer.as_model_fn(cases)
 
 
 # ---------------------------------------------------------------------------

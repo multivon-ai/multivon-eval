@@ -392,14 +392,12 @@ If your traces already live in LangSmith, LangFuse, Phoenix, Datadog, or any
 other observability store, you don't have to re-run the agent.
 `AgentTracer`'s sibling abstraction `CaseImporter` (defined in the same
 `integrations/base.py`) pulls runs as `EvalCase` objects with `agent_trace`
-populated, and `importer.as_model_fn(cases)` gives you a passthrough that
-replays the stored outputs in order:
+populated. Pass each case and its saved output to `run_on_cases`:
 
 ```python
 importer = MyImporter(project="prod-agent")
 cases = importer.load(limit=200)
-suite.add_cases(cases)
-report = suite.run(importer.as_model_fn(cases))
+report = suite.run_on_cases([(case, case.metadata["_output"]) for case in cases])
 ```
 
 [`load_traces`](https://github.com/multivon-ai/multivon-eval/blob/main/multivon_eval/discover.py)

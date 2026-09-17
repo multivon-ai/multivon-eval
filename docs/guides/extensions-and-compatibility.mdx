@@ -1,0 +1,131 @@
+---
+title: Extensions and compatibility
+description: Public extension points, saved-report migration and contribution checks.
+---
+
+The report validator and replay correction on this page are **development
+changes after 0.18.0**. Pin a released version for deployments; use a specific
+Git commit when evaluating unreleased integrations.
+
+## Extend existing interfaces
+
+| Need | Supported boundary | Responsibility |
+|---|---|---|
+| Custom grader | `Evaluator.evaluate(case, output)`; optionally `aevaluate` | Return `EvalResult`; declare custom dependencies for verified comparisons |
+| Text target | Sync `str -> str` for `run`, async callable for `run_async` | Propagate errors; make concurrent calls safe or select concurrency 1 |
+| Provider adapter | `ModelAdapter.__call__` | Own provider configuration; declare hidden target dependencies |
+| Saved outputs | `run_on_cases([(case, output), ...])` | Preserve case/output pairing; supply measured latency only if recorded |
+| Imported traces | `CaseImporter.load` | Populate `EvalCase.agent_trace` and string `metadata["_output"]` |
+| Framework tracer | `AgentTracer.instrument/reset/get_trace` | Capture the current execution; shared mutable tracers require `workers=1` |
+| Stateful environment | Native Gymnasium factory and `capture_episode` | Own reset, action, observation and cleanup; provide independent state observations |
+| Durable execution | Native Inspect task and `as_inspect_scorer` | Inspect owns scheduling, logs and retries; bind task dependencies before retry |
+
+No plugin discovery registry is required. Import and compose Python objects.
+The `_call_with_case` and `_acall_with_case` hooks are internal compatibility
+hooks; third-party code should not assume they form a stable public protocol.
+For full-case task inputs, prefer native Inspect samples and solvers.
+
+Evaluators can execute concurrently across cases. Avoid mutable per-case state
+on a shared grader. The default `aevaluate` delegates synchronous grading to a
+worker thread; cancelling an await cannot forcibly stop that thread. If a grader
+implements `prepare`, it must be idempotent, and direct `evaluate` calls must
+still work: saved-output and direct-call paths do not promise a warmup call.
+
+Use a finite score in `[0, 1]`. Missing required evidence should produce
+`_skipped(reason)`; an unavailable judge should raise `JudgeUnavailable`.
+Quality failure, missing evidence and execution failure have different meanings.
+See [custom graders](/guides/custom-evaluators),
+[environment outcomes](/guides/environment-outcomes) and
+[versioned evidence](/guides/versioned-evidence).
+
+## Migrate imported-output replay
+
+`CaseImporter.as_model_fn` previously consumed outputs in call order. That
+could pair the wrong output with a case under reordering, concurrency or repeat
+runs. Development builds match case identity and warn that the method is
+deprecated. Direct string calls reject ambiguous prompts; missing outputs raise
+an error. An explicitly recorded empty string remains valid.
+
+Use saved-output grading instead:
+
+```python
+from multivon_eval import EvalCase, EvalSuite, ExactMatch
+
+cases = [EvalCase("Amount?", "42", metadata={"_output": "42"})]
+suite = EvalSuite("Imported invoice runs").add_evaluators(ExactMatch())
+report = suite.run_on_cases([(case, case.metadata["_output"]) for case in cases],
+                            verbose=False)
+assert report.passed == 1
+```
+
+This records imported evidence. Without `latencies_ms`, latency is unknown and
+latency graders skip. Replaying a callable measures replay overhead; repeating
+one saved response cannot measure target stochasticity. Judge-based graders may
+still make API calls even though the target is not rerun.
+
+## Report format contract
+
+`EvalReport.to_json()` writes `multivon.report/v2`. `EvalReport.from_dict()`
+reads v2, explicit v1 and schema-less legacy v1. Missing legacy identities,
+trials, provider usage and target settings remain missing. An unknown report
+version or status, malformed fields and nonfinite numbers raise `ValueError`.
+An advertised case outcome that contradicts the retained result fields is also
+rejected instead of silently changing meaning when loaded.
+
+The packaged envelope schema uses
+[JSON Schema Draft 2020-12](https://json-schema.org/draft/2020-12), through the
+existing `jsonschema` dependency. It does not fetch schemas over the network.
+
+```python
+import json
+from multivon_eval import EvalReport
+from multivon_eval.report_schema import report_schema, validate_report
+
+schema = report_schema()  # Detached dict; usable by standard JSON Schema tools.
+payload = json.loads(report.to_json())
+validate_report(payload)
+restored = EvalReport.from_dict(payload)
+assert restored.passed == report.passed
+```
+
+Envelope validation checks shape. Loading additionally applies the existing
+nested evidence validators, including trial digests. Neither proves that an
+observation is authentic or that a grader is valid for your business task.
+
+Known versions accept additive fields. Readers may ignore unknown envelope
+fields and do not preserve them on reserialization; keep the original JSON if
+you need lossless archival. Result aggregates are recomputed from loaded case
+data, rather than trusting advertised summary totals. Nested evidence has its
+own version and compatibility checks. Breaking interpretation requires a new
+schema version and migration fixtures; do not silently reinterpret old evidence.
+
+## Dependencies and tested configurations
+
+Heavy integrations use standard
+[Python extras](https://packaging.python.org/en/latest/guides/writing-pyproject-toml/#dependencies-and-requirements).
+Install only the extras required by your application. The base package includes
+Anthropic/OpenAI SDKs and JSON Schema, but does not require dataset engines,
+simulators, media decoders or ML training packages.
+
+| Extra | Upstream boundary | Local validation environment used during development |
+|---|---|---|
+| `datasets` | Hugging Face Datasets / Arrow / Parquet | datasets 5.0.1, Python 3.12 |
+| `inspect` | Native task/scorer/log APIs | inspect-ai 0.3.263, Python 3.12 |
+| `gymnasium` | Native environment lifecycle | Gymnasium 1.3.0, Python 3.12 |
+| `review` | scikit-learn calibration and SciPy statistics | scikit-learn 1.9.1 / SciPy 1.18.1, Python 3.12 |
+| `otel` | SDK and OTLP export | OpenTelemetry 1.44.0, Python 3.12 |
+| `media` | Pillow / PDFium / PyAV | Pillow 12.3.0 / pypdfium2 5.13.0 / av 17.1.0, Python 3.12 |
+| `pricing` | LiteLLM price catalog and native usage calculations | LiteLLM 1.101.0, Python 3.12 |
+
+These are tested combinations, not evidence for every version allowed by the
+dependency ranges. The core CI matrix targets Python 3.10–3.14; optional tests
+skip when their dependencies are absent. Extra-specific checks must be run
+before releasing changes to those integrations. The historical `all` extra
+contains the older model/browser/agent integrations; select the extras above
+explicitly for these development integrations.
+
+Contributor fixtures live in `tests/test_extension_contracts.py` and
+`tests/fixtures/reports/`. See the repository's
+[contribution guide](https://github.com/multivon-ai/multivon-eval/blob/main/CONTRIBUTING.md)
+for installed-wheel and release checks. A future 1.0 stability promise requires
+more downstream adoption evidence; development availability is not that promise.

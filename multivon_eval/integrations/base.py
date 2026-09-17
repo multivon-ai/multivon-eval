@@ -6,6 +6,8 @@ CallbackTracer  — intermediate ABC for callback-style frameworks (LangChain, C
 CaseImporter    — pull pre-existing traces from external observability platforms
 """
 from __future__ import annotations
+
+import warnings
 from abc import ABC, abstractmethod
 from typing import Any, Callable
 
@@ -151,8 +153,7 @@ class CaseImporter(ABC):
     Usage:
         importer = MyImporter(project="prod-agent")
         cases = importer.load(limit=200)
-        suite.add_cases(cases)
-        report = suite.run(importer.as_model_fn(cases))
+        report = suite.run_on_cases([(case, case.metadata["_output"]) for case in cases])
     """
 
     @abstractmethod
@@ -162,26 +163,53 @@ class CaseImporter(ABC):
 
         Each returned case should have agent_trace populated and
         metadata["_output"] set to the run's final output string
-        so that as_model_fn() can replay it without re-running the agent.
+        so that run_on_cases() can grade it without re-running the agent.
         """
         ...
 
     def as_model_fn(self, cases: list[EvalCase]) -> Callable[[str], str]:
         """
-        Return a passthrough model_fn that replays imported outputs in order.
+        Return a deprecated, case-aware replay callable.
 
-        Uses a positional iterator so duplicate inputs are handled correctly.
-        Requires suite.run() to call cases in the same order they were imported
-        (always true with workers=1, which is required when using a tracer).
+        Suites match immutable case identity, including for duplicate prompts,
+        reordered execution and repeated grading. Direct string calls require
+        an unambiguous output for that input. Missing outputs or unknown cases
+        raise ValueError instead of silently fabricating an empty response.
 
-            cases = importer.load()
-            suite.add_cases(cases)
-            report = suite.run(importer.as_model_fn(cases))
+        Prefer ``suite.run_on_cases([(c, c.metadata["_output"]) for c in cases])``:
+        running a replay callable measures replay latency, not target latency,
+        and repeating saved outputs cannot estimate target stochasticity.
         """
-        outputs = [c.metadata.get("_output", "") for c in cases]
-        it = iter(outputs)
+        warnings.warn(
+            "as_model_fn is deprecated; use suite.run_on_cases with explicit (case, output) "
+            "pairs to preserve saved-output provenance and unknown target latency",
+            DeprecationWarning, stacklevel=2,
+        )
+        return _SavedReplay(cases)
 
-        def _replay(_input_text: str) -> str:
-            return next(it, "")
 
-        return _replay
+class _SavedReplay:
+    def __init__(self, cases: list[EvalCase]):
+        self._by_case: dict[tuple[str, str], str] = {}
+        self._by_input: dict[str, set[str]] = {}
+        for case in cases:
+            output = case.metadata.get("_output")
+            if not isinstance(output, str):
+                raise ValueError("Every imported case requires a string metadata['_output']")
+            self._by_case[case.identity()] = output
+            self._by_input.setdefault(case.input, set()).add(output)
+
+    def __call__(self, input_text: str) -> str:
+        outputs = self._by_input.get(input_text, set())
+        if len(outputs) != 1:
+            raise ValueError("Unknown or ambiguous replay input; use explicit (case, output) pairs")
+        return next(iter(outputs))
+
+    def _call_with_case(self, case: EvalCase) -> str:
+        try:
+            return self._by_case[case.identity()]
+        except KeyError:
+            raise ValueError("Replay case does not match the imported snapshot") from None
+
+    async def _acall_with_case(self, case: EvalCase) -> str:
+        return self._call_with_case(case)

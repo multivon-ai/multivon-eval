@@ -81,6 +81,7 @@ multivon_eval = "multivon_eval.pytest_plugin"
 include = ["multivon_eval*"]
 
 [tool.setuptools.package-data]
+"multivon_eval" = ["schemas/*.json"]
 "multivon_eval._calibration_data" = ["*.json"]
 "multivon_eval._skills" = ["*.md", "*/SKILL.md"]
 

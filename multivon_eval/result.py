@@ -822,8 +822,8 @@ class EvalReport:
     @classmethod
     def from_dict(cls, data: dict) -> "EvalReport":
         """Reconstruct an EvalReport from the dict produced by to_json()."""
-        if data.get("schema", "multivon.report/v1") not in {"multivon.report/v1", "multivon.report/v2"}:
-            raise ValueError("Unsupported report schema")
+        from .report_schema import validate_report
+        validate_report(data)
         case_results = []
         for c in data.get("cases", []):
             results = [
@@ -862,6 +862,9 @@ class EvalReport:
             if runs > 1:
                 rpr = c.get("run_pass_rate", 1.0)
                 cr.pass_count = c.get("pass_count", round(rpr * runs))
+            if ("status" in c and c["status"] != cr.status.value
+                    or "passed" in c and c["passed"] != cr.passed):
+                raise ValueError("Report case outcome conflicts with its retained result fields")
             case_results.append(cr)
         from .costs import Costs
         from .lockfile import SuiteLock

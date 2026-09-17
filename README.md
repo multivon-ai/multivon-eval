@@ -273,4 +273,6 @@ and [eval-action](https://github.com/multivon-ai/eval-action) for GitHub workflo
 The library can sit alongside your existing tracing system.
 
 Issues and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for
-setup and testing. Apache 2.0 — [Multivon](https://multivon.ai).
+setup and testing, and [extension contracts](docs/guides/extensions-and-compatibility.mdx)
+for custom graders, native environment integrations, report migration and tested
+dependency combinations. Apache 2.0 — [Multivon](https://multivon.ai).

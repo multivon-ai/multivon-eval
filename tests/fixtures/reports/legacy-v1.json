@@ -1,0 +1,9 @@
+{
+  "suite": "legacy-handwritten-fixture",
+  "model": "saved-output",
+  "cases": [
+    {"input": "pass", "output": "ok", "evaluators": [{"name": "exact_match", "score": 1.0, "passed": true}]},
+    {"input": "error", "output": "", "model_error": "unavailable", "evaluators": []},
+    {"input": "skip", "output": "", "skipped": true, "evaluators": []}
+  ]
+}

@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:multivon:schema:report-envelope:v1-v2",
+  "title": "Multivon report envelope (v1 and v2)",
+  "type": "object",
+  "required": ["cases"],
+  "properties": {
+    "schema": {"enum": ["multivon.report/v1", "multivon.report/v2"]},
+    "suite": {"type": "string"},
+    "model": {"type": "string"},
+    "summary": {"type": ["object", "null"]},
+    "cases": {"type": "array", "items": {"$ref": "#/$defs/case"}},
+    "suite_lock": {"type": ["object", "null"]},
+    "evidence_issues": {"$ref": "#/$defs/strings"},
+    "provider_evidence": {"type": ["object", "null"]},
+    "execution": {"type": ["object", "null"]}
+  },
+  "if": {"required": ["schema"], "properties": {"schema": {"const": "multivon.report/v2"}}},
+  "then": {"required": ["suite", "model", "summary"]},
+  "$defs": {
+    "strings": {"type": "array", "items": {"type": "string"}},
+    "nullableText": {"type": ["string", "null"]},
+    "score": {"type": "number", "minimum": 0, "maximum": 1},
+    "evaluator": {
+      "type": "object",
+      "required": ["name", "score", "passed"],
+      "properties": {
+        "name": {"type": "string"},
+        "score": {"$ref": "#/$defs/score"},
+        "passed": {"type": "boolean"},
+        "reason": {"type": "string"},
+        "metadata": {"type": "object"}
+      }
+    },
+    "case": {
+      "type": "object",
+      "required": ["input", "output"],
+      "properties": {
+        "input": {"type": "string"},
+        "output": {"type": "string"},
+        "case_id": {"$ref": "#/$defs/nullableText"},
+        "case_digest": {"$ref": "#/$defs/nullableText"},
+        "status": {"enum": ["passed", "failed_quality", "model_error", "judge_error", "evaluator_error", "timeout", "skipped"]},
+        "model_error": {"$ref": "#/$defs/nullableText"},
+        "judge_error": {"$ref": "#/$defs/nullableText"},
+        "evaluator_error": {"$ref": "#/$defs/nullableText"},
+        "evidence_error": {"$ref": "#/$defs/nullableText"},
+        "skipped": {"type": "boolean"},
+        "passed": {"type": "boolean"},
+        "score": {"$ref": "#/$defs/score"},
+        "score_std": {"type": "number", "minimum": 0},
+        "all_scores": {"type": "array", "items": {"$ref": "#/$defs/score"}},
+        "run_pass_rate": {"$ref": "#/$defs/score"},
+        "is_flaky": {"type": "boolean"},
+        "runs": {"type": "integer", "minimum": 1},
+        "pass_count": {"type": "integer", "minimum": -1},
+        "retry_attempts": {"type": "integer", "minimum": 0},
+        "retry_errors": {"$ref": "#/$defs/strings"},
+        "latency_ms": {"type": "number", "minimum": 0},
+        "tags": {"$ref": "#/$defs/strings"},
+        "evaluators": {"type": "array", "items": {"$ref": "#/$defs/evaluator"}},
+        "agent_trace": {"type": ["array", "null"]},
+        "trials": {"type": "array", "items": {"type": "object"}}
+      }
+    }
+  }
+}

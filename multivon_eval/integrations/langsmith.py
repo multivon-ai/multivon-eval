@@ -80,8 +80,7 @@ class LangSmithImporter(CaseImporter):
         importer = LangSmithImporter(project_name="my-agent")
         cases = importer.load(limit=100)
 
-        suite.add_cases(cases)
-        report = suite.run(importer.as_model_fn(cases))
+        report = suite.run_on_cases([(case, case.metadata["_output"]) for case in cases])
 
     Filtering examples:
         # Only successful runs

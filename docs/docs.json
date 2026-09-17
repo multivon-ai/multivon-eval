@@ -119,7 +119,8 @@
               "guides/attribution",
               "guides/staleness",
               "guides/production-targets",
-              "guides/custom-evaluators"
+              "guides/custom-evaluators",
+              "guides/extensions-and-compatibility"
             ]
           },
           {

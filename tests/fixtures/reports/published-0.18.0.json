@@ -1,0 +1,417 @@
+{
+  "schema": "multivon.report/v2",
+  "evidence_issues": [],
+  "suite": "published-0.18.0-saved-fixture",
+  "model": "",
+  "suite_lock": {
+    "library_version": "0.18.0",
+    "suite_name": "published-0.18.0-saved-fixture",
+    "suite_hash": "8883e2e884949bd0df5191e9a083e7b09fe61c9314a43001663b7247889f412e",
+    "evaluators": [
+      {
+        "name": "exact_match",
+        "class_path": "multivon_eval.evaluators.deterministic.ExactMatch",
+        "threshold": 1.0,
+        "prompt_hash": null,
+        "judge": null,
+        "calibration": null,
+        "version": "2",
+        "extra": {
+          "config": {
+            "case_sensitive": false
+          }
+        }
+      },
+      {
+        "name": "max_latency",
+        "class_path": "multivon_eval.evaluators.deterministic.MaxLatency",
+        "threshold": 1.0,
+        "prompt_hash": null,
+        "judge": null,
+        "calibration": null,
+        "version": "2",
+        "extra": {
+          "config": {
+            "max_ms": 100
+          }
+        }
+      }
+    ],
+    "case_count": 0,
+    "cases_hash": null,
+    "run_config": null,
+    "calibration_version": "v2",
+    "extra": {}
+  },
+  "summary": {
+    "total": 3,
+    "evaluated": 2,
+    "passed": 1,
+    "failed": 1,
+    "errors": 0,
+    "errors_by_kind": {},
+    "skipped": 1,
+    "pass_rate": 0.5,
+    "pass_rate_ci_95": [
+      0.09453120573423074,
+      0.9054687942657693
+    ],
+    "avg_score": 0.5,
+    "avg_score_ci_95": [
+      0.0,
+      1.0
+    ],
+    "score_percentiles": {
+      "p10": 0.1,
+      "p50": 0.5,
+      "p90": 0.9
+    },
+    "runs_per_case": 1,
+    "flaky_count": 0,
+    "stability_score": 1.0,
+    "judge_reliability": null,
+    "purpose": "",
+    "saturated": false,
+    "min_detectable_regression": 1.0,
+    "by_evaluator": {
+      "exact_match": 0.5
+    },
+    "costs": null
+  },
+  "cases": [
+    {
+      "input": "pass",
+      "case_id": "pass",
+      "case_digest": "d78c51a5721bd056819e197d76c5e89bb5ee4602cf243aa4eebe36d013e05f57",
+      "agent_trace": null,
+      "trials": [
+        {
+          "agent_trace": null,
+          "attempt": 1,
+          "case": {
+            "agent_trace": null,
+            "case_id": "pass",
+            "context": null,
+            "conversation": null,
+            "expected_output": "ok",
+            "expected_tool_calls": null,
+            "input": "pass",
+            "metadata": {},
+            "revision": null,
+            "source_id": null,
+            "tags": []
+          },
+          "case_digest": "d78c51a5721bd056819e197d76c5e89bb5ee4602cf243aa4eebe36d013e05f57",
+          "case_id": "pass",
+          "digest": "6b32006a42532f61bf0bfdbc753864b597ac489d4f4ff60c5f24cd52d0583fff",
+          "evaluation_case": {
+            "agent_trace": null,
+            "case_id": "pass",
+            "context": null,
+            "conversation": null,
+            "expected_output": "ok",
+            "expected_tool_calls": null,
+            "input": "pass",
+            "metadata": {},
+            "revision": null,
+            "source_id": null,
+            "tags": []
+          },
+          "evaluator_error": null,
+          "evaluators": [
+            {
+              "metadata": {},
+              "name": "exact_match",
+              "passed": true,
+              "reason": "Exact match",
+              "score": 1.0
+            },
+            {
+              "metadata": {
+                "skipped": true
+              },
+              "name": "max_latency",
+              "passed": false,
+              "reason": "Target latency was not recorded",
+              "score": 0.0
+            }
+          ],
+          "evidence_gaps": [
+            "Provider requests and per-trial usage are not captured"
+          ],
+          "judge_error": null,
+          "latency_ms": null,
+          "model_error": null,
+          "origin": "import",
+          "output": "ok",
+          "provider_requests": null,
+          "recorded_at": "2026-09-17T05:00:12.101052+00:00",
+          "run_index": 1,
+          "schema": "multivon.trial/v1",
+          "status": "passed"
+        }
+      ],
+      "evidence_error": null,
+      "output": "ok",
+      "status": "passed",
+      "model_error": null,
+      "judge_error": null,
+      "evaluator_error": null,
+      "skipped": false,
+      "passed": true,
+      "score": 1.0,
+      "score_std": 0.0,
+      "all_scores": [],
+      "run_pass_rate": 1.0,
+      "is_flaky": false,
+      "runs": 1,
+      "pass_count": -1,
+      "retry_attempts": 0,
+      "retry_errors": [],
+      "latency_ms": 0.0,
+      "tags": [],
+      "evaluators": [
+        {
+          "name": "exact_match",
+          "score": 1.0,
+          "passed": true,
+          "reason": "Exact match",
+          "metadata": {}
+        },
+        {
+          "name": "max_latency",
+          "score": 0.0,
+          "passed": false,
+          "reason": "Target latency was not recorded",
+          "metadata": {
+            "skipped": true
+          }
+        }
+      ]
+    },
+    {
+      "input": "fail",
+      "case_id": "fail",
+      "case_digest": "ba56e31f063c7b6cbd9b38a97a461f179fc2709ad5f2b029946a04a95959e1fa",
+      "agent_trace": null,
+      "trials": [
+        {
+          "agent_trace": null,
+          "attempt": 1,
+          "case": {
+            "agent_trace": null,
+            "case_id": "fail",
+            "context": null,
+            "conversation": null,
+            "expected_output": "ok",
+            "expected_tool_calls": null,
+            "input": "fail",
+            "metadata": {},
+            "revision": null,
+            "source_id": null,
+            "tags": []
+          },
+          "case_digest": "ba56e31f063c7b6cbd9b38a97a461f179fc2709ad5f2b029946a04a95959e1fa",
+          "case_id": "fail",
+          "digest": "48c8b0fc763c4fca8b27419e570a2eaadbe51dc54b962fbdcf47795641d7cac9",
+          "evaluation_case": {
+            "agent_trace": null,
+            "case_id": "fail",
+            "context": null,
+            "conversation": null,
+            "expected_output": "ok",
+            "expected_tool_calls": null,
+            "input": "fail",
+            "metadata": {},
+            "revision": null,
+            "source_id": null,
+            "tags": []
+          },
+          "evaluator_error": null,
+          "evaluators": [
+            {
+              "metadata": {},
+              "name": "exact_match",
+              "passed": false,
+              "reason": "Expected: 'ok' | Got: 'wrong'",
+              "score": 0.0
+            },
+            {
+              "metadata": {
+                "skipped": true
+              },
+              "name": "max_latency",
+              "passed": false,
+              "reason": "Target latency was not recorded",
+              "score": 0.0
+            }
+          ],
+          "evidence_gaps": [
+            "Provider requests and per-trial usage are not captured"
+          ],
+          "judge_error": null,
+          "latency_ms": null,
+          "model_error": null,
+          "origin": "import",
+          "output": "wrong",
+          "provider_requests": null,
+          "recorded_at": "2026-09-17T05:00:12.101362+00:00",
+          "run_index": 1,
+          "schema": "multivon.trial/v1",
+          "status": "failed_quality"
+        }
+      ],
+      "evidence_error": null,
+      "output": "wrong",
+      "status": "failed_quality",
+      "model_error": null,
+      "judge_error": null,
+      "evaluator_error": null,
+      "skipped": false,
+      "passed": false,
+      "score": 0.0,
+      "score_std": 0.0,
+      "all_scores": [],
+      "run_pass_rate": 0.0,
+      "is_flaky": false,
+      "runs": 1,
+      "pass_count": -1,
+      "retry_attempts": 0,
+      "retry_errors": [],
+      "latency_ms": 0.0,
+      "tags": [],
+      "evaluators": [
+        {
+          "name": "exact_match",
+          "score": 0.0,
+          "passed": false,
+          "reason": "Expected: 'ok' | Got: 'wrong'",
+          "metadata": {}
+        },
+        {
+          "name": "max_latency",
+          "score": 0.0,
+          "passed": false,
+          "reason": "Target latency was not recorded",
+          "metadata": {
+            "skipped": true
+          }
+        }
+      ]
+    },
+    {
+      "input": "unknown",
+      "case_id": "unknown",
+      "case_digest": "f8e82c0f7891f2ead19e72d6fc769e56471b02e27bde5ecdadeda15d64a392b8",
+      "agent_trace": null,
+      "trials": [
+        {
+          "agent_trace": null,
+          "attempt": 1,
+          "case": {
+            "agent_trace": null,
+            "case_id": "unknown",
+            "context": null,
+            "conversation": null,
+            "expected_output": null,
+            "expected_tool_calls": null,
+            "input": "unknown",
+            "metadata": {},
+            "revision": null,
+            "source_id": null,
+            "tags": []
+          },
+          "case_digest": "f8e82c0f7891f2ead19e72d6fc769e56471b02e27bde5ecdadeda15d64a392b8",
+          "case_id": "unknown",
+          "digest": "67c036570e14c79e57cc1e977a9829cf7688029c772a8a6fc7b6af26e51eca2c",
+          "evaluation_case": {
+            "agent_trace": null,
+            "case_id": "unknown",
+            "context": null,
+            "conversation": null,
+            "expected_output": null,
+            "expected_tool_calls": null,
+            "input": "unknown",
+            "metadata": {},
+            "revision": null,
+            "source_id": null,
+            "tags": []
+          },
+          "evaluator_error": null,
+          "evaluators": [
+            {
+              "metadata": {
+                "skipped": true
+              },
+              "name": "exact_match",
+              "passed": false,
+              "reason": "[skipped] Requires case.expected_output \u2014 supply the expected value to enable this evaluator.",
+              "score": 0.0
+            },
+            {
+              "metadata": {
+                "skipped": true
+              },
+              "name": "max_latency",
+              "passed": false,
+              "reason": "Target latency was not recorded",
+              "score": 0.0
+            }
+          ],
+          "evidence_gaps": [
+            "Provider requests and per-trial usage are not captured"
+          ],
+          "judge_error": null,
+          "latency_ms": null,
+          "model_error": null,
+          "origin": "import",
+          "output": "",
+          "provider_requests": null,
+          "recorded_at": "2026-09-17T05:00:12.101546+00:00",
+          "run_index": 1,
+          "schema": "multivon.trial/v1",
+          "status": "skipped"
+        }
+      ],
+      "evidence_error": null,
+      "output": "",
+      "status": "skipped",
+      "model_error": null,
+      "judge_error": null,
+      "evaluator_error": null,
+      "skipped": true,
+      "passed": false,
+      "score": 0.0,
+      "score_std": 0.0,
+      "all_scores": [],
+      "run_pass_rate": 0.0,
+      "is_flaky": false,
+      "runs": 1,
+      "pass_count": -1,
+      "retry_attempts": 0,
+      "retry_errors": [],
+      "latency_ms": 0.0,
+      "tags": [],
+      "evaluators": [
+        {
+          "name": "exact_match",
+          "score": 0.0,
+          "passed": false,
+          "reason": "[skipped] Requires case.expected_output \u2014 supply the expected value to enable this evaluator.",
+          "metadata": {
+            "skipped": true
+          }
+        },
+        {
+          "name": "max_latency",
+          "score": 0.0,
+          "passed": false,
+          "reason": "Target latency was not recorded",
+          "metadata": {
+            "skipped": true
+          }
+        }
+      ]
+    }
+  ]
+}

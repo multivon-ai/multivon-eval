@@ -106,11 +106,13 @@ importer = LangSmithImporter(
 
 cases = importer.load(limit=100)
 
-suite.add_cases(cases)
-report = suite.run(importer.as_model_fn(cases))
+report = suite.run_on_cases([(case, case.metadata["_output"]) for case in cases])
 ```
 
-`as_model_fn(cases)` returns a replay function that returns each run's original output in order — no model calls needed.
+`run_on_cases` grades each explicitly paired saved output without rerunning the
+target. Judge-based graders may still make API calls. Missing target latency stays
+unknown. See [extension compatibility](/guides/extensions-and-compatibility) for
+the development deprecation and migration of `as_model_fn`.
 
 ### Filtering
 
@@ -128,7 +130,7 @@ cases = importer.load(run_type="llm", limit=50)
 Each imported `EvalCase` has:
 - `input` — extracted from `run.inputs` (auto-detected or set via `input_key=`)
 - `agent_trace` — populated from child runs (tool calls, LLM steps)
-- `metadata["_output"]` — original run output (used by `as_model_fn`)
+- `metadata["_output"]` — original run output (pass with its case to `run_on_cases`)
 - `metadata["_run_id"]` — LangSmith run ID
 - `metadata["_project"]` — project name
 - `metadata["_error"]` — error string if the run failed
@@ -141,7 +143,8 @@ report = suite.run(model_fn, tracer=tracer)
 
 The suite calls `tracer.reset()` before each case, runs the (instrumented) model function, then calls `tracer.get_trace()` and attaches the result to the case. The trace is then available to all agent evaluators.
 
-**Tracers require `workers=1`** (the default). Tracers are stateful — running cases in parallel would mix up traces.
+**Tracers require `workers=1`**. Automatic worker selection uses 1 when a tracer
+is present. Tracers are stateful; parallel cases would mix up their traces.
 
 ```python
 # This raises ValueError:
@@ -211,4 +214,5 @@ class MyPlatformImporter(CaseImporter):
         ]
 ```
 
-`as_model_fn()` is provided by the base class — no need to implement it.
+Implement `load()` and use `run_on_cases` for saved-output grading. The legacy
+`as_model_fn()` helper is deprecated in development builds.

@@ -13,6 +13,11 @@ infrastructure tools. See [reuse decisions](reuse-decisions.md). Integrations
 can satisfy requirements; prefer Hugging Face, Inspect, OpenTelemetry and
 Gymnasium at their established boundaries.
 
+Owner direction added 2026-09-17: the customers closest to reach are **regulated
+enterprise teams**. R14 should evaluate this segment first. This is a customer
+segment direction, not evidence of access to a customer target, permissioned
+cases or independently validated demand; R17 remains open.
+
 ## Requirements and completion evidence
 
 | ID | Deliverable | Evidence needed | Status |
@@ -28,7 +33,7 @@ Gymnasium at their established boundaries.
 | R09 | Typed multimodal artifacts | Images/pages/audio/video, content identity, timestamps/regions, actual artifact rendering and grounded verdict references, extraction-versus-perception comparisons | Development preview: content/probe bindings, native HF/Inspect round trips, W3C references, PDF page rendering and actual image/audio/video viewing verified; six Haiku calls on two synthetic pdfhell sources compare PDF/pixels/text. General selectors, video regions, full packet validation and semantic citation validity remain outside the tested profile |
 | R10 | Controlled robustness suite | Validated invariant-preserving and semantic-changing transformations; reviewed or code-derived answers; no transformations that silently corrupt the oracle | Development preview: task-bound invariant/counterfactual validation preserves invalid/unknown candidates and source groups; four-source numeric experiment and 200 Hypothesis examples demonstrate independently derived answers and expose consistency false positives. General directional/state/media transformation validation remains outside this profile |
 | R11 | World-model evaluation (experimental) | Real adapter demo; action responsiveness, horizons, state persistence, uncertainty, planning utility; model and simulator errors separated; reproducible measured results | Development preview: native CartPole + learned scikit-learn delta models + SciPy planner; 40 held-out forecast sources, 10 planning seeds and preserved action/state-offset/uncertainty/error evidence. Frozen sources and offline replay verified; fully observed numeric-state profile only, not video, hidden-state memory or robotics generalization |
-| R12 | FOSS extension/stability contract | Public plugin/environment protocols, versioned report schemas, optional heavy dependencies, contributor fixtures, compatibility matrix and release checks | Pending |
+| R12 | FOSS extension/stability contract | Public plugin/environment protocols, versioned report schemas, optional heavy dependencies, contributor fixtures, compatibility matrix and release checks | Development: documented existing Python/Gymnasium/Inspect interfaces, corrected imported replay, packaged report envelope schema, frozen 0.18.0 migration fixture and clean-wheel checks on Python 3.10/3.12. CI improvements prepared; remote workflow delivery and broader dependency combinations remain to verify. See [compatibility audit](foss-compatibility.md) |
 | R13 | Industrial workflow and experiments | Document-to-ledger task, independent assertions, failures/benign controls, matched-budget baselines, held-out splits, actual provider runs, costs and uncertainty; results critique | In progress: CORD/pdfhell study completed with 39 held-out sources, two models, native recovery and explicit task-mapping critique; customer-domain contract validation remains |
 | R14 | Research contribution/popularization | Related-work comparison, bounded novelty statement, reproducibility bundle, diagrams when useful, worked demo and evidence-led website narrative | Pending |
 | R15 | Associated projects | multivon-mcp, pdfhell, eval-action compatibility and relevant integrations; cross-project end-to-end tests, docs/README, versions and releases as applicable | Foundation delivery: pdfhell 0.6.2 and MCP 0.4.0 published; action implementation tested locally but its push awaits a GitHub credential with workflow scope; later adapters remain tied to R06/R09 |

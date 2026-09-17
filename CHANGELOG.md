@@ -4,6 +4,20 @@ All notable changes to `multivon-eval`. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+### Extension and report compatibility (development)
+
+- Fix imported-run replay pairing under reordering, concurrency and repeats.
+  Deprecate `CaseImporter.as_model_fn` in favor of explicit saved-output pairs;
+  unknown/ambiguous inputs and missing outputs now fail instead of inventing
+  empty responses. Recorded empty outputs remain valid.
+- Package a standard JSON Schema 2020-12 report envelope and validate report
+  loading. Keep v1/schema-less migration and v2 support; reject unknown versions,
+  malformed field types and nonfinite values. Nested evidence keeps its own
+  integrity checks. Add a frozen fixture from published 0.18.0.
+- Document existing extension interfaces and tested optional dependencies, add
+  contributor fixtures and an offline installed-wheel check that rejects source
+  shadowing. Imported-output examples preserve unknown target latency.
+
 ### Inspect retry compatibility (development)
 
 - Add `bind_inspect_task` to bind native task/sample metadata to caller-declared
