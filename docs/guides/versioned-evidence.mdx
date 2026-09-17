@@ -268,3 +268,9 @@ Authentication headers and credential URL values are excluded, but prompts,
 outputs, inline media and provider error content may contain sensitive data.
 Treat reports and journals as private evaluation artifacts. Capture is currently
 in memory unless a journal is supplied; it has no retention or size quota.
+
+A [frozen live smoke study](https://github.com/multivon-ai/multivon-eval/blob/main/benchmarks/industrial/PROVIDER_EVIDENCE_VALIDATION.md)
+retained requests and native usage for 4/4 Anthropic calls; regrading two saved
+targets made zero requests. Both strict target checks failed on punctuation and
+remain failed in the artifacts. This validates a narrow capture path, not judge
+accuracy or complete accounting.

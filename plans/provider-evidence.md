@@ -76,3 +76,9 @@ Regrade both saved target outputs with ExactMatch and verify no new requests.
 Retain all response statuses, usage objects and unknown outcomes; do not infer
 accuracy from the fixed prompts or dollars from incomplete pricing. API keys come
 only from the environment; reject evidence containing the supplied credential.
+
+Executed from frozen commit `a11e344`: 4/4 live requests returned HTTP 200 with
+native usage; regrading made zero requests. Both strict target checks failed on
+terminal punctuation, and remain failed in saved evidence. See the
+[validation and evidence archive](../benchmarks/industrial/PROVIDER_EVIDENCE_VALIDATION.md).
+This does not close the coverage/accounting gaps above.

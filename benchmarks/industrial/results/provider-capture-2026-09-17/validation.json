@@ -1,0 +1,59 @@
+{
+  "schema": "multivon.provider-smoke-validation/v1",
+  "revision": "a11e344eccf9dc42886d90a94ace6c55efb57946",
+  "http_attempts": 4,
+  "responses_with_usage": 4,
+  "requests_without_response": 0,
+  "regrade_new_requests": 0,
+  "input_tokens_reported": 48,
+  "output_tokens_reported": 20,
+  "target_outputs": [
+    "Yes.",
+    "No."
+  ],
+  "target_statuses": [
+    "failed_quality",
+    "failed_quality"
+  ],
+  "limitations": [
+    "n=4 transport smoke test, not accuracy evidence",
+    "No live provider failures/retries observed; those are tested locally",
+    "Alias may change; native response model IDs retained",
+    "Installed editable distribution metadata 0.17.0 differs from runtime module 0.18.0; source commit is authoritative",
+    "No dollar estimate or invoice reconciliation"
+  ],
+  "files": [
+    {
+      "path": "events.json",
+      "bytes": 33803,
+      "sha256": "cd31c6ddc158917bd432f7bf44f5997d50ef7f5fe39e101687a44c34c7a8fda2"
+    },
+    {
+      "path": "events.sqlite",
+      "bytes": 49152,
+      "sha256": "b842e432413c9fd8cf13249d2e8fbc978a4e5f7d9a56d47cba8cc90c211721af"
+    },
+    {
+      "path": "outcomes.json",
+      "bytes": 1759,
+      "sha256": "4d70904f1b58e9bdc9d3a53c09dc3e8740d9ac3ac780d6e8c7e08b8883100869"
+    },
+    {
+      "path": "protocol.json",
+      "bytes": 652,
+      "sha256": "a074b3e7db0cb1c4745fa57a84b076e45ae0a854e0f916b5ed2c350bc5d1d261"
+    },
+    {
+      "path": "regraded.json",
+      "bytes": 51734,
+      "sha256": "f3a8d23d9c23cd6a2cbffbf4256824a97cbb3bc02da10edbde5c55a1ed4cf3b5"
+    },
+    {
+      "path": "report.json",
+      "bytes": 44629,
+      "sha256": "8105210d848cb9b0128b8fba2750dd4f9495858f0184cab28af0a3945e81a33d"
+    }
+  ],
+  "archive_bytes": 24673,
+  "archive_sha256": "67adbd7274e91a6e41476acd141a174f29caced93308670771335b6e332eaefd"
+}
