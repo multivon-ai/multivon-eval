@@ -74,6 +74,17 @@ behavior, not only a happy-path unit test.
 
 ## Progress log
 
+2026-09-17 TAT-QA protocol freeze: added a label-safe projection, resumable
+provider-evidence runner and offline official-scorer adapter for a complete
+277-context, 1,663-question paired comparison of answer-only and evidence-record
+prompts with Claude Sonnet 5. Gold answers, scales, derivations, facts and
+mappings are excluded from the model input process. A single pre-freeze live
+capability probe exposed two Anthropic structured-output schema restrictions;
+after adapting the schema, all six projected questions in that context parsed.
+The probe is not part of the result. Focused tests, Ruff and an all-failure
+full-population scorer rehearsal passed. No benchmark result is claimed until
+the committed protocol completes and is scored.
+
 2026-09-17 Faithfulness follow-up: block empty extraction, malformed claim types,
 ten-claim prefix scoring and missing verdicts from manufacturing passes. Add a
 configurable complete-set claim bound, duplicate normalization, structured
