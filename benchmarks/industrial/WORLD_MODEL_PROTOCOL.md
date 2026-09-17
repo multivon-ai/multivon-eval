@@ -38,7 +38,7 @@ Native references:
   for actions 0 and 1 from the matched reset state. Compare predicted effect
   vectors with simulator effect vectors; retain model and reference values.
 - State-offset persistence: each held-out seed, initial cart-position offset
-  +0.5 m, same recorded action prefix. Use an explicitly named reset wrapper
+  +0.5 m, same predeclared 32-action sequence. Use an explicitly named reset wrapper
   around the actual environment. Compare the predicted and observed change
   caused by the offset. This is a fully observed state diagnostic, not hidden
   object memory or partial-observability evaluation.
@@ -57,11 +57,19 @@ Native references:
   bounded steps survived/return, per-seed paired differences and count reaching
   the cap. Reaching 200 steps is not solving CartPole's 500-step specification.
 
+The report bridge additionally displays illustrative per-coordinate absolute-error
+checks with tolerances `[0.05, 0.1, 0.02, 0.1]` in the listed units. These are
+fixed before fitting and are not independently calibrated acceptance limits.
+The primary analysis reports continuous errors and counts, not this pass rate.
+
 ## Evidence and limits
 
 Freeze runtime sources, this protocol and configuration before collection.
 Persist training data and model parameters before held-out evaluation. Model
-callbacks receive only initial observed state and actions, never future truth.
+callbacks receive only initial observed state and the complete predeclared action
+sequence, never future truth or a reference-dependent request length. Score only
+the actually observed prefix. A development smoke run exposed the length-leak
+risk; it was corrected before any held-out evaluation.
 Preserve simulator errors, model errors and censored horizons separately.
 Exercise deliberate error controls outside the quality sample. Retain raw
 predictions, interval parameters and native episode evidence for offline replay.
