@@ -235,8 +235,9 @@ def _qag_eval(
 class Faithfulness(Evaluator):
     """
     Measures whether the response is grounded in the provided context.
-    Uses QAG: extracts claims, verifies each against context.
-    Requires case.context.
+    Verifies every unique extracted claim against case.context. Empty extraction
+    or more than max_claims (default 10) is unmeasured; unknown verdicts raise
+    JudgeUnavailable. Extraction completeness itself is not established.
 
     The default threshold is calibrated per judge model. Pass threshold= explicitly
     to override (e.g. threshold=0.8 for stricter gating).
@@ -244,7 +245,10 @@ class Faithfulness(Evaluator):
     name = "faithfulness"
     uses_llm_judge = True
 
-    def __init__(self, threshold: float | None = None, judge: JudgeConfig | None = None):
+    def __init__(self, threshold: float | None = None, judge: JudgeConfig | None = None, *, max_claims: int = 10):
+        from ._claim_grounding import validate_claim_limit
+        validate_claim_limit(max_claims)
+        self.max_claims = max_claims
         self._explicit_threshold = threshold
         self._judge_cfg = judge
         super().__init__(threshold if threshold is not None else 0.7)
@@ -259,68 +263,13 @@ class Faithfulness(Evaluator):
             return self._skipped(
                 "Requires case.context — add retrieved context to enable Faithfulness.",
             )
+        from ._claim_grounding import evaluate_claims
         judge = resolve_judge(self._judge_cfg)
-        self.threshold = self._resolve_threshold(judge)
-        context = case.context_str()
-
-        raw = _call(
-            f"Extract every factual claim from this response as a JSON list of strings.\n"
-            f"Include only verifiable statements. Return ONLY a JSON array.\n\nResponse:\n{output}\n\nJSON array:",
-            judge, max_tokens=512,
+        return evaluate_claims(
+            name=self.name, context=case.context_str(), output=output, judge=judge,
+            threshold=self._resolve_threshold(judge), max_claims=self.max_claims,
+            call=_call, extract=_extract_json_array, parse=_parse_yes_no,
         )
-        claims = _extract_json_array(raw)
-        if claims is None:
-            # Deterministic parse limitation, not a model-quality signal —
-            # raise so the suite routes it to EVALUATOR_ERROR instead of
-            # scoring 0.0 (which is indistinguishable from "model failed").
-            raise ValueError(
-                f"faithfulness: could not extract a claims JSON array from "
-                f"judge reply: {raw[:120]!r}"
-            )
-
-        if not claims:
-            return self._result(1.0, "No verifiable claims found")
-
-        capped = len(claims) > 10
-        verified, reasons = [], []
-        unknown = 0
-        for claim in claims[:10]:
-            answer = _call(
-                f"Context:\n{context}\n\nClaim: {claim}\n\n"
-                f"Is this claim fully supported by the context? Answer with only \"Yes\" or \"No\".",
-                judge, max_tokens=100,
-            )
-            supported = _parse_yes_no(answer)
-            if supported is None:
-                unknown += 1
-                reasons.append(f"? {str(claim)[:80]} (unparseable judge reply — excluded from score)")
-                continue
-            verified.append(supported)
-            reasons.append(f"{'✓' if supported else '✗'} {str(claim)[:80]}")
-
-        if not verified:
-            raise JudgeUnavailable(
-                f"judge returned no parseable Yes/No verdict for any of "
-                f"{min(len(claims), 10)} claim(s)",
-                provider=judge.provider, model=judge.model,
-            )
-        # Same minimum-verdict-coverage rule as _qag_eval: scoring on a
-        # minority of parseable verdicts is not a measurement.
-        attempted = min(len(claims), 10)
-        if unknown > attempted / 2:
-            raise JudgeUnavailable(
-                f"judge verdicts parseable for only {len(verified)} of "
-                f"{attempted} claim(s) ({unknown} UNKNOWN) — insufficient "
-                f"verdict coverage to score",
-                provider=judge.provider, model=judge.model,
-            )
-        header = f"{sum(verified)}/{len(verified)} claims grounded"
-        if capped:
-            header = f"verified {min(len(claims), 10)} of {len(claims)} claims (capped); " + header
-        if unknown:
-            header += f"; {unknown} claim(s) UNKNOWN — excluded from score denominator"
-        score = sum(verified) / len(verified)
-        return self._result(score, header + "\n" + "\n".join(reasons))
 
 
 class Hallucination(Evaluator):

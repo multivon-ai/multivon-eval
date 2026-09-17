@@ -173,7 +173,8 @@ Available on `suite.run`, `run_async`, and `run_on_cases`. With `max_error_rate`
 
 ## Faithfulness
 
-Checks that the output is grounded in the provided context — no invented facts.
+Extracts factual claims and checks their support in the provided context. The
+extractor can omit claims, so even a perfect score does not prove full grounding.
 
 **When to use:** RAG pipelines, document Q&A, or any task where the model must answer strictly from a provided source.
 
@@ -192,7 +193,29 @@ Requires `context` on the `EvalCase`.
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `threshold` | `float` | `0.7` | Minimum score to pass |
+| `threshold` | `float` or `None` | `None` | Historical judge-specific threshold, with the configured fallback; an explicit value overrides it |
+| `max_claims` (development) | positive `int` | `10` | Maximum unique claims to verify; exceeding it makes the measurement unscored |
+
+<Note>
+  **Development behavior, not included in PyPI 0.18.0:** every unique extracted
+  claim must receive a valid verdict. Empty extraction or exceeding `max_claims`
+  returns a skipped measurement, not a pass. Invalid claim types raise an
+  evaluator error; any unknown verdict raises `JudgeUnavailable`. Older versions
+  could pass an empty list, score a ten-claim prefix, or omit unknown verdicts.
+</Note>
+
+For development checkouts, `Faithfulness(threshold=0.9, max_claims=30)` allows up
+to 30 unique extracted claims. This can require one extraction call plus 30
+verification calls before provider retries. Exact duplicates are collapsed after
+trimming whitespace. Results retain extracted/unique/verified counts, raw
+extraction and verdict replies, and the effective threshold. These fields expose
+the observed coverage, not extraction completeness.
+
+Use an `AcceptancePolicy` requiring `faithfulness` when missing measurements must
+block acceptance. A skipped faithfulness result can coexist with another passing
+check, so aggregate case pass rates alone do not enforce required-check coverage.
+Regrade saved outputs or rerun cases before using new results in comparisons;
+the old calibration packs have not been revalidated for this protocol.
 
 ## Hallucination
 

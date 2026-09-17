@@ -180,7 +180,7 @@ def test_claim_extraction_failure_is_evaluator_error_not_zero():
     assert report.case_results[0].status == EvalStatus.EVALUATOR_ERROR
 
 
-def test_faithfulness_claim_cap_disclosed():
+def test_faithfulness_claim_cap_is_unmeasured():
     claims = [f"claim {i}" for i in range(25)]
     replies = iter([str(claims).replace("'", '"')] + ["Yes"] * 10)
     with patch(
@@ -190,8 +190,10 @@ def test_faithfulness_claim_cap_disclosed():
         result = Faithfulness(threshold=0.7).evaluate(
             EvalCase(input="q", context="ctx"), "long output"
         )
-    assert result.score == pytest.approx(1.0)
-    assert "verified 10 of 25 claims (capped)" in result.reason
+    assert not result.passed
+    assert result.metadata["skipped"]
+    assert result.metadata["verified_claims"] == 0
+    assert "exceeding max_claims=10" in result.reason
 
 
 def test_faithfulness_uncapped_no_disclosure():
@@ -442,18 +444,15 @@ def test_faithfulness_majority_unknown_claims_raises():
             )
 
 
-def test_faithfulness_minority_unknown_disclosed_and_scored():
+def test_faithfulness_minority_unknown_is_judge_error():
     claims = ["a", "b", "c"]
     replies = iter([str(claims).replace("'", '"'), "Yes", "No", "unclear"])
     with patch(
         "multivon_eval.evaluators.llm_judge.make_judge_call",
         side_effect=lambda prompt, cfg: next(replies),
     ):
-        result = Faithfulness(threshold=0.7).evaluate(
-            EvalCase(input="q", context="ctx"), "output"
-        )
-    assert result.score == pytest.approx(0.5)
-    assert "1 claim(s) UNKNOWN" in result.reason
+        with pytest.raises(JudgeUnavailable, match="every extracted claim requires a verdict"):
+            Faithfulness(threshold=0.7).evaluate(EvalCase(input="q", context="ctx"), "output")
 
 
 # ─────────────────────────────────────────────────────────────────────────────

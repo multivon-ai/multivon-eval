@@ -4,6 +4,19 @@ All notable changes to `multivon-eval`. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+### Faithfulness measurement coverage (development)
+
+- Empty extracted claim lists are unmeasured, not perfect passes. Reject claim
+  arrays containing nonstrings or blank strings before verification.
+- Verify all unique extracted claims or skip the measurement when the configurable
+  `max_claims` bound is exceeded (default 10). Do not score only the first ten.
+  Deduplicate exact claims after trimming whitespace to prevent inflated scores.
+- Any unknown claim verdict raises `JudgeUnavailable` instead of shrinking the
+  score denominator. Preserve extraction, verdicts and coverage counts on results.
+- Resolve the faithfulness threshold per call without mutating shared evaluator
+  state. Changed grading contracts require fresh baselines; old calibration
+  packs are starting points, not validation of this stricter measurement protocol.
+
 ### Extension and report compatibility (development)
 
 - Fix imported-run replay pairing under reordering, concurrency and repeats.

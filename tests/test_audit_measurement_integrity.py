@@ -75,11 +75,12 @@ def test_apology_prefix_cannot_bypass_factual_grading(evaluator, replies):
     assert not result.metadata.get('skipped')
 
 
-def test_claimless_refusal_still_can_be_faithful():
+def test_claimless_refusal_does_not_establish_faithfulness():
     with patch('multivon_eval.evaluators.llm_judge.make_judge_call', return_value='[]'):
         result = Faithfulness(threshold=0.7).evaluate(
             EvalCase('Unknown?', context='No relevant facts.'), 'I cannot answer that.')
-    assert result.passed
+    assert not result.passed
+    assert result.metadata["skipped"]
 
 
 @pytest.mark.parametrize('text', [
