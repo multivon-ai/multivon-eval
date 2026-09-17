@@ -1,15 +1,16 @@
 """
-Cost / token accounting for LLM-as-judge calls.
+Recorded usage subtotals and coverage-aware provider accounting.
 
 Every call to :func:`multivon_eval.judge.make_judge_call` (and its async
 sibling) reports its token usage to this module. The active
 :class:`CostTracker` (set per evaluation run by :class:`EvalSuite`)
-accumulates the counts so the resulting :class:`EvalReport` can answer
-"what did this run cost?".
+accumulates a subset of successful text-judge counts. It cannot establish the
+full run's cost. Reconcile native events with ``account_provider_events`` and
+an explicit coverage declaration for run provider budget gates.
 
 Cost accounting is *advisory*: a missing tracker, a provider that does
 not report usage, or an unknown model never breaks an evaluation. They
-just leave the cost number ``None``.
+leave the run cost unknown. ``recorded_cost_usd`` is a scoped subtotal estimate.
 
 Architecture:
 
@@ -27,6 +28,7 @@ from __future__ import annotations
 
 import contextvars
 import threading
+import math
 from dataclasses import dataclass, field
 
 from ._cost_models import ModelPricing, estimate_cost_usd, register_pricing  # noqa: F401
@@ -41,6 +43,15 @@ class ProviderUsage:
     output_tokens: int = 0
     calls: int = 0
     cost_usd: float | None = 0.0  # None if pricing unknown for this model
+
+    def __post_init__(self):
+        if any(type(value) is not int or value < 0 for value in (self.input_tokens, self.output_tokens, self.calls)):
+            raise ValueError("Usage counts must be nonnegative integers")
+        if self.cost_usd is not None and (
+            isinstance(self.cost_usd, bool) or not isinstance(self.cost_usd, (int, float))
+            or not math.isfinite(self.cost_usd) or self.cost_usd < 0
+        ):
+            raise ValueError("Cost must be unknown or a finite nonnegative number")
 
     @property
     def total_tokens(self) -> int:
@@ -66,6 +77,22 @@ class Costs:
     """
     by_model: list[ProviderUsage] = field(default_factory=list)
     """One entry per (provider, model) pair seen during the run."""
+    scope: str = "recorded_judge_responses"
+    coverage_declaration: str | None = None
+    evidence_gaps: list[str] = field(default_factory=list)
+    evidence: dict = field(default_factory=dict)
+
+    def __post_init__(self):
+        if self.coverage_declaration is not None and (
+            not isinstance(self.coverage_declaration, str) or not self.coverage_declaration.strip()
+        ):
+            raise ValueError("coverage_declaration must be a nonempty explanation of complete provider coverage")
+
+    @property
+    def complete(self) -> bool:
+        """Caller-declared run provider coverage, with no detected evidence gaps."""
+        return (self.scope == "run_provider_usage" and bool(self.coverage_declaration)
+                and not self.evidence_gaps)
 
     @classmethod
     def from_dict(cls, data: dict) -> Costs:
@@ -74,7 +101,9 @@ class Costs:
             provider=row["provider"], model=row["model"],
             input_tokens=row["input_tokens"], output_tokens=row["output_tokens"],
             calls=row["calls"], cost_usd=row["cost_usd"],
-        ) for row in data["by_model"]])
+        ) for row in data["by_model"]], scope=data.get("scope", "legacy_recorded_usage"),
+            coverage_declaration=data.get("coverage_declaration"),
+            evidence_gaps=list(data.get("evidence_gaps", [])), evidence=data.get("evidence", {}))
 
     @property
     def total_input_tokens(self) -> int:
@@ -94,10 +123,15 @@ class Costs:
 
     @property
     def total_cost_usd(self) -> float | None:
-        """Total USD cost. ``None`` if any model lacks pricing data."""
+        """Run provider estimate, unknown unless coverage and pricing are complete."""
+        return self.recorded_cost_usd if self.complete else None
+
+    @property
+    def recorded_cost_usd(self) -> float | None:
+        """Estimate for recorded entries only; never establishes full run cost."""
         if any(u.cost_usd is None for u in self.by_model):
             return None
-        return round(sum((u.cost_usd or 0.0) for u in self.by_model), 6)
+        return math.fsum(u.cost_usd or 0.0 for u in self.by_model)
 
     def to_dict(self) -> dict:
         return {
@@ -106,14 +140,20 @@ class Costs:
             "total_tokens": self.total_tokens,
             "total_calls": self.total_calls,
             "total_cost_usd": self.total_cost_usd,
+            "recorded_cost_usd": self.recorded_cost_usd,
+            "scope": self.scope,
+            "coverage_declaration": self.coverage_declaration,
+            "complete": self.complete,
+            "evidence_gaps": list(self.evidence_gaps),
+            "evidence": self.evidence,
             "by_model": [u.to_dict() for u in self.by_model],
         }
 
     def __str__(self) -> str:
         if not self.by_model:
-            return "Costs: no judge calls recorded"
+            return "Costs: no judge calls recorded; run provider cost unknown" if not self.complete else "Costs: declared complete zero provider usage"
         lines = [
-            f"Costs: {self.total_calls} judge calls, "
+            f"Recorded usage ({self.scope}): {self.total_calls} calls, "
             f"{self.total_input_tokens:,} → {self.total_output_tokens:,} tokens"
         ]
         for u in self.by_model:
@@ -126,7 +166,7 @@ class Costs:
         if total is not None:
             lines.append(f"  total: ${total:.4f}")
         else:
-            lines.append("  total: unknown (some models lacked pricing data)")
+            lines.append("  run provider total: unknown (coverage or pricing incomplete)")
         return "\n".join(lines)
 
 
@@ -155,7 +195,7 @@ class CostTracker:
             if inc is None:
                 slot.cost_usd = None
             elif slot.cost_usd is not None:
-                slot.cost_usd = round(slot.cost_usd + inc, 8)
+                slot.cost_usd += inc
 
     def snapshot(self) -> Costs:
         with self._lock:

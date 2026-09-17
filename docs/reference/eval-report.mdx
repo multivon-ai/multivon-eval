@@ -6,13 +6,13 @@ description: Programmatic interface for the object returned by suite.run(). Ever
 `EvalReport` is the object returned by `EvalSuite.run()`. It exposes the run's
 results both as flat attributes (the common readouts) and as derived methods
 (breakdowns, exports, comparisons). The reference below covers the main public
-attributes and methods in 0.17.0.
+attributes and methods in 0.18.0, with unreleased provider-accounting changes explicitly noted below.
 
 ```python
 report: EvalReport = suite.run(my_model_fn)
 print(report.pass_rate)                  # float, 0.0–1.0
 print(report.pass_rate_ci())             # (lo, hi) Wilson 95% CI
-print(report.costs.total_cost_usd if report.costs else None)  # estimated judge USD
+print(report.costs.total_cost_usd if report.costs else None)  # provider estimate, or unknown
 for case in report.failed_cases:         # CaseResult objects
     print(case.case_input, case.score)
 ```
@@ -60,7 +60,7 @@ for case in report.failed_cases:         # CaseResult objects
 | `errors_by_kind` | `dict[str,int]` | `{ "model_error": 2, "judge_error": 1, ... }`. |
 | `suite_lock` | `SuiteLock \| None` | Suite configuration snapshot when attached; not a complete provider request record. |
 | `compare(other)` | `Any` | Diff vs another `EvalReport`. Use for regression detection. |
-| `assert_budget(**limits)` | `None` | Raise if total cost / latency exceeds a limit. CI-friendly. |
+| `assert_budget(**limits)` | `None` | Raise when a limit is exceeded; development usage gates also reject incomplete coverage/pricing. |
 | `save_json(path)` | `None` | Write the report as JSON. |
 | `save_html(path)` | `None` | Write a static HTML viewer. |
 | `save_csv(path)` | `None` | Write a per-case CSV. |
@@ -153,15 +153,18 @@ The objects in `case_result.results` (per-evaluator).
 
 ## `Costs` shape
 
-The dataclass on `report.costs`.
+The dataclass on `report.costs`. **The coverage fields and semantics below are unreleased development changes.** See [provider accounting](/guides/provider-accounting).
 
 | Attribute | Type | Meaning |
 |---|---|---|
-| `total_input_tokens` | `int` | Sum across all judge calls. |
-| `total_output_tokens` | `int` | Sum across all judge calls. |
+| `total_input_tokens` | `int` | Sum of recorded counts within `scope`; coverage can be incomplete. |
+| `total_output_tokens` | `int` | Sum of recorded counts within `scope`; coverage can be incomplete. |
 | `total_tokens` | `int` | Convenience sum. |
-| `total_calls` | `int` | Number of judge requests issued. |
-| `total_cost_usd` | `float \| None` | Estimate from recorded usage and bundled pricing; `None` if a recorded model lacks pricing. Excludes your model-under-test costs. |
+| `total_calls` | `int` | Recorded calls within `scope`; native reconciliation counts physical attempts. |
+| `total_cost_usd` | `float \| None` | Run provider estimate only with declared complete coverage and known pricing; otherwise `None`. |
+| `recorded_cost_usd` | `float \| None` | Scoped estimate for recorded entries only. |
+| `complete` | `bool` | Declared provider coverage with no detected usage/lifecycle gaps. |
+| `evidence_gaps` | `list[str]` | Reasons coverage is incomplete. |
 | `by_model` | `list[ProviderUsage]` | Per (provider, model) breakdown. |
 
 `ProviderUsage` has `provider`, `model`, `input_tokens`, `output_tokens`,
@@ -173,7 +176,9 @@ Fail below an absolute quality threshold, on errors, or on incomplete coverage:
 
 ```python
 report = suite.run(model_fn, fail_threshold=0.85, save_json="report.json")
-report.assert_budget(max_total_cost_usd=2.0, max_p95_latency_ms=5000)
+report.assert_budget(max_p95_latency_ms=5000)
+# For cost/token gates, first reconcile a closed provider journal as shown
+# in the provider-accounting guide; the default judge subtotal is incomplete.
 ```
 
 Compare vs a baseline run:

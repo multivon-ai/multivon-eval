@@ -1,0 +1,118 @@
+---
+title: Provider usage and budgets
+description: Reconcile native attempts, retain pricing provenance, and reject incomplete budget evidence.
+---
+
+**Development preview after 0.18.0.** These APIs and stricter budget semantics
+are not yet on PyPI. They cover provider usage, not your full infrastructure bill.
+
+## Record, reconcile, then gate
+
+The default judge tracker sees only some successful text-judge responses. Its
+`recorded_cost_usd` is a scoped estimate; `total_cost_usd` stays unknown. A target
+can spend money even when no judge usage was recorded.
+
+Capture the whole evaluation in a `ProviderJournal`, close the capture, and
+reconcile its events. `account_provider_events` retains every physical attempt,
+including unsuccessful retries. It never estimates token counts by retokenizing
+saved text. A missing response or usage, unmatched request, unobserved operation,
+stream gap or incomplete lifecycle prevents complete-coverage budget gating.
+
+Install the optional `pricing` extra from your development checkout. The bridge
+reuses [LiteLLM's native response cost calculator](https://docs.litellm.ai/docs/completion/token_usage)
+and records its version, loaded catalog hash and selected tariff entry. Set the
+upstream local-catalog option before importing LiteLLM; the example makes one
+intended Anthropic request and keeps native SDK retries enabled.
+
+```python
+import os
+os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] = "True"
+import litellm
+from multivon_eval import (
+    AnthropicAdapter, EvalCase, EvalSuite, ExactMatch, ProviderJournal,
+    account_provider_events, capture_provider_events,
+)
+from multivon_eval.integrations.litellm_pricing import LiteLLMPricer
+
+pricer = LiteLLMPricer(litellm)
+suite = EvalSuite("accounted request").add_case(EvalCase("Reply with Yes.", "Yes."))
+suite.add_evaluator(ExactMatch())
+target = AnthropicAdapter("claude-haiku-4-5", max_tokens=32, timeout=30)
+
+with ProviderJournal("private-provider.sqlite") as journal:
+    with capture_provider_events(journal=journal):
+        report = suite.run(target, verbose=False)
+    events = journal.events()
+
+report.costs = account_provider_events(
+    events,
+    price_estimator=pricer,
+    coverage_declaration=(
+        "This program uses the built-in Anthropic target and local ExactMatch "
+        "grader. The enclosing journal covers all of this run's provider calls."
+    ),
+)
+report.save_json("accounted-report.json")
+report.assert_budget(max_total_cost_usd=0.01, max_total_tokens=512)
+```
+
+The declaration is **your assertion about the execution configuration**, not
+automatic detection of all networking. Review it when adding callbacks, custom
+clients, preparation, reliability checks or background tasks. It cannot override
+gaps found in the supplied evidence. An empty event list is unknown; a closed
+no-request capture can represent zero provider usage under a justified declaration.
+
+For an existing report, `provider_events(report)` gathers current-run snapshots
+and excludes inherited regrade calls. It is useful for inspection. Report-level
+captures precede export/gates and remain open, so use the closed enclosing
+journal when asserting complete lifecycle coverage.
+
+## Interpret the amounts
+
+| Field | Meaning |
+| --- | --- |
+| `total_calls` | Recorded physical requests after native reconciliation; recorded judge responses in the legacy tracker |
+| `total_tokens` | Sum of known normalized counts; not proof of complete coverage |
+| `recorded_cost_usd` | Estimate for recorded entries; unknown if any entry lacks pricing |
+| `total_cost_usd` | Provider estimate only when declared coverage has no detected gaps and every entry is priced |
+| `complete` | A coverage declaration exists and no usage/lifecycle gaps were detected; pricing can still be unknown |
+| `evidence_gaps` | Reasons full coverage cannot be established |
+| `evidence.requests` | Per-attempt native usage, normalized counts, event references and pricing provenance/errors |
+
+Anthropic cache reads/writes add to its base input count. OpenAI reasoning and
+cached tokens are subcategories already included in its totals. Google's
+thought and tool-result input tokens add to the corresponding counts; reported
+totals are checked for consistency. Raw usage remains available. See
+[Google's usage schema](https://ai.google.dev/api/generate-content#UsageMetadata).
+
+Without a price estimator, known token counts can still support a token budget
+under complete declared coverage; dollar budgets remain indeterminate. You may
+provide a callable `(request_event, response_event)` returning `cost_usd` and a
+nonempty `provenance` dictionary for a separately validated tariff. Finite,
+nonnegative prices are required. Store pricing assumptions with the estimate.
+
+The LiteLLM bridge currently validates standard direct Anthropic Messages and
+OpenAI Chat Completions with text output, including supported native cache
+accounting. Proxy endpoints, Google pricing, regional/fast/priority tiers,
+server-tool fees and nontext output return unknown rather than silently applying
+a standard text rate. Upstream prices can still be wrong or stale; catalog hashes
+make the assumptions inspectable, not authoritative. Tax, discounts, infrastructure
+and external-service charges are excluded. Compare against provider billing for
+financial reconciliation.
+
+## Migrate budget gates
+
+Previously, missing costs could silently skip a budget gate. Development gates
+now raise `EvalGateFailure` when requested provider coverage or pricing is
+unknown. Negative, nonfinite and boolean thresholds are invalid. A call without
+limits remains a no-op. This is post-run validation, not a prepaid spend cap or
+execution cancellation policy.
+
+Legacy JSON amounts remain accessible through `recorded_cost_usd`; loading an
+old report does not invent complete coverage. Basic legacy text prices were
+corrected against [Anthropic](https://platform.claude.com/docs/en/about-claude/pricing)
+and OpenAI's [GPT-4.1](https://developers.openai.com/api/docs/models/gpt-4.1),
+[GPT-4o](https://developers.openai.com/api/docs/models/gpt-4o) and
+[GPT-4o mini](https://developers.openai.com/api/docs/models/gpt-4o-mini) references
+on 2026-09-17. Speculative entries and assumed-free self-hosting were removed.
+These two-rate legacy estimates do not account for caching or special tariffs.

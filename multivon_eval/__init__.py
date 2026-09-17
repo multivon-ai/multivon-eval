@@ -68,6 +68,7 @@ from .lockfile import (
     build_suite_lock, fingerprint_evaluator, verify_suite_against_lock,
 )
 from .costs import Costs, CostTracker, ProviderUsage, ModelPricing, register_pricing
+from .provider_accounting import account_provider_events, provider_events
 from .audit_package import build_audit_package
 from .retry import JudgeRetry
 from .compare import CaseDiff, ReportDiff, compare_reports
@@ -238,6 +239,7 @@ __all__ = [
     "EvalStatus", "EVALUATION_STATUSES", "ERROR_STATUSES",
     # Cost tracking
     "Costs", "CostTracker", "ProviderUsage", "ModelPricing", "register_pricing",
+    "account_provider_events", "provider_events",
     # Suite locking / fingerprinting
     "SuiteLock", "EvaluatorFingerprint", "LockMismatch", "declare_dependencies",
     "capture_provider_events", "provider_http_hooks", "ProviderJournal",

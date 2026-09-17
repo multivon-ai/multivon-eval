@@ -4,6 +4,24 @@ All notable changes to `multivon-eval`. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+### Provider accounting and budget integrity (development)
+
+- Reconcile closed native provider journals with `account_provider_events`.
+  Retain every physical attempt, native usage and pricing provenance; incomplete
+  responses, unobserved operations and lifecycle gaps remain unknown.
+- Separate `recorded_cost_usd` from `total_cost_usd`. The latter requires an
+  explicit complete-run provider coverage declaration with no observed gaps.
+  Legacy reports and the partial judge tracker cannot silently pass usage
+  budgets. Reject invalid limits, prices and counts; preserve submicrodollar costs.
+- Add an optional `pricing` extra and `LiteLLMPricer` bridge to upstream native
+  response cost calculation. Record its version, catalog hash and tariff entry;
+  reject catalog drift. Standard direct Anthropic/OpenAI text-output pricing is
+  validated; other endpoints, server-tool fees, regional and nonstandard tiers
+  remain unknown pending validation.
+- Correct basic-text Haiku, Opus and GPT-4.1 legacy prices against provider
+  sources. Remove speculative rates/model IDs and free-self-hosting assumptions.
+  Historical study artifacts retain their original data.
+
 ### Native provider evidence (development)
 
 - Retain serialized HTTP attempts and native response/usage bodies using SDK

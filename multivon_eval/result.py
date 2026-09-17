@@ -503,13 +503,32 @@ class EvalReport:
         """
         violations: list[str] = []
 
+        limits = {"max_total_cost_usd": max_total_cost_usd,
+                  "max_avg_cost_per_case_usd": max_avg_cost_per_case_usd,
+                  "max_total_tokens": max_total_tokens,
+                  "max_p95_latency_ms": max_p95_latency_ms,
+                  "max_avg_latency_ms": max_avg_latency_ms}
+        for name, value in limits.items():
+            if value is not None:
+                if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0:
+                    raise ValueError(f"{name} must be a finite nonnegative number")
+
+        requested_usage = any(value is not None for value in (
+            max_total_cost_usd, max_avg_cost_per_case_usd, max_total_tokens))
+        if requested_usage and (self.costs is None or not self.costs.complete):
+            violations.append("Provider budget is indeterminate: complete run usage coverage is missing. "
+                              "Reconcile provider evidence and declare its coverage before gating; "
+                              "recorded judge subtotals are insufficient.")
+        if max_avg_cost_per_case_usd is not None and self.total == 0:
+            violations.append("Average provider cost is indeterminate: no cases in the denominator.")
+
         # Cost gates — only enforceable if pricing data is present.
-        if (max_total_cost_usd is not None or max_avg_cost_per_case_usd is not None) and self.costs is not None:
+        if (max_total_cost_usd is not None or max_avg_cost_per_case_usd is not None) and self.costs is not None and self.costs.complete:
             total = self.costs.total_cost_usd
             if total is None:
                 violations.append(
                     "Cost budget requested but at least one model lacks pricing data — "
-                    "register pricing via multivon_eval.register_pricing() to enable gating."
+                    "reconcile native usage with a validated price estimator to enable gating."
                 )
             else:
                 if max_total_cost_usd is not None and total > max_total_cost_usd:
@@ -524,7 +543,7 @@ class EvalReport:
                         )
 
         # Token gates.
-        if max_total_tokens is not None and self.costs is not None:
+        if max_total_tokens is not None and self.costs is not None and self.costs.complete:
             if self.costs.total_tokens > max_total_tokens:
                 violations.append(
                     f"Total tokens {self.costs.total_tokens:,} exceeds budget {max_total_tokens:,}"

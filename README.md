@@ -242,6 +242,9 @@ and [declared grader dependencies and native provider evidence](docs/guides/vers
 Instrumented SDK calls retain request attempts and complete native usage fields;
 an optional SQLite journal preserves dispatched attempts after process death.
 Unobserved transports, streaming usage and missing responses stay explicit gaps.
+The [development accounting workflow](docs/guides/provider-accounting.mdx) reuses
+LiteLLM pricing and rejects incomplete provider budget evidence. Recorded judge
+subtotals do not establish a complete run cost.
 Agent judge failures remain missing measurements; opaque callback contracts and
 observed dependency drift block verified comparisons. These changes are not yet
 published to PyPI and do not establish judge accuracy or complete provider accounting.

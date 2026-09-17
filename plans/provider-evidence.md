@@ -60,10 +60,46 @@ Verification before the live protocol: 1,927 tests passed, 5 skipped on Python
 actual SIGKILL, Google transport coverage, vision requests and report snapshots.
 
 R02 remains open: full target configuration beyond observed serialized requests,
-unobserved transports, bounded retention, coverage-aware usage/cost reconciliation
-and real billing cannot be inferred from this instrumentation. The existing cost
-tracker still counts a subset of successful judge calls. Its pricing catalog and
-budget gates require correction before another release can claim run accounting.
+unobserved transports and bounded retention are not established by this capture.
+The default cost tracker still counts a subset of successful judge responses;
+the reconciliation path below is separate. Real billing cannot be inferred from
+list-price estimates.
+
+## Declared provider accounting
+
+`account_provider_events` reconciles closed journal events, including targets,
+preparation/judges and physical retry attempts. It retains raw usage and maps
+provider-specific token dimensions without retokenizing text. Regrade parent
+events are excluded by `provider_events(report)`. Missing lifecycle starts/ends,
+unobserved operations, request/response mismatch, failure and missing/invalid
+usage remain explicit gaps. No declaration can override detected gaps.
+
+`Costs` separates recorded subtotals from a declared complete run-provider scope.
+Budget gates reject missing/legacy/partial usage instead of silently skipping;
+unknown prices still permit known-token gating but cannot pass dollar gates.
+These are post-run gates, not execution spend caps or independent billing audits.
+
+The optional LiteLLM bridge reuses its native response conversion, cache pricing
+and model catalog. It snapshots version/hash/tariff evidence and rejects catalog
+drift. Standard direct Anthropic Messages/OpenAI Chat Completions text-output
+paths are tested; other endpoints and special tariffs remain unknown. Native
+Google token normalization is included; native Google pricing is not yet bridged.
+Legacy basic-text rates were corrected against official sources and speculative
+entries removed; self-hosting is no longer assumed free.
+
+`benchmarks/industrial/reconcile_provider_capture.py` is the frozen offline
+reprocessing protocol: use the retained four-call archive, disable remote catalog
+fetches, block network before importing LiteLLM, retain pricing provenance, and
+check a 68-token / $0.001 post-run budget. Do not rewrite the historical capture
+or treat current list-price estimates as historical billing.
+
+Accounting verification: 1,958 tests passed and 18 skipped on Python 3.12
+(13 skips are the optional pricing tests exercised separately); 111 focused
+checks passed on Python 3.10; 44 accounting/pricing checks passed with actual
+LiteLLM 1.101.0 in an isolated environment; all 71 MDX pages parsed. Native
+Anthropic cache-window and OpenAI cached/reasoning fixtures agree with the
+documented reference arithmetic. The optional workflow runs with a native SDK
+local transport, and pricing tests block socket connections.
 
 ## Frozen live smoke protocol
 

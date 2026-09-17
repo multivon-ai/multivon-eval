@@ -303,7 +303,7 @@ def _stub_report(*, total: int = 4, latencies: list[float] | None = None,
             input_tokens=total_tokens // 2, output_tokens=total_tokens // 2,
             calls=total, cost_usd=total_cost_usd,
         )
-    ])
+    ], scope="run_provider_usage", coverage_declaration="Fixture covers all provider usage")
     return EvalReport(suite_name="budget-test", case_results=case_results, costs=costs)
 
 

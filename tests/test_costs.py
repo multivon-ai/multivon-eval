@@ -43,7 +43,8 @@ class TestCostTracker:
         snap = t.snapshot()
         assert snap.total_calls == 0
         assert snap.total_tokens == 0
-        assert snap.total_cost_usd == 0.0
+        assert snap.total_cost_usd is None
+        assert snap.recorded_cost_usd == 0.0
         assert snap.by_model == []
 
     def test_records_per_model(self):

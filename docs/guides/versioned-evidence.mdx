@@ -254,9 +254,11 @@ default async transport selection unchanged. Do not treat an empty capture as
 proof that a custom callback made no API calls.
 
 Missing responses or usage remain unknown, including retries that returned an
-HTTP error without usage. The existing `report.costs` tracker is still a partial
-successful-text-judge estimate; it does not reconcile these events or establish
-the full run's bill. Cache/reasoning/tool fields are retained for later accounting.
+HTTP error without usage. The default `report.costs` tracker remains a partial
+successful-text-judge estimate. Use the separate
+[provider accounting workflow](/guides/provider-accounting) to reconcile a closed
+journal with upstream pricing and an explicit coverage declaration. Native
+cache/reasoning/tool fields remain available; these estimates are not invoices.
 
 The SQLite journal reuses native transactions with WAL and full synchronous
 writes. One actual child-process SIGKILL test retained the pre-dispatch request
