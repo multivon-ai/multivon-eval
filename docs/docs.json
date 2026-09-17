@@ -108,6 +108,7 @@
               "guides/failure-investigation",
               "guides/media-evidence",
               "guides/controlled-robustness",
+              "guides/world-models",
               "guides/review-calibration",
               "guides/document-workflows",
               "guides/input-quality",

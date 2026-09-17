@@ -4,7 +4,7 @@ import pytest
 
 gym = pytest.importorskip('gymnasium')
 
-from multivon_eval import EvalCase
+from multivon_eval import AcceptancePolicy, CheckRequirement, EvalCase, EvalReport
 from multivon_eval.case_manifest import digest
 from multivon_eval.dynamics import ForecastEvidence, capture_forecast
 from multivon_eval.dynamics_metrics import forecast_case_result, forecast_metrics
@@ -137,3 +137,13 @@ def test_planned_request_does_not_expose_reference_termination_length():
     assert forecast_metrics(record)['rows'][-1]['status'] == 'censored'
     with pytest.raises(ValueError, match='executed prefix'):
         forecast(planned_actions=[1, 1, 0])
+
+
+def test_required_censored_horizon_cannot_pass_acceptance():
+    record = forecast()
+    row = forecast_case_result(record, tolerances=dict.fromkeys(COORDINATES, 100))
+    report = EvalReport('forecast', [row])
+    observed = AcceptancePolicy((CheckRequirement('dynamics/x/h1'),))
+    missing = AcceptancePolicy((CheckRequirement('dynamics/x/h4'),))
+    assert observed.evaluate(report).decision == 'accept'
+    assert missing.evaluate(report).decision == 'indeterminate'

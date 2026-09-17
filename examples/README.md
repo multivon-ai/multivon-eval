@@ -105,3 +105,11 @@ requires a development checkout and `hypothesis==6.168.0`. It freezes runtime
 source, validates invariant/counterfactual oracles, retains invalid and unknown
 candidates, and compares two deterministic parsers. The four synthetic sources
 are a targeted correctness fixture, not a dataset or model leaderboard.
+
+### Experimental world-model evaluation
+
+`python benchmarks/industrial/world_model_experiment.py --smoke --output-dir /tmp/world-smoke`
+reuses Gymnasium, scikit-learn and SciPy from the `gymnasium` and `review` extras.
+It fits actual state-delta models and evaluates saved predictions and real
+closed-loop control. See `docs/guides/world-models.mdx` for the vector-state
+profile, frozen full-study command and limits. No provider requests are made.

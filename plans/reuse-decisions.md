@@ -137,3 +137,28 @@ experiments; attach revisions/licenses and source grouping through existing
 bridges. See `benchmarks/industrial/ROBUSTNESS_VALIDATION.md` for the observed
 consistency false positive and limits. This contract wrapper is not itself a
 scientific novelty or durable moat.
+
+
+## World-model evaluation checkpoint (2026-09-17)
+
+Reuse native [Gymnasium CartPole](https://gymnasium.farama.org/environments/classic_control/cart_pole/)
+for dynamics, [scikit-learn BayesianRidge](https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.BayesianRidge.html)
+for fitted state-delta models and [SciPy brute](https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.brute.html)
+for bounded exhaustive planning. This avoids a custom simulator, learning engine
+or optimizer. The public adapter adds binding to native episode/trial evidence,
+physical-unit diagnostics and honest missing-horizon/error handling.
+
+Reviewed [WorldModelBench](https://arxiv.org/abs/2502.20694),
+[WorldFoundry](https://github.com/OpenEnvision/WorldFoundry) and
+[WorldBench](https://github.com/tigee1311/worldbench) for their video-oriented
+model/benchmark infrastructure. Do not replicate those stacks or equate a numeric
+CartPole result with their video tasks. MBRL-Lib is relevant prior infrastructure,
+but its repository is archived; this experiment needs no replacement for its
+learning/planning stack. The decision-focused framing also has direct prior art
+in https://arxiv.org/abs/2606.15032. No claim of a novel world-model metric is made.
+
+See `benchmarks/industrial/WORLD_MODEL_RESULTS.md`: action responsiveness,
+horizon error, state-offset persistence, interval coverage/width and planning
+outcomes each address different questions. The plausible product contribution
+is connecting independently observed domain outcomes to usable release evidence;
+this small simulator result alone establishes neither a moat nor industry demand.

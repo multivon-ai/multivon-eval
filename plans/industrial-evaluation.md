@@ -27,7 +27,7 @@ Gymnasium at their established boundaries.
 | R08 | Failure investigation UI | Trial comparison, evidence references, slices, review, case promotion, local security and accessibility; rendered desktop/mobile verification | Development preview: saved trial comparison/filtering, native Inspect references, Label Studio consensus-bound promotion and local request protections validated; six browser scans passed with keyboard/download checks; upstream mobile limitations and missing manual screen-reader validation documented |
 | R09 | Typed multimodal artifacts | Images/pages/audio/video, content identity, timestamps/regions, actual artifact rendering and grounded verdict references, extraction-versus-perception comparisons | Development preview: content/probe bindings, native HF/Inspect round trips, W3C references, PDF page rendering and actual image/audio/video viewing verified; six Haiku calls on two synthetic pdfhell sources compare PDF/pixels/text. General selectors, video regions, full packet validation and semantic citation validity remain outside the tested profile |
 | R10 | Controlled robustness suite | Validated invariant-preserving and semantic-changing transformations; reviewed or code-derived answers; no transformations that silently corrupt the oracle | Development preview: task-bound invariant/counterfactual validation preserves invalid/unknown candidates and source groups; four-source numeric experiment and 200 Hypothesis examples demonstrate independently derived answers and expose consistency false positives. General directional/state/media transformation validation remains outside this profile |
-| R11 | World-model evaluation (experimental) | Real adapter demo; action responsiveness, horizons, state persistence, uncertainty, planning utility; model and simulator errors separated; reproducible measured results | Pending |
+| R11 | World-model evaluation (experimental) | Real adapter demo; action responsiveness, horizons, state persistence, uncertainty, planning utility; model and simulator errors separated; reproducible measured results | Development preview: native CartPole + learned scikit-learn delta models + SciPy planner; 40 held-out forecast sources, 10 planning seeds and preserved action/state-offset/uncertainty/error evidence. Frozen sources and offline replay verified; fully observed numeric-state profile only, not video, hidden-state memory or robotics generalization |
 | R12 | FOSS extension/stability contract | Public plugin/environment protocols, versioned report schemas, optional heavy dependencies, contributor fixtures, compatibility matrix and release checks | Pending |
 | R13 | Industrial workflow and experiments | Document-to-ledger task, independent assertions, failures/benign controls, matched-budget baselines, held-out splits, actual provider runs, costs and uncertainty; results critique | In progress: CORD/pdfhell study completed with 39 held-out sources, two models, native recovery and explicit task-mapping critique; customer-domain contract validation remains |
 | R14 | Research contribution/popularization | Related-work comparison, bounded novelty statement, reproducibility bundle, diagrams when useful, worked demo and evidence-led website narrative | Pending |
@@ -267,3 +267,23 @@ files; offline replay reproduces results without target calls. Full Python 3.12:
 1,776 passed, 5 skipped; focused Python 3.10: 160 passed; 69 MDX pages compiled.
 No provider requests or new PyPI release. Broader state/media transformation
 oracles, world-model evaluation and the remaining program continue.
+
+
+2026-09-17 world-model checkpoint: reused native Gymnasium 1.3.0 CartPole,
+scikit-learn 1.9.1 BayesianRidge and SciPy 1.18.1 exhaustive planning. Frozen
+runtime commit 69c1bdf trained on 4,413 transitions from 200 episodes. Forty
+held-out forecast seeds and ten separate planning seeds expose metric/decision
+mismatch: both learned models have near-exact next-angle predictions, while only
+the action-conditioned model reaches the 200-step cap (10/10 versus 0/10;
+controls average 9.6 steps). Persistence preserves state offsets but fails control.
+Step-32 metrics have six observed sources, with 34 explicitly censored. Full
+planned actions prevent reference-length leakage identified during development.
+The 8,009,403-byte public bundle retains 1,035 checksummed files, pre-run source,
+model parameters, raw episodes/predictions/planner costs and both development
+runs. Offline replay and published MCP/core accept/reject/indeterminate checks
+passed. Full Python 3.12: 1,795 passed, 5 skipped; final focused checks: 20 on
+Python 3.10 and 3.12; 70 MDX pages and the runnable guide verified. Stale editable
+distribution metadata is disclosed; exact execution is identified by the clean
+Git revision and source snapshot. No API calls or new PyPI release. This completes
+the bounded R11 development demonstration, not industrial/robotic validation or
+the remaining execution, extension, release and contribution requirements.

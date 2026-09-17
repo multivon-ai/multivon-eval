@@ -4,6 +4,19 @@ All notable changes to `multivon-eval`. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+### Experimental vector dynamics
+
+- Bind vector-state forecasts to native Gymnasium episode evidence with explicit
+  coordinate units, model contracts, planned action sequences and forecast horizons.
+  Keep simulator/model failures distinct and unobserved endpoints censored.
+- Record errors, marginal Gaussian interval diagnostics and caller-defined
+  tolerance checks as ordinary trial evidence. Required-check policies prevent
+  missing horizons from silently passing; no universal quality threshold is added.
+- Add an actual learned CartPole dynamics experiment using native scikit-learn
+  Bayesian regression and SciPy planning, with action-blind/persistence controls,
+  controlled interventions, uncertainty diagnostics and reproducible raw evidence.
+  This profile makes no video, partial-observability or real-robot claim.
+
 ### Controlled robustness and hardness accounting
 
 - Add task-specific oracle validation records for invariant and counterfactual

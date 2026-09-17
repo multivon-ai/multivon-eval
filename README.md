@@ -79,6 +79,10 @@ PDF, audio and video inputs to native Inspect logs and W3C verdict references.
 [Controlled robustness](docs/guides/controlled-robustness.mdx) validates candidate
 oracles and preserves rejected or unknown transformations. Hardness filtering
 keeps missing measurements separate from model failures.
+[Experimental world-model evaluation](docs/guides/world-models.mdx) binds numeric
+state forecasts to native environment transitions and tests action effects,
+uncertainty and actual planning outcomes. Its tested scope is fully observed
+state-space models, not video generation or real robots.
 These previews and fixes are not included in PyPI 0.18.0.
 
 ## A real workflow example

@@ -1,0 +1,29 @@
+{
+  "frozen_runtime_commit": "69c1bdf611274d64e5f91f9e9154e7e73c5d8d6c",
+  "runtime_source_frozen_before_collection": true,
+  "known_metadata_issue": "Editable distribution metadata reports 0.17.0; module __version__ is 0.18.0. Exact executed development code is bound by the clean Git revision and source snapshot, not the stale distribution metadata.",
+  "postprocessing": "Figures and MCP policy checks were created after held-out analysis; they are not frozen release acceptance criteria.",
+  "published_mcp_interop": {
+    "mcp": "0.4.0",
+    "core": "0.18.0",
+    "cwd": "/tmp",
+    "decisions": [
+      "accept",
+      "reject",
+      "indeterminate"
+    ]
+  },
+  "validation": {
+    "full_py312": "1795 passed, 5 skipped, 7 warnings",
+    "focused_py310": "20 passed",
+    "focused_py312": "20 passed",
+    "mdx_pages": 70,
+    "guide_example": "executed",
+    "figure": "visually inspected",
+    "matplotlib": "3.11.2"
+  },
+  "provider_requests": 0,
+  "bundle_sha256": "24528e0d59d6907f6541587a57432d3cd957f354943fb3465664cf24e50fdaa6",
+  "bundle_bytes": 8009403,
+  "checksummed_files": 1035
+}
