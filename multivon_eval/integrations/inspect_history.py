@@ -9,6 +9,7 @@ from ..result import EvalReport
 def execution_issues(execution: dict, *, include_errors: bool = True) -> list[str]:
     """Preserve upstream execution validity when importing or regrading scores."""
     issues = []
+    issues.extend(execution.get('compatibility_issues', []))
     if include_errors and execution.get('error') is not None:
         issues.append(f"Inspect sample error: {execution['error']}")
     if execution.get('invalidation') is not None:

@@ -14,6 +14,10 @@ from ..evaluators.base import Evaluator
 from ..evaluators.deterministic import Latency, MaxLatency
 from ..result import CaseResult, EvalReport, EvalResult
 from ..trials import TrialRecord, attach_trial, capture_case
+from .inspect_contract import (
+    bind_inspect_task, grader_snapshot, log_contract_issues, retry_contract_issues,
+    GRADING_KEY, SAMPLE_KEY, TASK_KEY,
+)
 
 _NAMESPACE = "multivon_case_v1"
 _RESULT = "multivon_result_v1"
@@ -120,11 +124,16 @@ def as_inspect_scorer(evaluator: Evaluator, *, name: str | None = None):
             original = _case_from_metadata(state.metadata, state.sample_id)
             _verify_bound_media(original, state.metadata, state.messages)
             case = _execution_case(original, state.messages)
-            if isinstance(evaluator, (Latency, MaxLatency)):
-                result = EvalResult(evaluator.name, 0.0, False,
-                                    "Inspect task duration is not target request latency", {"skipped": True})
-            else:
-                result = await evaluator.aevaluate(case, state.output.completion)
+            snapshots = {'before': grader_snapshot(evaluator), 'after': None}
+            state.metadata.setdefault(GRADING_KEY, {})[evaluator.name] = snapshots
+            try:
+                if isinstance(evaluator, (Latency, MaxLatency)):
+                    result = EvalResult(evaluator.name, 0.0, False,
+                                        "Inspect task duration is not target request latency", {"skipped": True})
+                else:
+                    result = await evaluator.aevaluate(case, state.output.completion)
+            finally:
+                snapshots['after'] = grader_snapshot(evaluator)
             payload = {"evaluator": result.evaluator, "score": result.score,
                        "passed": result.passed, "reason": result.reason, "metadata": result.metadata}
             missing = result.metadata.get("skipped") or result.metadata.get("error_kind")
@@ -132,6 +141,7 @@ def as_inspect_scorer(evaluator: Evaluator, *, name: str | None = None):
                                 "passed": None if missing else result.passed},
                          answer=state.output.completion, explanation=result.reason,
                          metadata={_RESULT: payload, _EVALUATION_CASE: case_to_dict(case)})
+        score._multivon_evaluator = evaluator
         return score
     return factory()
 
@@ -165,6 +175,9 @@ def from_inspect_log(log: Any, *, previous_logs: list[Any] | None = None,
            for previous in previous_logs):
         raise ValueError("Inspect retry history must use the same task ID and model")
     from .inspect_history import merge_history
+    current.evidence_issues.extend(retry_contract_issues([*previous_logs, log]))
+    for previous in previous_logs:
+        current.evidence_issues.extend(log_contract_issues(previous))
     return merge_history(current, [_from_inspect_log(previous, accepted_limits) for previous in previous_logs])
 
 
@@ -179,7 +192,10 @@ def _from_inspect_log(log: Any, accepted_limits: tuple[str, ...] = ()) -> EvalRe
     _require_inspect()
     from ..suite import _aggregate_runs
     groups: dict[str, list[tuple[int, EvalCase, CaseResult]]] = {}
-    evidence_issues = []
+    compatibility_issues = log_contract_issues(log)
+    evidence_issues = list(compatibility_issues)
+    task_contract = (log.eval.metadata or {}).get(TASK_KEY)
+    contract_digest = task_contract.get('digest') if isinstance(task_contract, dict) else None
     if log.status != "success":
         evidence_issues.append(f"Inspect evaluation status is {log.status}; expected samples may be missing")
     for sample in log.samples or []:
@@ -204,6 +220,7 @@ def _from_inspect_log(log: Any, accepted_limits: tuple[str, ...] = ()) -> EvalRe
         limit = sample.limit.model_dump(mode='json') if sample.limit is not None else None
         invalidation = sample.invalidation.model_dump(mode='json') if sample.invalidation is not None else None
         execution = {
+            'compatibility_issues': compatibility_issues,
             'error': error, 'limit': limit, 'invalidation': invalidation,
             'accepted_limits': list(accepted_limits),
             'total_time': sample.total_time, 'working_time': sample.working_time,
@@ -231,6 +248,9 @@ def _from_inspect_log(log: Any, accepted_limits: tuple[str, ...] = ()) -> EvalRe
                 "sample_digest": digest(sample.model_dump(mode="json")),
                 "model_usage": {k: v.model_dump(mode="json") for k, v in sample.model_usage.items()},
                 "execution": execution,
+                "task_contract_digest": contract_digest,
+                "sample_contract_digest": (sample.metadata or {}).get(SAMPLE_KEY),
+                "grading_contracts": (sample.metadata or {}).get(GRADING_KEY),
             }
             data["evidence_gaps"] = [
                 "Execution events and provider requests remain in the referenced native Inspect log",

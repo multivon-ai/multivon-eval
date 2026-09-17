@@ -83,6 +83,73 @@ attempt **per epoch** on imported Inspect evidence. The default all-attempts
 policy includes interrupted attempts and therefore can remain indeterminate
 after a successful retry. The bridge cannot discover omitted historical logs.
 
+## Retry compatibility (development)
+
+Native retry preservation by sample ID is not evidence that a task or grader
+definition stayed unchanged. Use `bind_inspect_task` inside the registered task
+factory, every time it is reconstructed:
+
+```python
+from multivon_eval.integrations.inspect import bind_inspect_task
+
+def build_declared_task(previous_log=None):
+    native = Task(dataset=to_inspect_dataset(manifest), solver=fixture_answer(),
+                  scorer=as_inspect_scorer(ExactMatch()), epochs=2)
+    return bind_inspect_task(
+        native, version="authorization-fixture/v1", dependencies={},
+        configuration={"solver_behavior": "fixed hold response"},
+        previous_log=previous_log,
+    )
+
+declared_log = inspect_eval(build_declared_task(), model="mockllm/model",
+                            log_dir="inspect-declared-logs", display="none")[0]
+# Reconstruct without running the solver; this rejects incompatible definitions.
+rebuilt = build_declared_task(previous_log=declared_log)
+assert rebuilt.metadata["multivon_task_contract_v1"]["digest"] == (
+    declared_log.eval.metadata["multivon_task_contract_v1"]["digest"]
+)
+```
+
+This local example does not retry a failed task. In an actual registered factory,
+load the expected prior native log from a caller-selected path when reconstructing
+for `eval_retry`. The [complete registered fixture and driver](https://github.com/multivon-ai/multivon-eval/blob/main/benchmarks/industrial/retry_contract_experiment.py)
+demonstrate that wiring, native sample preservation, a rejected preflight and an
+unguarded negative control. Binding only the first in-memory Task cannot guard
+a later factory reconstruction.
+
+The function updates the Task and sample metadata in place. It reuses existing
+grader/dependency fingerprints, engine inventory and named-file hashes; it does
+not add a scheduler, checkpoint store or dataset format. Static datasets need
+explicit unique sample IDs and bridge metadata. Graders need unique names and
+`as_inspect_scorer`; custom graders also need `declare_dependencies`.
+
+Use `files={"policy": policy_path, "task_source": source_path}` for immutable
+policy/code/configuration inputs that must be rehashed. Use `dependencies` for
+external revision identifiers. Keep runtime state such as ledger rows separate
+from immutable code/configuration inputs. The caller's `version` and
+`configuration` must cover hidden solver arguments, environment/sandbox image
+revisions, model clients, services and closure state. A matching declaration is
+an assertion about that state, not automatic discovery or proof of immutability.
+
+The preflight compares the recorded contract before Inspect executes solvers.
+Task construction and grader preparation occur before binding and may already
+have side effects. Native `eval`/`eval_retry` overrides are not all available to
+the factory; keep them in the declared configuration and supply the complete log
+chain when importing. Native task/plan/execution changes across supplied logs
+also make acceptance indeterminate. Logging-only settings may differ.
+
+Each scorer records configuration before and after grading. Import checks sample
+bindings, native input/reference identity, observed grader drift and mixed task
+definitions. Compatibility issues remain in trial evidence through regrading.
+An incompatible native retry can therefore be diagnosed even if the caller
+omitted the preflight and Inspect already reused completed samples.
+
+Legacy retry chains without declarations are still readable, but their compatibility
+is unknown and cannot pass acceptance. Start a new declared evaluation; do not
+retroactively invent contracts for historical logs. Digests detect accidental
+changes, not forged evidence. Snapshots cannot detect transient changes restored
+between observations or establish arbitrary in-memory/sandbox checkpoint safety.
+
 Use [Inspect View](https://inspect.aisi.org.uk/log-viewer.html) for the full native
 conversation and events. The adapter does not implement another generic log UI.
 

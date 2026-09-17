@@ -4,6 +4,22 @@ All notable changes to `multivon-eval`. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+### Inspect retry compatibility (development)
+
+- Add `bind_inspect_task` to bind native task/sample metadata to caller-declared
+  code/configuration dependencies, named file hashes and existing grader/engine
+  fingerprints. Optional prior-log preflight rejects incompatible reconstruction
+  before solver execution; native Inspect still owns scheduling and recovery.
+- Retain grader configuration before/after scoring. Detect mixed task or dataset
+  definitions, altered native inputs/references and grader drift in imports,
+  including preserved samples from an unguarded native retry.
+- Require declared compatibility for acceptance of imported retry chains; legacy
+  chains remain diagnostic instead of silently claiming compatible evidence.
+  Preserve compatibility issues through saved-output regrading and error budgets.
+- Add a native three-case SQLite retry protocol: a changed policy can leave old
+  scores at 3/3 while fresh grading gives 2/3. Guarded retry blocks extra target
+  calls; unguarded mixed evidence is diagnosed after import.
+
 ### Execution controls and upstream limit evidence (development)
 
 - Reject nonpositive/noninteger repeat and concurrency controls before grader

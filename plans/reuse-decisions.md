@@ -180,3 +180,19 @@ Inspect 0.3.263 source. The actual upstream runtime is used by the
 [control experiment](../benchmarks/industrial/execution_controls_experiment.py).
 Its synthetic usage and tariffs are test fixtures, not a model benchmark,
 new dataset, provider invoice or evidence of scientific novelty.
+
+## Native retry compatibility checkpoint (2026-09-17)
+
+Keep Inspect's sample preservation and `eval_retry`. Add a declared compatibility
+contract through its existing Task and Sample metadata; reuse Multivon's grader
+fingerprints, engine inventory and dependency-file hashes instead of creating a
+new checkpoint format or package resolver. Import native logs and retain their
+sample UUIDs; compare actual native plans and settings across a supplied chain.
+
+The three-case local retry fixture deliberately changes a business rule after an
+interruption. Native preservation is an execution policy, not a declaration that
+old and new measurements are comparable. Guarded reconstruction and post-import
+mixed-evidence checks address that integration boundary. Existing
+[Inspect retry documentation](https://inspect.aisi.org.uk/eval-logs.html#eval-retries)
+and installed 0.3.263 code informed the protocol. Do not claim that metadata hashes
+prove arbitrary agent checkpoint/environment state safe to resume.

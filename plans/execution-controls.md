@@ -77,3 +77,30 @@ samples respected the measured 2-solver / 1-model peaks. See the
 The acceptance follow-up keeps stop/invalidation validity separate from a general
 error budget, including after regrading. Dedicated final checks passed 76 tests
 on Python 3.12 and 52 on Python 3.10; no additional paid requests were made.
+
+## Declared retry compatibility
+
+`bind_inspect_task` now reuses native Task/Sample metadata, existing grader locks,
+engine inventory and named-file dependency hashes. It records actual native
+input/reference hashes, static dataset identity, selected task settings and
+caller-declared solver/environment/configuration revisions. A prior native log
+can reject incompatible task reconstruction before solver execution. Native
+factory construction/preparation can already have side effects before the guard.
+
+Scoring snapshots retain before/after grader configurations. Imports check
+sample/root bindings, observed grading drift, native retry plan/settings and
+declared contracts. Legacy chains without declarations remain diagnostic.
+Per-trial compatibility issues survive regrading and increased error budgets.
+
+The executable `benchmarks/industrial/retry_contract_experiment.py` uses three
+SQLite cases, with two completed cases and one real injected exception after a
+committed write. It compares a changed-policy blocked preflight, compatible native
+retry, intentionally unguarded mixed retry, and a fresh changed-policy evaluation.
+The unguarded native retry preserves two stale passing scores (3/3), while fresh
+grading under that same new policy rejects one case (2/3). The declared guard
+must add zero target calls; unchanged recovery must preserve sample UUIDs.
+
+This covers the declared static-task/native-log profile. It is not arbitrary
+hidden-state discovery, checkpoint signature/authenticity verification, restored
+sandbox-state validation or hard resource reservation. Callers must bind source,
+image, client and service revisions and provide the complete native log chain.

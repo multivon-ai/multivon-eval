@@ -23,6 +23,7 @@ from multivon_eval import (
 from multivon_eval.evaluators.base import Evaluator
 from multivon_eval.integrations.inspect import (
     as_inspect_scorer,
+    bind_inspect_task,
     from_inspect_log,
     to_inspect_dataset,
 )
@@ -39,10 +40,12 @@ def fixture_output():
     return solve
 
 
-def execute(tmp_path, cases, graders, epochs=1):
+def execute(tmp_path, cases, graders, epochs=1, bound=False):
     manifest = CaseManifest("inspect bridge", cases)
     task = Task(dataset=to_inspect_dataset(manifest), solver=fixture_output(),
                 scorer=[as_inspect_scorer(ev) for ev in graders], epochs=epochs)
+    if bound:
+        bind_inspect_task(task, version='bridge-fixture/v1', dependencies={})
     logs = inspect_eval(task, model="mockllm/model", log_dir=str(tmp_path), display="none",
                         log_format="eval", log_model_api=True)
     return logs[0]
@@ -131,7 +134,7 @@ def test_partial_epoch_retry_history_preserves_executions_without_double_countin
     from inspect_ai.log import EvalError
 
     from multivon_eval.trials import trial_integrity_issues
-    log = execute(tmp_path, [EvalCase("x", "yes", case_id="good")], [ExactMatch()], epochs=2)
+    log = execute(tmp_path, [EvalCase("x", "yes", case_id="good")], [ExactMatch()], epochs=2, bound=True)
     prior = log.model_copy(deep=True)
     prior.status = "error"
     interrupted = next(sample for sample in prior.samples if sample.epoch == 2)

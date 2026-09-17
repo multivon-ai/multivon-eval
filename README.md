@@ -257,6 +257,10 @@ reuse native Inspect limits and retain stop reasons. Saved-output regrading cann
 erase an undeclared stop or invalidation; bounded-task acceptance requires an
 explicit policy and outcome checks. Native async cancellation drains owned tasks,
 with synchronous worker-thread limits documented.
+[Declared Inspect tasks](docs/guides/inspect-integration.mdx#retry-compatibility-development)
+bind retry compatibility to task inputs, grader settings and dependency revisions.
+The native retry study includes a changed-rule control where preserved scores look
+perfect while fresh grading rejects the task; mixed evidence cannot pass acceptance.
 Agent judge failures remain missing measurements; opaque grader callback contracts and
 observed dependency drift block verified comparisons. These changes are not yet
 published to PyPI and do not establish judge accuracy or complete provider accounting.
