@@ -107,6 +107,7 @@
               "guides/review-labels",
               "guides/failure-investigation",
               "guides/media-evidence",
+              "guides/controlled-robustness",
               "guides/review-calibration",
               "guides/document-workflows",
               "guides/input-quality",

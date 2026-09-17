@@ -26,7 +26,7 @@ Gymnasium at their established boundaries.
 | R07 | Task/environment/outcome interfaces | Setup/reset/action/observation/cleanup, isolated repeated episodes, real end-state assertions, forbidden side effects, partial failures and recovery cases | Development preview: native Gymnasium lifecycle plus immutable state evidence and outcome checks; 14 actual SQLite environment instances validate separate resources, forbidden history, partial commits and explicit recovery; security isolation and durable execution stay upstream under R03 |
 | R08 | Failure investigation UI | Trial comparison, evidence references, slices, review, case promotion, local security and accessibility; rendered desktop/mobile verification | Development preview: saved trial comparison/filtering, native Inspect references, Label Studio consensus-bound promotion and local request protections validated; six browser scans passed with keyboard/download checks; upstream mobile limitations and missing manual screen-reader validation documented |
 | R09 | Typed multimodal artifacts | Images/pages/audio/video, content identity, timestamps/regions, actual artifact rendering and grounded verdict references, extraction-versus-perception comparisons | Development preview: content/probe bindings, native HF/Inspect round trips, W3C references, PDF page rendering and actual image/audio/video viewing verified; six Haiku calls on two synthetic pdfhell sources compare PDF/pixels/text. General selectors, video regions, full packet validation and semantic citation validity remain outside the tested profile |
-| R10 | Controlled robustness suite | Validated invariant-preserving and semantic-changing transformations; reviewed or code-derived answers; no transformations that silently corrupt the oracle | Pending |
+| R10 | Controlled robustness suite | Validated invariant-preserving and semantic-changing transformations; reviewed or code-derived answers; no transformations that silently corrupt the oracle | Development preview: task-bound invariant/counterfactual validation preserves invalid/unknown candidates and source groups; four-source numeric experiment and 200 Hypothesis examples demonstrate independently derived answers and expose consistency false positives. General directional/state/media transformation validation remains outside this profile |
 | R11 | World-model evaluation (experimental) | Real adapter demo; action responsiveness, horizons, state persistence, uncertainty, planning utility; model and simulator errors separated; reproducible measured results | Pending |
 | R12 | FOSS extension/stability contract | Public plugin/environment protocols, versioned report schemas, optional heavy dependencies, contributor fixtures, compatibility matrix and release checks | Pending |
 | R13 | Industrial workflow and experiments | Document-to-ledger task, independent assertions, failures/benign controls, matched-budget baselines, held-out splits, actual provider runs, costs and uncertainty; results critique | In progress: CORD/pdfhell study completed with 39 held-out sources, two models, native recovery and explicit task-mapping critique; customer-domain contract validation remains |
@@ -249,3 +249,21 @@ checks, focused Python 3.10 and 3.12 each passed 33 tests; 68 MDX pages compiled
 No new PyPI release. See benchmarks/industrial/MEDIA_VALIDATION.md. R10 controlled
 robustness and R11 world-model experiments remain active, alongside R02/R03/R12
 execution/evidence/stability requirements and final cross-project delivery.
+
+
+2026-09-17 controlled robustness checkpoint: corrected mutation label copying and
+hardness error accounting. Transformations now produce explicitly unlabelled
+candidates; task validators bind derived answers and evidence to immutable pairs
+before manifest export. Case JSONL retains stable IDs and source groups. Reused
+CheckList's behavioral distinction and Hypothesis 6.168.0 rather than introducing
+a new dataset/search engine. Four synthetic numeric sources produced 8 valid,
+4 invalid and 4 unknown candidates. Both deterministic parser controls satisfied
+all four invariance and all four output-change checks, yet exact correctness was
+12/12 versus 0/12. This demonstrates why consistency alone is insufficient, not
+industrial or SoTA performance. Two hundred generated property examples passed.
+Hardness controls retain unknown baseline/configuration failures. The 435,141-byte
+raw bundle contains runtime source frozen before execution and 130 checksummed
+files; offline replay reproduces results without target calls. Full Python 3.12:
+1,776 passed, 5 skipped; focused Python 3.10: 160 passed; 69 MDX pages compiled.
+No provider requests or new PyPI release. Broader state/media transformation
+oracles, world-model evaluation and the remaining program continue.

@@ -184,7 +184,7 @@ def test_generation_report_summary_line_with_hardness():
     )
     assert report.summary_line() == (
         "generated 500, accepted 431 — dropped 38 duplicates, 12 malformed, "
-        "19 outside hardness band [0.5, 1.0]"
+        "19 outside hardness band [0.5, 1.0] or unmeasured"
     )
 
 

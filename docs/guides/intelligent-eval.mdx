@@ -163,9 +163,9 @@ cases = generate_unicode_obfuscation_cases(
 
 ---
 
-## `validate_adversarial_cases(cases, baseline)` — N-shot judge-noise filter
+## `validate_adversarial_cases(cases, baseline)` — empirical hardness filter
 
-The "are these cases actually adversarial, or just synthetic noise?" question. Runs each generated case **N times** against a baseline model + evaluator, computes per-case failure rate, filters by hardness band. This is the validation step that separates real signal from generation noise.
+Runs each generated case **N times** against a baseline model and evaluator, then filters fully measured cases by empirical failure rate. This measures behavior under that baseline and grader; it does not validate the task oracle. The accounting changes below are a development preview, not in PyPI 0.18.0.
 
 ```python
 from multivon_eval.auto import generate_adversarial_cases, validate_adversarial_cases
@@ -178,13 +178,13 @@ cases = generate_adversarial_cases(kb, "ungrounded_claim", n=20)
 kept, reports = validate_adversarial_cases(
     cases,
     weak_baseline,
-    n_shots=3,                  # run each case 3× to dampen judge noise
+    n_shots=3,                  # request three measurements; reliability is not established
     hardness_band=(0.5, 1.0),   # keep cases the baseline fails ≥ half the shots
 )
 
 print(f"{len(kept)}/{len(cases)} cases passed validation")
 for r in reports:
-    print(f"  case failure_rate={r.failure_rate:.2f}  in_band={r.in_hardness_band}")
+    print(f"  failure_rate={r.failure_rate}  measured={r.measured_shots}/{r.n_shots}")
 ```
 
 ### What this catches
@@ -207,32 +207,25 @@ def validate_adversarial_cases(
     ...
 ```
 
-- `n_shots` — how many times to sample baseline + evaluator per case. Default 3 dampens judge noise; setting to 1 reproduces single-shot behavior (NOT recommended).
+- `n_shots` — how many times to sample baseline + evaluator per case. Default 3 gives a coarse empirical rate. The required sample count depends on the decision and observed variance.
 - `hardness_band` — `(min, max)` failure-rate band. Cases outside the band are dropped from the kept list (but still returned in the full report). Default `(0.5, 1.0)` keeps cases the baseline fails at least half the time. Use `(0.2, 0.8)` for a discriminating-case filter that drops both too-easy and impossibly-hard cases.
 
 ### `HardnessReport` shape
 
-```python
-@dataclass(slots=True)
-class HardnessReport:
-    case: EvalCase
-    evaluator_name: str
-    n_shots: int
-    scores: list[float]           # one evaluator score per shot
-    baseline_outputs: list[str]   # what the baseline said each shot
-    failure_rate: float           # fraction of shots where evaluator.passed was False
-    in_hardness_band: bool        # whether this case was kept
+One report is returned per submitted case, including unavailable evaluators.
+`scores` and `baseline_outputs` preserve shot positions with `None` for missing
+measurements or outputs. `shots` retains statuses, reasons, errors and valid
+verdict payloads; nonportable verdicts are retained as diagnostic text.
+`measured_shots` counts actual quality measurements.
 
-    @property
-    def baseline_failed(self) -> bool:        # majority-fail heuristic
-        return self.failure_rate >= 0.5
+`failure_rate` and `baseline_score` are `None` unless all requested shots were
+measured. `baseline_failed` is then `None` too; when complete, it means at least
+half of the shots failed. Only fully measured cases can have
+`in_hardness_band=True`. Baseline crashes no longer become zero scores or hard
+examples, and evaluator crashes no longer disappear from reports.
 
-    @property
-    def baseline_score(self) -> float:        # mean across shots
-        ...
-```
-
-Inspect `baseline_outputs[shot]` + `scores[shot]` to audit why a case ended up in or out of the band.
+Inspect every shot before interpreting a result. For transformation validity,
+use the [controlled robustness workflow](/guides/controlled-robustness) separately.
 
 ---
 

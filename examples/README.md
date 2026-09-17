@@ -97,3 +97,11 @@ on two synthetic pdfhell development documents, with no retry and at most 128
 output tokens per request. It needs `ANTHROPIC_API_KEY`; audio/video remain
 mock-only. The native cost limit is a runtime stop condition, not a billing cap.
 See [measured results and limitations](../benchmarks/industrial/MEDIA_VALIDATION.md).
+
+### Controlled robustness (development preview)
+
+`python examples/controlled_robustness.py --output-dir /tmp/controlled-robustness`
+requires a development checkout and `hypothesis==6.168.0`. It freezes runtime
+source, validates invariant/counterfactual oracles, retains invalid and unknown
+candidates, and compares two deterministic parsers. The four synthetic sources
+are a targeted correctness fixture, not a dataset or model leaderboard.

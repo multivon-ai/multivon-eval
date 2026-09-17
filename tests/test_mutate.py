@@ -138,12 +138,13 @@ class TestMutateCases:
         b, _ = mutate_cases(CASES, mutations=["typo_noise"], seed=2)
         assert [c.input for c in a] != [c.input for c in b]
 
-    def test_invariant_mutants_carry_expected_output_and_context(self):
+    def test_invariant_hypotheses_clear_labels_but_preserve_context(self):
         mutants, _ = mutate_cases(CASES, mutations=["whitespace_noise"], seed=0)
         assert mutants
         for m in mutants:
             assert m.metadata["generation"]["expectation"] == "invariant"
-        assert mutants[0].expected_output == "30 days"
+        assert mutants[0].expected_output is None
+        assert mutants[0].metadata["generation"]["oracle_status"] == "unknown"
         assert mutants[0].context == "policy doc"
 
     def test_flip_mutant_drops_label_and_explains(self):
@@ -153,7 +154,8 @@ class TestMutateCases:
         assert m.input == "The plan is not active."
         assert m.expected_output is None  # the old label no longer applies
         assert m.metadata["generation"]["expectation"] == "flip"
-        assert "relabel" in m.metadata["expected_behavior"]
+        assert "expected_behavior" not in m.metadata
+        assert m.metadata["generation"]["oracle_status"] == "unknown"
         assert report.accepted == 1
 
     def test_metadata_contract(self):
@@ -324,3 +326,37 @@ class TestCasesFromTemplate:
         assert report.accepted == 6
         assert cases[0].expected_output is None
         assert cases[0].metadata["expected_behavior"].startswith("answers")
+
+
+def test_mutation_preserves_group_and_payload_without_copying_answers():
+    source = EvalCase('Hello there, friend', expected_output='hello', case_id='base',
+                      source_id='document-1', conversation=[{'role': 'user', 'content': 'prior'}],
+                      expected_tool_calls=['tool'], reference_output='hello',
+                      metadata={'image': {'id': 'asset'}, 'expected_behavior': 'hello'})
+    variants, _ = mutate_cases([source], mutations=['punctuation_strip'])
+    variant = variants[0]
+    assert variant.source_id == 'document-1'
+    assert variant.case_id != source.case_id
+    assert variant.conversation == source.conversation
+    assert variant.expected_output is variant.reference_output is variant.expected_tool_calls is None
+    assert 'expected_behavior' not in variant.metadata
+    variant.metadata['image']['id'] = 'changed'
+    assert source.metadata['image']['id'] == 'asset'
+
+
+def test_identical_inputs_in_distinct_cases_are_not_deduplicated_together():
+    sources = [EvalCase('hello, there', expected_output='a', case_id=key) for key in ['a', 'b']]
+    variants, report = mutate_cases(sources, mutations=['punctuation_strip'])
+    assert len(variants) == report.accepted == 2
+    assert len({v.case_id for v in variants}) == 2
+
+
+def test_cli_export_preserves_generated_case_identity_and_context():
+    from multivon_eval.case_manifest import case_from_dict
+    from multivon_eval.discover import _case_to_jsonl
+    source = EvalCase('hello, there', 'yes', case_id='original', source_id='document-1')
+    variants, _ = mutate_cases([source], mutations=['punctuation_strip'])
+    variant = variants[0]
+    restored = case_from_dict(_case_to_jsonl(variant))
+    assert restored.identity() == variant.identity()
+    assert restored.source_id == 'document-1'

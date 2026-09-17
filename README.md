@@ -76,6 +76,9 @@ cases. The [vision grader audit](docs/evaluators/multimodal.mdx) corrects empty-
 perfect scores, invalid-judgment handling and Anthropic SDK 1.x compatibility.
 [Content-bound media](docs/guides/media-evidence.mdx) connects verified image,
 PDF, audio and video inputs to native Inspect logs and W3C verdict references.
+[Controlled robustness](docs/guides/controlled-robustness.mdx) validates candidate
+oracles and preserves rejected or unknown transformations. Hardness filtering
+keeps missing measurements separate from model failures.
 These previews and fixes are not included in PyPI 0.18.0.
 
 ## A real workflow example

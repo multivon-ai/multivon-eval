@@ -1595,21 +1595,9 @@ the most common failure mode for `{shape}` shape.
 
 
 def _case_to_jsonl(case: EvalCase) -> dict[str, Any]:
-    """Project an EvalCase into a JSONL-friendly dict."""
-    row = {
-        "input": case.input,
-        "expected_output": case.expected_output,
-        "context": case.context,
-        "expected_tool_calls": case.expected_tool_calls,
-        "tags": list(case.tags),
-        "metadata": dict(case.metadata),
-    }
-    if case.conversation is not None:
-        # Conversation-shaped cases (e.g. `simulate --export-cases`) keep
-        # their transcript; the key is omitted otherwise so historical
-        # seed_cases.jsonl output is byte-identical.
-        row["conversation"] = case.conversation
-    return row
+    """Preserve case identity, source groups and all portable case fields."""
+    from .case_manifest import case_to_dict
+    return case_to_dict(case)
 
 
 # ─── Judge call + cost estimation ─────────────────────────────────────────

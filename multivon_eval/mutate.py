@@ -5,9 +5,8 @@ CheckList-style robustness suites without judge spend:
 - :func:`mutate_cases` applies registry mutations (typo / whitespace /
   case noise, unicode confusables, punctuation strip, conservative
   negation flips) to existing cases. Every mutant records the
-  transformation and the *expectation*: ``invariant`` (model output
-  should not change materially) or ``flip`` (the label inverts — the
-  source ``expected_output`` is dropped, never silently kept).
+  transformation and an *unverified* relation hypothesis. All generated
+  candidates have ``expected_output=None``; validate the oracle before scoring.
 - :func:`cases_from_template` expands ``"Refund for {item} bought
   {when}"`` over axis values — full product (capped) or a greedy
   pairwise covering array.
@@ -36,6 +35,7 @@ from typing import Any
 
 from .case import EvalCase
 from .case_gates import GenerationReport, gate_duplicate, gate_well_formed
+from .case_manifest import case_from_dict, case_to_dict, digest
 from .provenance import git_info, read_provenance, stamp_metadata_inplace
 
 #: A mutator is a pure function (text, rng) -> mutated text, or None when
@@ -155,7 +155,7 @@ def negation_flip(text: str, rng: random.Random) -> str | None:
     """CONSERVATIVE rule-based negation: applies ONLY when exactly one
     negatable site exists in the text ("is"↔"is not", "can"↔"cannot",
     bare " not" removal); otherwise inapplicable. The mutant's label is
-    inverted — ``mutate_cases`` drops the source expected_output."""
+    potentially changed; a syntactic negation does not prove label inversion."""
     matches = list(_NEGATABLE_RE.finditer(text))
     if len(matches) != 1:
         return None
@@ -179,13 +179,9 @@ MUTATIONS: dict[str, Mutator] = {
     "negation_flip": negation_flip,
 }
 
-#: Mutations whose expected label INVERTS (everything else is invariant).
+#: Historical relation hypotheses only; no rule proves task-label preservation.
 FLIP_MUTATIONS = frozenset({"negation_flip"})
 
-_FLIP_NOTE = (
-    "label inverted by negation_flip — the source expected_output no "
-    "longer applies and was dropped; relabel before scoring"
-)
 
 
 def mutate_cases(
@@ -203,11 +199,11 @@ def mutate_cases(
         per_case:  Mutant attempts per (case, mutation) pair.
 
     Returns:
-        ``(mutants, GenerationReport)``. Invariant mutants carry the
-        source ``expected_output``/``context`` unchanged; flip mutants
-        carry ``expected_output=None`` plus a metadata note explaining
-        that the label inverted. Inapplicable mutations are simply not
-        generated (visible as ``requested - generated``).
+        ``(candidates, GenerationReport)``. Accepted means structurally generated,
+        not oracle-validated. Every candidate clears expected/reference/tool
+        answers and records ``generation.oracle_status="unknown"``. Relation
+        hypotheses remain for compatibility; validate them with a task oracle.
+        Inapplicable mutations are visible as ``requested - generated``.
     """
     if mutations is None:
         names = list(MUTATIONS)
@@ -226,9 +222,10 @@ def mutate_cases(
     )
     git = git_info(".")
     accepted: list[EvalCase] = []
-    seen_inputs: set[str] = set()
+    seen_inputs: set[tuple[str, str]] = set()
 
     for idx, case in enumerate(cases):
+        parent_id, parent_digest = case.identity()
         status, prov = read_provenance(case.metadata)
         src_uid = prov.get("case_uid") if (status == "ok" and prov) else None
         for name in names:
@@ -242,38 +239,40 @@ def mutate_cases(
                     continue  # inapplicable — accounted as requested - generated
                 report.generated += 1
                 flip = name in FLIP_MUTATIONS
-                metadata: dict[str, Any] = {
-                    "generation": {
-                        "kind": "mutation",
-                        "mutation": name,
-                        "expectation": "flip" if flip else "invariant",
-                        "seed": seed,
-                        "source_case_uid": src_uid,
-                    },
+                mutant = case_from_dict(case_to_dict(case, include_reference=False))
+                metadata = mutant.metadata
+                for key in ("expected_behavior", "expected_behaviour", "expected_response", "expected"):
+                    metadata.pop(key, None)
+                metadata["generation"] = {
+                    "kind": "mutation", "mutation": name,
+                    "expectation": "flip" if flip else "invariant",
+                    "oracle_status": "unknown", "seed": seed,
+                    "source_case_uid": src_uid, "source_case_id": parent_id,
+                    "source_case_digest": parent_digest,
+                    "note": "Unverified relation hypothesis; derive and validate the oracle before scoring",
                 }
-                if flip:
-                    metadata["generation"]["note"] = _FLIP_NOTE
-                    # Doubles as the gate_well_formed expected-behavior text.
-                    metadata["expected_behavior"] = _FLIP_NOTE
                 stamp_metadata_inplace(
                     metadata, authored_by="generator:mutation", git=git, targets=[],
                 )
-                mutant = EvalCase(
-                    input=mutated,
-                    expected_output=None if flip else case.expected_output,
-                    context=case.context,
-                    metadata=metadata,
-                    tags=list(case.tags),
-                )
-                if not gate_well_formed(mutant).passed:
+                mutant.input = mutated
+                mutant.expected_output = mutant.reference_output = None
+                mutant.expected_tool_calls = None
+                mutant.case_id = "mutation:" + digest({
+                    "parent": parent_id, "parent_digest": parent_digest,
+                    "mutation": name, "input": mutated, "seed": seed,
+                })
+                mutant.source_id = case.source_id or parent_id
+                mutant.revision = None
+                if not mutated.strip() or not gate_well_formed(case).passed:
                     report.dropped_malformed += 1
                     continue
                 # Exact-identity dedupe vs the batch (see module docstring
                 # for why gate_duplicate's Jaccard is wrong for mutants).
-                if mutated in seen_inputs:
+                key = (parent_id + ":" + parent_digest, mutated)
+                if key in seen_inputs:
                     report.dropped_duplicate += 1
                     continue
-                seen_inputs.add(mutated)
+                seen_inputs.add(key)
                 accepted.append(mutant)
 
     report.accepted = len(accepted)
@@ -290,7 +289,7 @@ def cases_from_template(
     n: int | None = None,
     seed: int = 0,
     expected_output: str | None = None,
-    context: "str | list[str] | None" = None,
+    context: str | list[str] | None = None,
     expected_behavior: str | None = None,
 ) -> tuple[list[EvalCase], GenerationReport]:
     """Expand a ``{placeholder}`` template over axis values.
@@ -435,15 +434,15 @@ def _pairwise_rows(
 
 
 __all__ = [
-    "MUTATIONS",
     "FLIP_MUTATIONS",
+    "MUTATIONS",
     "TEMPLATE_PRODUCT_CAP",
-    "mutate_cases",
-    "cases_from_template",
-    "typo_noise",
-    "whitespace_noise",
     "case_noise",
-    "unicode_confusable",
-    "punctuation_strip",
+    "cases_from_template",
+    "mutate_cases",
     "negation_flip",
+    "punctuation_strip",
+    "typo_noise",
+    "unicode_confusable",
+    "whitespace_noise",
 ]

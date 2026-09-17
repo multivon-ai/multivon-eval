@@ -118,3 +118,22 @@ PDF badge-only view and mobile overflow; rendered-page and audio/video playback
 checks passed. Six Haiku calls reused pdfhell 0.6.2's existing hidden-OCR fixtures;
 the two-source result and critique are in benchmarks/industrial/MEDIA_VALIDATION.md.
 The standard annotation profile validates reference bounds, not semantic support.
+
+
+## Controlled robustness checkpoint (2026-09-17)
+
+Reuse [CheckList](https://aclanthology.org/2020.acl-main.442/)'s behavioral test
+framing and [Hypothesis](https://hypothesis.readthedocs.io/en/latest/) 6.168.0 for
+property examples and shrinking. [TextAttack](https://github.com/QData/TextAttack)
+already covers transformation, constraint and search composition; do not build a
+replacement. Task-specific semantic validity is an additional obligation, since
+neither a transform name nor surface similarity establishes an unchanged answer.
+
+The implemented boundary records code/review oracle assertions and rejects
+inconsistent relations or missing evidence before exporting ordinary CaseManifest
+cases. The four-source numeric fixture is deliberately a regression test, not a
+new benchmark dataset. Keep CORD and other credible upstream corpora for broader
+experiments; attach revisions/licenses and source grouping through existing
+bridges. See `benchmarks/industrial/ROBUSTNESS_VALIDATION.md` for the observed
+consistency false positive and limits. This contract wrapper is not itself a
+scientific novelty or durable moat.

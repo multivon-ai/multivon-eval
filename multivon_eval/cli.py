@@ -229,6 +229,8 @@ def _emit_generated_cases(cases, report, output):
             if c.expected_output:
                 print(f"     expected: {str(c.expected_output)[:120]}")
     print(f"\n  {report.summary_line()}")
+    if report.kind == "mutation":
+        print("  Unlabelled candidates: validate the task oracle before scoring.")
 
 
 def cmd_generate(args):
@@ -1504,30 +1506,33 @@ def cmd_bootstrap(args) -> int:
             judge=judge,
         )
         dropped = len(result.seed_cases) - len(kept)
-        print(f"  ✓ validated seed cases (n_shots={args.validate_n_shots}): "
-              f"kept {len(kept)}, dropped {dropped} as noise")
+        print(f"  ✓ hardness-filtered seed cases (n_shots={args.validate_n_shots}): "
+              f"kept {len(kept)}, excluded {dropped} (outside band or incomplete)")
 
         # Overwrite seed_cases.jsonl with the validated subset.
+        from .discover import _case_to_jsonl
+
         seed_path = Path(result.artifacts["seed_cases"])
         with seed_path.open("w") as f:
             for c in kept:
-                f.write(json.dumps({
-                    "input": c.input,
-                    "expected_output": c.expected_output,
-                    "context": c.context,
-                    "tags": c.tags,
-                    "metadata": c.metadata,
-                }) + "\n")
+                f.write(json.dumps(_case_to_jsonl(c)) + "\n")
         # Also write a hardness report alongside for transparency.
         hardness_path = seed_path.parent / "hardness_report.jsonl"
         with hardness_path.open("w") as f:
             for r in reports:
                 f.write(json.dumps({
                     "input": r.case.input[:200],
+                    "case_id": r.case.identity()[0],
+                    "case_digest": r.case.identity()[1],
+                    "source_id": r.case.source_id,
                     "evaluator": r.evaluator_name,
                     "failure_rate": r.failure_rate,
                     "in_hardness_band": r.in_hardness_band,
                     "scores": r.scores,
+                    "n_shots": r.n_shots,
+                    "measured_shots": r.measured_shots,
+                    "baseline_outputs": r.baseline_outputs,
+                    "shots": r.shots,
                 }) + "\n")
         print(f"  ✓ hardness report: {hardness_path}")
 

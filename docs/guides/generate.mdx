@@ -81,10 +81,13 @@ pairs = generate_hallucination_pairs(my_docs, n=20)
 
 ## Mutations (free)
 
-CheckList-style robustness suites from cases you already have. Each mutant records
-its transformation and what you should expect: `invariant` (the model's answer
-shouldn't materially change) or `flip` (the old label no longer applies — the
-expectation is cleared, never silently kept).
+Generate transformation candidates from existing cases. In the development
+preview, every candidate clears its expected answer and records an unverified
+`invariant` or `flip` hypothesis with `oracle_status="unknown"`. Even whitespace
+or punctuation changes can alter the correct answer. Validate candidates with
+[task-specific oracles](/guides/controlled-robustness) before scoring them.
+The report's accepted count describes structural generation, not oracle validity.
+This replaces the label-copying behavior in PyPI 0.18.0.
 
 ```python
 from multivon_eval import mutate_cases

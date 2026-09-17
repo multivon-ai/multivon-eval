@@ -16,7 +16,7 @@ pipeline before it lands in ``seed_cases.jsonl``:
 
 The counterpart contract is :class:`GenerationReport` — no silent caps:
 every generated case is accounted for as accepted, malformed, duplicate,
-or outside the hardness band, and the discovery report prints exactly
+or outside the hardness band or unmeasured, and the discovery report prints exactly
 those counts.
 
 This module is standalone (no pdfhell dependency); the GateResult shape
@@ -105,7 +105,7 @@ class GenerationReport:
         if self.hardness_skipped:
             return base
         lo, hi = self.hardness_band
-        return base + f", {self.dropped_hardness} outside hardness band [{lo}, {hi}]"
+        return base + f", {self.dropped_hardness} outside hardness band [{lo}, {hi}] or unmeasured"
 
 
 # ─── Gate 1: well-formed (structural, free) ───────────────────────────────
@@ -197,8 +197,8 @@ def gate_hardness(
 ):
     """Thin wrapper over ``multivon_eval.auto.validate_adversarial_cases``.
 
-    Returns ``(kept_cases, list[HardnessReport])`` — the existing N-shot
-    failure-rate aggregation + band filter, unchanged. Callers should
+    Returns ``(kept_cases, list[HardnessReport])`` — the N-shot
+    failure-rate aggregation + band filter, with missing measurements retained. Callers should
     only invoke this when the user opted in (it costs baseline + judge
     calls per case per shot).
     """

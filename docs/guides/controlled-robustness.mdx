@@ -1,0 +1,123 @@
+---
+title: Controlled robustness
+description: Validate transformed-case oracles before treating variants as scored evidence.
+---
+
+This development preview requires a checkout of `main`; it is not in PyPI 0.18.0.
+
+A typo, whitespace change or removed comma can change the correct answer.
+For example, removing the comma in a decimal-comma amount changes `1,25` euros
+to `125` euros. Negating a sentence does not necessarily invert its task label.
+Treat a transformation's relation as a hypothesis until a task-specific oracle
+validates it.
+
+## Reuse existing tools
+
+[CheckList](https://aclanthology.org/2020.acl-main.442/) supplies the behavioral
+testing framework: minimum-functionality, invariance and directional tests.
+[TextAttack](https://github.com/QData/TextAttack) already provides transformations,
+constraints and search. [Hypothesis](https://hypothesis.readthedocs.io/en/latest/)
+generates and shrinks property-test examples. Keep your datasets in tools such as
+Hugging Face; use Multivon's `CaseManifest` for frozen identities, source groups
+and split checks. This feature adds a task-oracle validation record, not a new
+augmentation engine or dataset collection.
+
+## Validate before scoring
+
+```python
+from multivon_eval import EvalCase
+from multivon_eval.robustness import OracleVerdict, validate_variant
+
+base = EvalCase("2 + 3", "5", case_id="addition:base", source_id="addition-1")
+candidate = EvalCase("2 + 4", case_id="addition:changed", source_id="addition-1")
+
+def check_addition(base, candidate):
+    def answer(case):
+        left, right = case.input.split(" + ")
+        return str(int(left) + int(right))
+    return OracleVerdict(
+        valid=True,
+        reason="Recomputed both sums with integer arithmetic",
+        base_expected=answer(base),
+        variant_expected=answer(candidate),
+        evidence={"oracle": "integer-addition/v1"},
+    )
+
+validation = validate_variant(
+    base, candidate, relation="counterfactual",
+    contract="integer-addition/v1", validator=check_addition,
+)
+assert validation.status == "valid"
+manifest = validation.manifest("addition development cases")
+manifest.save("addition.json")
+```
+
+The callback receives detached copies. It must supply both independently derived
+answers, a reason and supporting evidence. It can use reviewed labels, an external
+simulator or deterministic task rules. Record their versions and provenance.
+An `invariant` requires equal answers; a `counterfactual` requires different
+answers. This initial profile supports string answers, not general confidence
+directions, partial ordering, tool trajectories or environment-state predicates.
+
+| Status | Meaning | Export to a scored manifest |
+| --- | --- | --- |
+| `valid` | Validator asserts validity; derived answers satisfy the declared relation and existing labels | Allowed |
+| `invalid` | Validator rejects the transformation, or its answers contradict the relation/labels | Refused |
+| `unknown` | Unreviewed, ambiguous, malformed or failed validation | Refused |
+
+Inspect `validation.data` for the original cases, verdict, evidence, contract,
+issues and digest. A candidate with a conflicting label is rejected; it is not
+silently relabelled. Both cases keep the same explicit `source_id` and distinct
+explicit case IDs. Their variants must stay in the same split. Choose splits
+before inspecting final measurements; a manifest cannot attest that data was
+previously unseen.
+
+**Trust boundary:** the callback is caller-supplied code. This API checks its
+shape and consistency, not its truth or independence. Evidence hashes detect
+accidental changes; they are not signatures. Do not use the tested model's answer
+to author its own oracle. Media byte identity likewise does not prove that a
+crop, blur or re-encoding preserves a task's answer.
+
+## Migration: mutations are candidates
+
+`mutate_cases` now clears `expected_output`, `reference_output` and
+`expected_tool_calls` for every generated candidate. It preserves input context,
+conversation, media metadata and source grouping; source expectation metadata is
+removed. `generation.expectation` retains the historical `invariant`/`flip`
+hypothesis, with `oracle_status="unknown"`. The generation report's `accepted`
+count means structurally generated, not validated. A source still needs an
+expected answer or expected-behavior description to generate candidates.
+
+Supply explicit IDs and source groups on the base cases, validate each candidate,
+then use the exported manifest with existing suites or Inspect. This deliberately
+changes the older behavior that copied labels for purported invariant mutations.
+
+## Hardness is a separate measurement
+
+`validate_adversarial_cases` retains one report per input case. Baseline errors,
+unavailable evaluators, skipped/error verdicts and invalid scores remain visible
+in `shots`. Every requested shot must be measured for `failure_rate` to be known
+and the case to pass its hardness band. Otherwise `failure_rate`,
+`baseline_failed` and `baseline_score` are `None`; no error becomes a zero score.
+Use `measured_shots` alongside requested `n_shots`.
+
+Three shots give only a coarse empirical rate. Repetition does not establish
+oracle validity, independent judge observations or reliable generalization.
+Even a fully measured hard case may have an incorrect label.
+
+## Run the local demonstration
+
+```bash
+pip install -e . 'hypothesis==6.168.0'
+python examples/controlled_robustness.py --output-dir /tmp/controlled-robustness
+```
+
+The example freezes runtime source before execution and saves a development
+manifest, validation records, raw trial reports, paired results and checksums.
+It uses four synthetic source amounts and two deterministic parsers, with no
+provider or judge calls. Hypothesis exercises 200 generated amounts separately.
+Always compare base and variant correctness as well as output consistency:
+two wrong outputs can agree. Count source groups rather than treating correlated
+variants as independent examples. See the
+[experiment record](https://github.com/multivon-ai/multivon-eval/blob/main/benchmarks/industrial/ROBUSTNESS_VALIDATION.md)
+for results and limitations.

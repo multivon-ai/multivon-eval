@@ -4,6 +4,21 @@ All notable changes to `multivon-eval`. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+### Controlled robustness and hardness accounting
+
+- Add task-specific oracle validation records for invariant and counterfactual
+  candidates. Preserve original cases, source groups, validator contracts and
+  invalid/unknown outcomes; export only validated pairs to CaseManifest.
+- Mutations now clear expected/reference/tool answers instead of assuming label
+  preservation. Keep context, media, conversation and source identities; relation
+  names are explicitly unverified hypotheses. This is a behavior change.
+- Retain all hardness inputs and shot outcomes, including missing evaluators,
+  setup errors, baseline failures and invalid/skipped verdicts. Incomplete
+  measurements have unknown failure rates and cannot pass a hardness filter.
+  CLI reports retain per-shot evidence; repeated measurements do not validate labels.
+- Reuse Hypothesis in a runnable synthetic numeric regression experiment. No new
+  dataset infrastructure or transformation search engine is introduced.
+
 ### Content-bound media
 
 - Add immutable media descriptors with byte hashes, parser-probed geometry or

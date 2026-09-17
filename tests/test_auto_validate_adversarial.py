@@ -1,7 +1,7 @@
 """Validation tests for multivon_eval.auto.validate_adversarial_cases.
 
 N-shot aggregation, hardness_band filtering, and the resilience knobs
-(baseline crash → counted as failure, evaluator crash → case dropped).
+(baseline/evaluator failures remain visible and cannot pass the filter).
 
 Uses a stub evaluator monkeypatched onto multivon_eval to avoid any LLM
 calls — the tests are deterministic and run in <1 second.
@@ -9,12 +9,13 @@ calls — the tests are deterministic and run in <1 second.
 from __future__ import annotations
 
 from collections.abc import Iterator
+from typing import ClassVar
 
 import pytest
 
 import multivon_eval as m
 from multivon_eval import EvalCase
-from multivon_eval.auto import HardnessReport, validate_adversarial_cases
+from multivon_eval.auto import validate_adversarial_cases
 from multivon_eval.evaluators.base import Evaluator
 from multivon_eval.result import EvalResult
 
@@ -27,7 +28,7 @@ class _ScriptedEvaluator(Evaluator):
     """
 
     name = "ScriptedEvaluator"
-    _script: list[tuple[float, bool]] = []
+    _script: ClassVar[list[tuple[float, bool]]] = []
     _calls: int = 0
 
     @classmethod
@@ -39,7 +40,7 @@ class _ScriptedEvaluator(Evaluator):
     def call_count(cls) -> int:
         return cls._calls
 
-    def evaluate(self, case: EvalCase, output: str) -> EvalResult:  # noqa: ARG002
+    def evaluate(self, case: EvalCase, output: str) -> EvalResult:
         idx = type(self)._calls
         type(self)._calls += 1
         if idx >= len(type(self)._script):
@@ -58,7 +59,7 @@ class _AlwaysCrashEvaluator(Evaluator):
 
     name = "AlwaysCrashEvaluator"
 
-    def evaluate(self, case: EvalCase, output: str) -> EvalResult:  # noqa: ARG002
+    def evaluate(self, case: EvalCase, output: str) -> EvalResult:
         raise RuntimeError("simulated evaluator crash")
 
 
@@ -207,8 +208,8 @@ def test_baseline_score_property_is_mean():
 
 # ─── Resilience: baseline / evaluator crashes ─────────────────────────────
 
-def test_baseline_crash_counts_as_failure():
-    # Baseline raises on every call — counts as 3 failures, kept under (0.5, 1.0)
+def test_baseline_crash_remains_unknown():
+    # Baseline raises on every call: no quality measurement exists.
     _ScriptedEvaluator.set_script([])  # never called
 
     def crashing_baseline(_: str) -> str:
@@ -218,14 +219,17 @@ def test_baseline_crash_counts_as_failure():
     kept, reports = validate_adversarial_cases(
         [case], crashing_baseline, n_shots=3, hardness_band=(0.5, 1.0),
     )
-    assert kept == [case]
-    assert reports[0].failure_rate == 1.0
-    assert reports[0].scores == [0.0, 0.0, 0.0]
-    assert reports[0].baseline_outputs == ["", "", ""]
+    assert kept == []
+    assert reports[0].failure_rate is None
+    assert reports[0].scores == [None, None, None]
+    assert reports[0].baseline_outputs == [None, None, None]
+    assert reports[0].baseline_failed is None
+    assert reports[0].baseline_score is None
+    assert {s["status"] for s in reports[0].shots} == {"model_error"}
 
 
 def test_baseline_crash_mixed_with_passes():
-    # Crash on shot 2 (counts as fail), pass on 1 and 3 → failure_rate = 1/3
+    # Crash on shot 2 leaves incomplete measurements, even if the band is [0, 1].
     _ScriptedEvaluator.set_script([(0.9, True), (0.9, True)])  # only 2 calls
     call_count = {"n": 0}
 
@@ -239,21 +243,23 @@ def test_baseline_crash_mixed_with_passes():
     _, reports = validate_adversarial_cases(
         [case], flaky_baseline, n_shots=3, hardness_band=(0.0, 1.0),
     )
-    assert reports[0].failure_rate == pytest.approx(1 / 3)
-    # Crashed shot is recorded with empty output + 0.0 score
-    assert reports[0].baseline_outputs[1] == ""
-    assert reports[0].scores[1] == 0.0
+    assert reports[0].failure_rate is None
+    assert reports[0].measured_shots == 2
+    assert reports[0].in_hardness_band is False
+    assert reports[0].baseline_outputs[1] is None
+    assert reports[0].scores[1] is None
 
 
-def test_evaluator_crash_drops_case_entirely():
+def test_evaluator_crash_preserves_every_shot():
     case = _adversarial("q", evaluator_name="AlwaysCrashEvaluator")
     kept, reports = validate_adversarial_cases(
         [case], lambda _: "x", n_shots=3, hardness_band=(0.0, 1.0),
     )
-    # Case is absent from BOTH kept and reports — tooling failures
-    # shouldn't pollute either set.
     assert kept == []
-    assert reports == []
+    assert len(reports) == 1
+    assert reports[0].baseline_outputs == ["x"] * 3
+    assert reports[0].failure_rate is None
+    assert {s["status"] for s in reports[0].shots} == {"evaluator_error"}
 
 
 # ─── Argument validation ─────────────────────────────────────────────────
@@ -287,7 +293,8 @@ def test_case_without_stress_tests_metadata_skipped():
         [case], lambda _: "x", n_shots=3,
     )
     assert kept == []
-    assert reports == []
+    assert len(reports) == 1
+    assert reports[0].shots[0]["status"] == "not_run"
 
 
 def test_stress_test_evaluator_not_in_sdk_skipped():
@@ -299,7 +306,8 @@ def test_stress_test_evaluator_not_in_sdk_skipped():
         [case], lambda _: "x", n_shots=3,
     )
     assert kept == []
-    assert reports == []
+    assert len(reports) == 1
+    assert reports[0].shots[0]["status"] == "not_run"
 
 
 def test_empty_case_list_returns_empty():
@@ -338,3 +346,37 @@ def test_evaluator_called_exactly_n_shots_times_per_case():
         cases, lambda _: "x", n_shots=3, hardness_band=(0.0, 1.0),
     )
     assert _ScriptedEvaluator.call_count() == 6  # 2 cases × 3 shots
+
+
+@pytest.mark.parametrize("score,passed,metadata", [
+    (0.5, True, {"skipped": True}), (0.5, False, {"error_kind": "judge_error"}),
+    (float("nan"), False, {}), (float("inf"), True, {}), (1.1, True, {}),
+    (True, True, {}), (0.5, None, {}), ("0.5", True, {}),
+])
+def test_invalid_or_unmeasured_verdict_never_passes_band(monkeypatch, score, passed, metadata):
+    monkeypatch.setattr(_ScriptedEvaluator, 'evaluate', lambda *_: EvalResult(
+        'ScriptedEvaluator', score, passed, 'original reason', metadata))
+    kept, reports = validate_adversarial_cases([_adversarial('q')], lambda _: 'answer',
+                                             n_shots=1, hardness_band=(0, 1))
+    assert kept == []
+    assert reports[0].failure_rate is None
+    assert 'original reason' in str(reports[0].shots[0])
+
+
+@pytest.mark.parametrize('n_shots', [True, 1.5, 0])
+def test_invalid_counts_rejected_even_with_no_cases(n_shots):
+    with pytest.raises(ValueError, match='n_shots'):
+        validate_adversarial_cases([], lambda _: '', n_shots=n_shots)
+
+
+def test_constructor_typeerror_is_not_retried(monkeypatch):
+    calls = []
+    def broken_init(self, **kwargs):
+        calls.append(kwargs)
+        raise TypeError('constructor bug')
+    monkeypatch.setattr(_ScriptedEvaluator, '__init__', broken_init)
+    kept, reports = validate_adversarial_cases([_adversarial('q')],
+                                             lambda _: pytest.fail('no baseline call'))
+    assert len(calls) == 1
+    assert kept == []
+    assert reports[0].shots[0]['reason'] == 'constructor bug'

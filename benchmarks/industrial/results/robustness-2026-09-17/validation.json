@@ -1,0 +1,25 @@
+{
+  "bundle_sha256": "fce8c77d529311a18b078640869343ad1686ce94a2f4852d9e82d9f38f62c9bb",
+  "bundle_bytes": 435141,
+  "checksummed_files": 130,
+  "runtime_source_frozen_before_execution": true,
+  "full_py312": "1776 passed, 5 skipped, 7 warnings",
+  "mdx_pages": 69,
+  "provider_requests": 0,
+  "preflight_failures": [
+    {
+      "run": "/tmp/multivon-robustness-01",
+      "failure": "Unsupported EvalSuite constructor argument",
+      "local_scored_calls": 0
+    },
+    {
+      "run": "/tmp/multivon-robustness-02",
+      "failure": "Summary used nonexistent CaseResult.output instead of actual_output",
+      "local_scored_calls": 12,
+      "saved_report": "/tmp/multivon-robustness-02/comma_blind.json"
+    }
+  ],
+  "focused_py310": "160 passed",
+  "rehearsals": "rehearsals/ retains failures, console output and reports; completed run 03 and final run 04 summaries match",
+  "replay_target_calls": 0
+}
