@@ -1,0 +1,21 @@
+{
+  "journal_sha256": "aa62ec3b350bffe9b46cd9931003ea7dcc447a45ac4fee5761532e2bbcd16dc8",
+  "request_configs": [
+    {
+      "model": "claude-haiku-4-5-20251001",
+      "temperature": 0,
+      "max_tokens": 100,
+      "requests": 2800
+    }
+  ],
+  "response_stop_reasons": {
+    "answer_accuracy": {
+      "end_turn": 2238,
+      "max_tokens": 2
+    },
+    "direct_rating": {
+      "end_turn": 519,
+      "max_tokens": 41
+    }
+  }
+}

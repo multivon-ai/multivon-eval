@@ -64,6 +64,10 @@ the duration of one method's scoring job, including its calls, not queue waiting
 production latency or a guarantee. No cache was used and no extra HTTP retries
 were observed. Raw wire data and the durable journal remain local because they
 contain upstream text; their hashes are published, not their raw contents.
+The transport audit confirms all 2,800 requests used the pinned model, temperature
+0 and a 100-token cap. Two QAG replies and 41 direct replies reached that cap;
+QAG's leading verdicts remained parseable. This further limits interpretation of
+the direct baseline's strict-format failure rate. See `transport-audit.json`.
 
 ## Reproduce and inspect
 
