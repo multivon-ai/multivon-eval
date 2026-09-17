@@ -1,5 +1,12 @@
 # Reuse decisions
 
+Regulated-enterprise follow-up: [target and moat study](regulated-enterprise-study.md)
+compares TAT-QA, FinQA, CUAD/MAUD, DocILE and existing agent benchmarks.
+[Verifier benchmark targets](sota-benchmark-program.md) reuse independent
+meta-evaluation rather than inferring evaluator accuracy from target-model scores.
+The pinned TAT-QA audit found different test/test-gold identifier spaces and
+exact-content coverage; do not join those releases by row order.
+
 2026-09-17 — implementation constraint from the owner: reuse credible projects
 and their knowledge; do not rebuild commodity infrastructure.
 

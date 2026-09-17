@@ -276,3 +276,8 @@ Issues and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for
 setup and testing, and [extension contracts](docs/guides/extensions-and-compatibility.mdx)
 for custom graders, native environment integrations, report migration and tested
 dependency combinations. Apache 2.0 — [Multivon](https://multivon.ai).
+
+Research direction: [regulated enterprise workflows and moat](plans/regulated-enterprise-study.md),
+with [public benchmarks for verifier quality](plans/sota-benchmark-program.md).
+These are research plans; Multivon does not yet have a SoTA result
+on those evaluator benchmarks.

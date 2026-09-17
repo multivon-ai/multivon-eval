@@ -1,0 +1,166 @@
+{
+  "repository": "https://github.com/NExTplusplus/TAT-QA",
+  "revision": "870accc41953dcde885aabeb963d94aabdc0fbc3",
+  "files": {
+    "tatqa_dataset_train.json": {
+      "sha256": "2df6e722cdbaaa37efcbfb280f5c9a15be29a6ec18f618ef936fe63cc6d07c69",
+      "bytes": 12845647,
+      "contexts": 2201,
+      "questions": 13215,
+      "context_fields": [
+        "paragraphs",
+        "questions",
+        "table"
+      ],
+      "table_fields": [
+        "table",
+        "uid"
+      ],
+      "question_fields": [
+        "answer",
+        "answer_from",
+        "answer_type",
+        "derivation",
+        "order",
+        "question",
+        "rel_paragraphs",
+        "req_comparison",
+        "scale",
+        "uid"
+      ],
+      "answer_types": {
+        "multi-span": 1645,
+        "span": 5722,
+        "arithmetic": 5543,
+        "count": 305
+      },
+      "missing_answers": 0,
+      "unique_context_ids": 2201,
+      "unique_question_ids": 13215
+    },
+    "tatqa_dataset_dev.json": {
+      "sha256": "8da095a819af6db3c14877c6df2d4d29960e41d1a63dd1fa853507bd2a616af5",
+      "bytes": 1637431,
+      "contexts": 278,
+      "questions": 1668,
+      "context_fields": [
+        "paragraphs",
+        "questions",
+        "table"
+      ],
+      "table_fields": [
+        "table",
+        "uid"
+      ],
+      "question_fields": [
+        "answer",
+        "answer_from",
+        "answer_type",
+        "derivation",
+        "order",
+        "question",
+        "rel_paragraphs",
+        "req_comparison",
+        "scale",
+        "uid"
+      ],
+      "answer_types": {
+        "span": 701,
+        "multi-span": 217,
+        "arithmetic": 718,
+        "count": 32
+      },
+      "missing_answers": 0,
+      "unique_context_ids": 278,
+      "unique_question_ids": 1668
+    },
+    "tatqa_dataset_test.json": {
+      "sha256": "6efcf044cedeba3661eb70b1b93595673fd3f3dfcc1f78288ec5115682e7a96c",
+      "bytes": 1146306,
+      "contexts": 278,
+      "questions": 1669,
+      "context_fields": [
+        "paragraphs",
+        "questions",
+        "table"
+      ],
+      "table_fields": [
+        "table",
+        "uid"
+      ],
+      "question_fields": [
+        "order",
+        "question",
+        "uid"
+      ],
+      "answer_types": {
+        "unlabeled": 1669
+      },
+      "missing_answers": 1669,
+      "unique_context_ids": 278,
+      "unique_question_ids": 1669
+    },
+    "tatqa_dataset_test_gold.json": {
+      "sha256": "c4d08418359c1d76468dec420ee748a37f48c06b63cb8ec2766f19d5d314b597",
+      "bytes": 2167546,
+      "contexts": 277,
+      "questions": 1663,
+      "context_fields": [
+        "paragraphs",
+        "questions",
+        "table"
+      ],
+      "table_fields": [
+        "table",
+        "uid"
+      ],
+      "question_fields": [
+        "answer",
+        "answer_from",
+        "answer_type",
+        "consts",
+        "derivation",
+        "facts",
+        "mappings",
+        "order",
+        "question",
+        "rel_paragraphs",
+        "req_comparison",
+        "scale",
+        "tree_derivation",
+        "uid"
+      ],
+      "answer_types": {
+        "span": 714,
+        "multi-span": 210,
+        "arithmetic": 699,
+        "count": 40
+      },
+      "missing_answers": 0,
+      "unique_context_ids": 277,
+      "unique_question_ids": 1663
+    }
+  },
+  "context_id_overlap": {
+    "tatqa_dataset_train.json / tatqa_dataset_dev.json": 0,
+    "tatqa_dataset_train.json / tatqa_dataset_test.json": 0,
+    "tatqa_dataset_dev.json / tatqa_dataset_test.json": 0
+  },
+  "test_gold_coverage": {
+    "common_question_ids": 0,
+    "original_ids_not_in_gold": 1669,
+    "gold_ids_not_in_original": 1663,
+    "changed_input_question_ids": [],
+    "exact_content_overlap_ignoring_ids": 1626,
+    "original_contents_not_in_gold": 43,
+    "gold_contents_not_in_original": 37,
+    "ambiguous_original_contents": 0,
+    "ambiguous_gold_contents": 0,
+    "content_matching_rule": "Exact table cells, ordered (paragraph order, text) pairs and question; identifiers excluded. No semantic normalization."
+  },
+  "limitations": [
+    "Context IDs do not establish source-report or company-disjoint splits.",
+    "Presence of gold fields is not validation of their correctness.",
+    "No model inference or benchmark scoring performed."
+  ]
+}

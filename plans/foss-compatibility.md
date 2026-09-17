@@ -21,8 +21,11 @@ checks. These changes follow 0.18.0 and are not yet a PyPI release.
 3. The install-smoke workflow executes imports from the repository root, allowing
    source to shadow the installed wheel. An offline script rejects that condition
    and checks the installed schema resource, base API and migration fixtures.
-   Workflow corrections and explicit upstream-integration jobs are prepared
-   separately; remote delivery must be verified before claiming CI coverage.
+   Workflow corrections and explicit upstream-integration jobs are committed on
+   local branch `foss-compatibility-ci`, commit `2eccb5f`. GitHub rejected that
+   branch push because the available token lacks `workflow` scope. The code/docs
+   commit `6d99655` is pushed to main. Remote CI improvements remain undelivered;
+   do not claim those jobs are running.
 
 ## Reuse and extension choices
 
