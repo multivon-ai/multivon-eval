@@ -23,6 +23,8 @@ def test_native_limit_stops_preserve_partial_output_and_task_outcome(tmp_path, k
     evidence = copied.case_results[0].trials[0].data['upstream']['execution']
     assert evidence['limit'] == result['limit']
     assert evidence['accepted_limits'] == []
+    relaxed_errors = AcceptancePolicy((CheckRequirement('exact_match'),), max_error_rate=1)
+    assert relaxed_errors.evaluate(copied).decision == result['strict_decision']
     # New graders cannot turn an unapproved stop into a completed execution.
     rescored = regrade(copied, EvalSuite('saved output').add_evaluator(ExactMatch()))
     assert AcceptancePolicy((CheckRequirement('exact_match'),)).evaluate(rescored).decision == result['strict_decision']
@@ -51,6 +53,9 @@ def test_invalidated_scores_cannot_be_accepted_or_cleared_by_limit_declaration(t
     assert imported.errors == 1 and 'invalidated' in imported.case_results[0].evaluator_error
     assert AcceptancePolicy((CheckRequirement('exact_match'),)).evaluate(imported).decision == 'indeterminate'
     assert imported.case_results[0].trials[0].data['upstream']['execution']['invalidation']['reason'] == 'Wrong task state'
+    relaxed = AcceptancePolicy((CheckRequirement('exact_match'),), max_error_rate=1).evaluate(imported)
+    assert relaxed.decision == 'indeterminate'
+    assert any(f.code == 'check_coverage' for f in relaxed.findings)
     for _ in range(2):
         imported = regrade(imported, EvalSuite('saved output').add_evaluator(ExactMatch()))
         assert imported.errors == 1

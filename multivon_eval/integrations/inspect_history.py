@@ -6,10 +6,10 @@ from dataclasses import replace
 from ..result import EvalReport
 
 
-def execution_issues(execution: dict) -> list[str]:
+def execution_issues(execution: dict, *, include_errors: bool = True) -> list[str]:
     """Preserve upstream execution validity when importing or regrading scores."""
     issues = []
-    if execution.get('error') is not None:
+    if include_errors and execution.get('error') is not None:
         issues.append(f"Inspect sample error: {execution['error']}")
     if execution.get('invalidation') is not None:
         issues.append('Inspect sample was invalidated; retained scores are not valid acceptance evidence')

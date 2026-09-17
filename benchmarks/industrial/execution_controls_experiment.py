@@ -92,6 +92,8 @@ async def limit_probe(root: Path, kind: str):
     strict = from_inspect_log(native)
     bounded = from_inspect_log(native, accepted_limits=(kind,) if kind != 'complete' else ())
     assert policy.evaluate(strict).decision == ('accept' if kind == 'complete' else 'indeterminate')
+    relaxed_errors = AcceptancePolicy((CheckRequirement('exact_match'),), max_error_rate=1)
+    assert relaxed_errors.evaluate(strict).decision == policy.evaluate(strict).decision
     assert policy.evaluate(bounded).decision == 'accept'
     assert bounded.case_results[0].results[0].passed
     outcome = AcceptancePolicy((CheckRequirement('exact_match'), CheckRequirement('ledger_committed', critical=True)))
@@ -101,6 +103,7 @@ async def limit_probe(root: Path, kind: str):
     return {'kind': kind, 'native_status': native.status,
             'limit': native.samples[0].limit.model_dump(mode='json') if native.samples[0].limit else None,
             'strict_decision': policy.evaluate(strict).decision,
+            'relaxed_error_budget_decision': relaxed_errors.evaluate(strict).decision,
             'declared_boundary_decision': policy.evaluate(bounded).decision,
             'outcome_decision': outcome.evaluate(bounded).decision,
             'native_usage': {k: v.model_dump(mode='json') for k, v in native.samples[0].model_usage.items()},

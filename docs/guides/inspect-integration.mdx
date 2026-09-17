@@ -123,6 +123,8 @@ succeeded. Require independent outcome checks and apply the same declared policy
 to the entire retry chain. Unknown limit types are rejected. A time, operator or
 other stop remains blocking unless its type is also explicitly accepted; errors
 and invalidations cannot be overridden with `accepted_limits`.
+Increasing the general error budget does not authorize a new stop boundary or
+restore invalidated measurements.
 
 The offline [control experiment](https://github.com/multivon-ai/multivon-eval/blob/main/benchmarks/industrial/execution_controls_experiment.py)
 uses Inspect's actual runtime and mock provider plus a real SQLite ledger.

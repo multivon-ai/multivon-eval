@@ -173,6 +173,13 @@ class AcceptancePolicy:
             evidence("missing_trials", "Some cases have no saved trials")
 
         selected = {id(r): self._trials(r) for r in rows}
+        from .integrations.inspect_history import execution_issues
+        for row in rows:
+            for trial in selected[id(row)]:
+                upstream = trial.get('upstream', {})
+                if upstream.get('format') == 'inspect':
+                    for issue in execution_issues(upstream.get('execution', {}), include_errors=False):
+                        evidence('upstream_execution', f'{row.case_id}: {issue}')
         errored = sum(any(t.get("model_error") is not None or t.get("judge_error") is not None
                          or t.get("evaluator_error") is not None for t in selected[id(r)]) for r in rows)
         error_rate = errored / len(rows) if rows else None
@@ -208,6 +215,10 @@ class AcceptancePolicy:
                     for trial in selected[id(row)]:
                         matches = [e for e in trial["evaluators"] if e["name"] == requirement.evaluator]
                         usable = len(matches) == 1 and trial.get("model_error") is None
+                        upstream = trial.get('upstream', {})
+                        if (upstream.get('format') == 'inspect'
+                                and upstream.get('execution', {}).get('invalidation') is not None):
+                            usable = False
                         match = matches[0] if len(matches) == 1 else None
                         usable = usable and not match.get("metadata", {}).get("skipped")
                         usable = usable and not match.get("metadata", {}).get("error_kind")
