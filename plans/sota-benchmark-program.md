@@ -2,6 +2,10 @@
 
 September 17, 2026. Researched in response to the owner's Supermemory comparison.
 **No Multivon SoTA result exists on the benchmarks below at this checkpoint.**
+The [first full-population judge study](../benchmarks/industrial/results/ragchecker-judges-2026-09-17/README.md)
+now measures the existing AnswerAccuracy configuration. Its same-model comparison
+is inconclusive and sensitive to direct-judge parsing; it does not validate QAG
+as a quality or efficiency advantage.
 Unit-test counts, synthetic recovery tests and task scores are not substitutes
 for independent measurements of evaluator accuracy.
 

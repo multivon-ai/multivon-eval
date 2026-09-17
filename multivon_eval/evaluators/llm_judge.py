@@ -1,9 +1,9 @@
 """
 LLM-as-judge evaluators using QAG (Question-Answer Generation) scoring.
 
-Instead of asking the judge "rate this 1-10" (unreliable), we generate
-a set of yes/no questions and score by the fraction answered correctly.
-This approach is more reliable, auditable, and consistent.
+We ask a set of yes/no questions and score the fraction matching the rubric.
+The individual verdicts are inspectable; greater accuracy or reliability than
+direct ratings must be established for the task rather than assumed.
 
 Judge model is configured via JudgeConfig — decoupled from the metric:
     from multivon_eval import configure, JudgeConfig

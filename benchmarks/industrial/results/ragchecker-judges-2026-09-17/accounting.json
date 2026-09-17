@@ -1,0 +1,138 @@
+{
+  "methods": {
+    "answer_accuracy": {
+      "total_input_tokens": 870904,
+      "total_output_tokens": 10138,
+      "total_tokens": 881042,
+      "total_calls": 2240,
+      "total_cost_usd": 0.921593999999999,
+      "recorded_cost_usd": 0.921593999999999,
+      "scope": "run_provider_usage",
+      "coverage_declaration": "Frozen runner invokes only the instrumented native Anthropic judge for this method",
+      "complete": true,
+      "evidence_gaps": [],
+      "by_model": [
+        {
+          "provider": "anthropic",
+          "model": "claude-haiku-4-5-20251001",
+          "input_tokens": 870904,
+          "output_tokens": 10138,
+          "total_tokens": 881042,
+          "calls": 2240,
+          "cost_usd": 0.921593999999999
+        }
+      ],
+      "http_status_counts": {
+        "200": 2240
+      },
+      "response_models": {
+        "claude-haiku-4-5-20251001": 2240
+      },
+      "requests_missing_price": 0,
+      "pricing_errors": {},
+      "pricing_provenance": {
+        "catalog_digest": "386574df9d610aff7819b47c00a1511c2954658d9a97db85ab2a98deb3fb8e25",
+        "catalog_entry": {
+          "cache_creation_input_token_cost": 1.25e-06,
+          "cache_creation_input_token_cost_above_1hr": 2e-06,
+          "cache_read_input_token_cost": 1e-07,
+          "deprecation_date": "2026-10-15",
+          "input_cost_per_token": 1e-06,
+          "litellm_provider": "anthropic",
+          "max_input_tokens": 200000,
+          "max_output_tokens": 64000,
+          "max_tokens": 64000,
+          "mode": "chat",
+          "output_cost_per_token": 5e-06,
+          "prompt_cache_min_tokens": 4096,
+          "supports_assistant_prefill": true,
+          "supports_computer_use": true,
+          "supports_function_calling": true,
+          "supports_native_structured_output": true,
+          "supports_pdf_input": true,
+          "supports_prompt_caching": true,
+          "supports_reasoning": true,
+          "supports_response_schema": true,
+          "supports_tool_choice": true,
+          "supports_vision": true
+        },
+        "catalog_key": "claude-haiku-4-5-20251001",
+        "estimator": "litellm.completion_cost",
+        "limits": "Upstream list-price estimate; not a bill; discounts, tax and external services excluded",
+        "request_model": "claude-haiku-4-5-20251001",
+        "response_model": "claude-haiku-4-5-20251001",
+        "source": "https://github.com/BerriAI/litellm",
+        "version": "1.101.0"
+      },
+      "requests_digest": "d9774defb1858c800650d7aa9b5ffaf715d6e996b521fddd2ddc775ab77e0b8a"
+    },
+    "direct_rating": {
+      "total_input_tokens": 260146,
+      "total_output_tokens": 7101,
+      "total_tokens": 267247,
+      "total_calls": 560,
+      "total_cost_usd": 0.2956510000000001,
+      "recorded_cost_usd": 0.2956510000000001,
+      "scope": "run_provider_usage",
+      "coverage_declaration": "Frozen runner invokes only the instrumented native Anthropic judge for this method",
+      "complete": true,
+      "evidence_gaps": [],
+      "by_model": [
+        {
+          "provider": "anthropic",
+          "model": "claude-haiku-4-5-20251001",
+          "input_tokens": 260146,
+          "output_tokens": 7101,
+          "total_tokens": 267247,
+          "calls": 560,
+          "cost_usd": 0.2956510000000001
+        }
+      ],
+      "http_status_counts": {
+        "200": 560
+      },
+      "response_models": {
+        "claude-haiku-4-5-20251001": 560
+      },
+      "requests_missing_price": 0,
+      "pricing_errors": {},
+      "pricing_provenance": {
+        "catalog_digest": "386574df9d610aff7819b47c00a1511c2954658d9a97db85ab2a98deb3fb8e25",
+        "catalog_entry": {
+          "cache_creation_input_token_cost": 1.25e-06,
+          "cache_creation_input_token_cost_above_1hr": 2e-06,
+          "cache_read_input_token_cost": 1e-07,
+          "deprecation_date": "2026-10-15",
+          "input_cost_per_token": 1e-06,
+          "litellm_provider": "anthropic",
+          "max_input_tokens": 200000,
+          "max_output_tokens": 64000,
+          "max_tokens": 64000,
+          "mode": "chat",
+          "output_cost_per_token": 5e-06,
+          "prompt_cache_min_tokens": 4096,
+          "supports_assistant_prefill": true,
+          "supports_computer_use": true,
+          "supports_function_calling": true,
+          "supports_native_structured_output": true,
+          "supports_pdf_input": true,
+          "supports_prompt_caching": true,
+          "supports_reasoning": true,
+          "supports_response_schema": true,
+          "supports_tool_choice": true,
+          "supports_vision": true
+        },
+        "catalog_key": "claude-haiku-4-5-20251001",
+        "estimator": "litellm.completion_cost",
+        "limits": "Upstream list-price estimate; not a bill; discounts, tax and external services excluded",
+        "request_model": "claude-haiku-4-5-20251001",
+        "response_model": "claude-haiku-4-5-20251001",
+        "source": "https://github.com/BerriAI/litellm",
+        "version": "1.101.0"
+      },
+      "requests_digest": "d7f91272843c21bbbbc5e6767db5d5143d9078bbc21665954453a0eaec4ebb8f"
+    }
+  },
+  "journal_sha256": "aa62ec3b350bffe9b46cd9931003ea7dcc447a45ac4fee5761532e2bbcd16dc8",
+  "limits": "Recorded API usage; any dollar values are catalog estimates, not invoices"
+}

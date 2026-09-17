@@ -1,0 +1,22 @@
+{
+  "inference_and_scoring": {
+    "python": "3.12.13",
+    "packages": {
+      "multivon-eval": "0.18.0",
+      "anthropic": "1.6.0",
+      "numpy": "2.2.6",
+      "scipy": "1.18.1",
+      "httpx2": "2.13.0"
+    }
+  },
+  "pricing": {
+    "python": "3.12.13",
+    "litellm": "1.101.0"
+  },
+  "analysis_scripts": {
+    "score_ragchecker_judges.py": "66381dd8cece554e5ae66d7b58c002ea508aacab73dcb9bf45bb5134be0cee98",
+    "account_ragchecker_judges.py": "6741ce9d608e98ba134389c9246dca35eb9bbecad1646beb775e57d781086d99",
+    "ragchecker_parser_sensitivity.py": "2cee27c732fcc937326957cd360256a99209c135bb901d8b47990dec753ddcf2",
+    "verify_ragchecker_published.py": "a7f277d9eee05a4cc6f4a33078e7ad1733b177d8d54fa449768cfe5ea48f569e"
+  }
+}

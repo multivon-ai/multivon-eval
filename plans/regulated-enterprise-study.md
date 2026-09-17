@@ -101,6 +101,13 @@ an attack to another workflow creates a new experiment, not an official score.
 
 ## What can become a moat
 
+The [first 280-case same-model judge study](../benchmarks/industrial/results/ragchecker-judges-2026-09-17/README.md)
+does not support generic QAG as a moat: its quality difference is inconclusive,
+the point-estimate ranking reverses under a post-hoc formatting check, and QAG
+uses four times the calls. This strengthens the case for domain-specific
+verification and trustworthy evidence handling. It does not yet validate those
+alternatives as novel or commercially defensible.
+
 The hypothesis is that regulated teams will pay for **faster, independently
 reviewable release decisions when an AI workflow changes**. A useful artifact
 connects the task requirement to the exact inputs, observed outcome, evaluator

@@ -199,6 +199,13 @@ proof of equivalence. See [CI/CD](https://docs.multivon.ai/guides/ci-cd) and
 ## Evidence and limitations
 
 The repository publishes [benchmark scripts and historical results](benchmarks/README.md).
+The [first full RAGChecker judge study](benchmarks/industrial/results/ragchecker-judges-2026-09-17/README.md)
+measures current `AnswerAccuracy` at Pearson **0.499** against overall human
+preference on 280 cases (95% case-bootstrap interval **0.413–0.572**).
+It does not establish an advantage over a same-model direct judge: the paired
+interval includes zero, and the ranking reverses under a post-hoc formatting
+check. QAG used four calls per response versus one for the direct judge.
+
 One cross-task measurement reported F1 **0.830** on 60 HaluEval summarization
 outputs from 30 source examples, using a QA-selected threshold. It is a small,
 maintainer-run result with generated hallucination labels; it does not establish
@@ -281,5 +288,5 @@ Research direction: [regulated enterprise workflows and moat](plans/regulated-en
 with [public benchmarks for verifier quality](plans/sota-benchmark-program.md).
 The [first RAGChecker baseline reproduction](benchmarks/industrial/results/ragchecker-meta-2026-09-17/README.md)
 matches published correlations on 280 cases using released predictions and the
-unchanged upstream scorer. Multivon does not yet have its own accuracy result or
-a SoTA claim on those evaluator benchmarks.
+unchanged upstream scorer. Our subsequent same-model study above establishes an
+initial measurement, not a SoTA claim on those evaluator benchmarks.

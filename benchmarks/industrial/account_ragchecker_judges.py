@@ -11,8 +11,6 @@ import json
 from collections import Counter
 from pathlib import Path
 
-from reproduce_ragchecker_meta import write_json
-
 from multivon_eval import ProviderJournal
 from multivon_eval.provider_accounting import account_provider_events
 
@@ -54,9 +52,11 @@ def main():
             "pricing_provenance": provenance,
             "requests_digest": hashlib.sha256(json.dumps(account["evidence"]["requests"], sort_keys=True).encode()).hexdigest(),
         }
-    write_json(args.out, {"methods": summary,
-                         "journal_sha256": hashlib.sha256((args.run / "events.sqlite").read_bytes()).hexdigest(),
-                         "limits": "Recorded API usage; any dollar values are catalog estimates, not invoices"})
+    args.out.write_text(json.dumps({
+        "methods": summary,
+        "journal_sha256": hashlib.sha256((args.run / "events.sqlite").read_bytes()).hexdigest(),
+        "limits": "Recorded API usage; any dollar values are catalog estimates, not invoices",
+    }, indent=2, allow_nan=False) + "\n")
     print(args.out)
 
 

@@ -1,0 +1,54 @@
+{
+  "status": "Post-hoc diagnostic after observing format failures; not preregistered or a replacement result",
+  "leading_integer_pattern": "\\A(100|[1-9]?[0-9])(?=\\s|$)",
+  "recovered_direct_responses": 44,
+  "missing": {
+    "answer_accuracy": {
+      "unscored_responses": 0,
+      "imputed_pairs": 0
+    },
+    "direct_rating": {
+      "unscored_responses": 3,
+      "imputed_pairs": 3
+    }
+  },
+  "overall": {
+    "answer_accuracy": {
+      "pearson_x100": 49.86,
+      "spearman_x100": 50.87
+    },
+    "direct_rating": {
+      "pearson_x100": 53.34,
+      "spearman_x100": 53.18
+    }
+  },
+  "paired_bootstrap": {
+    "answer_accuracy": {
+      "ci95": [
+        0.41285331173400047,
+        0.5716775897321444
+      ],
+      "defined_resamples": 2000,
+      "total_resamples": 2000
+    },
+    "direct_rating": {
+      "ci95": [
+        0.44834615378665704,
+        0.6057812936059488
+      ],
+      "defined_resamples": 2000,
+      "total_resamples": 2000
+    },
+    "answer_accuracy_minus_direct": {
+      "ci95": [
+        -0.11662044353259751,
+        0.046981029601550574
+      ],
+      "defined_resamples": 2000,
+      "total_resamples": 2000
+    },
+    "unit": "Case, stratified by domain; two annotations retained together",
+    "scale": "Ordinary Pearson correlation; conditional on one set of model outputs"
+  },
+  "remaining_limit": "QAG and direct rating prompts and parsing still differ; no new inference"
+}

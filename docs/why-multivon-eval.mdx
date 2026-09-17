@@ -20,7 +20,26 @@ answer that question.
 
 Start with [task success](/guides/task-success), then use the
 [offline quickstart](/quickstart). For behavior changes in the current release,
-read the [0.17.0 migration guide](/guides/migration-0-17).
+read the [0.18.0 migration guide](/guides/migration-0-18).
+
+## Current judge measurement: RAGChecker
+
+On September 17, 2026, the existing `AnswerAccuracy` evaluator scored all 560
+responses in RAGChecker's 280 comparison cases using Haiku 4.5. Its Pearson
+correlation with overall human preference was **0.499**, with a 95% case-bootstrap
+interval of **0.413–0.572**. Two annotations per case were resampled together.
+
+A same-model direct rating scored 513/560 responses under its frozen integer-only
+parser. With the upstream missing-difference imputation, its correlation was
+0.452. The paired difference interval crossed zero. A post-hoc leading-integer
+parser recovered 44 replies and raised the direct score to 0.533, reversing the
+point-estimate ordering. Neither analysis establishes QAG superiority. QAG used
+four calls per response; direct rating used one.
+
+The [protocol, predictions and limitations](https://github.com/multivon-ai/multivon-eval/tree/main/benchmarks/industrial/results/ragchecker-judges-2026-09-17)
+are public. This is a maintainer-run study of one configuration, not a SoTA result
+or validation on regulated customer data. The sensitivity check is explicitly
+post-hoc and does not replace the frozen primary result.
 
 ## Historical evidence: hallucination detection
 
@@ -74,8 +93,9 @@ estimate, not a current price or latency promise.
 
 A cache reduces repeated calls for identical requests; it does not measure
 independent judge reliability. In 0.17.0 the explicit judge reliability sample
-bypasses the response cache. Native Anthropic/OpenAI paths also have a
-[temperature forwarding limitation](/evaluators/llm-judge#configuration).
+bypasses the response cache. Current native Anthropic/OpenAI judge paths forward
+the configured temperature; provider/model constraints still apply. See
+[judge configuration](/evaluators/llm-judge#configuration).
 
 ## What remains to be demonstrated
 

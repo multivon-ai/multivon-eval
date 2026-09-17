@@ -143,7 +143,7 @@ def main():
     }
     args.out.mkdir(parents=True, exist_ok=False)
     write_json(args.out / "results.json", result)
-    write_json(args.out / "predictions.json", numeric_rows)
+    (args.out / "predictions.json").write_text(json.dumps(numeric_rows, allow_nan=False) + "\n")
     print(json.dumps({"correlations": result["correlations"], "coverage": coverage}, indent=2))
 
 
