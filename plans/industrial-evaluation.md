@@ -37,7 +37,7 @@ cases or independently validated demand; R17 remains open.
 | R13 | Industrial workflow and experiments | Document-to-ledger task, independent assertions, failures/benign controls, matched-budget baselines, held-out splits, actual provider runs, costs and uncertainty; results critique | In progress: CORD/pdfhell study completed with 39 held-out sources, two models, native recovery and explicit task-mapping critique; customer-domain contract validation remains |
 | R14 | Research contribution/popularization | Related-work comparison, bounded novelty statement, reproducibility bundle, diagrams when useful, worked demo and evidence-led website narrative | In progress: [regulated-enterprise study](regulated-enterprise-study.md), TAT-QA audit and [native RAGChecker reproduction](../benchmarks/industrial/results/ragchecker-meta-2026-09-17/README.md); [full same-model judge study](../benchmarks/industrial/results/ragchecker-judges-2026-09-17/README.md) now complete (280 cases, 2,800 calls). Paired quality difference inconclusive and parser-sensitive; no SoTA or generic-QAG moat demonstrated |
 | R15 | Associated projects | multivon-mcp, pdfhell, eval-action compatibility and relevant integrations; cross-project end-to-end tests, docs/README, versions and releases as applicable | Foundation delivery: pdfhell 0.6.2 and MCP 0.4.0 published; action implementation tested locally but its push awaits a GitHub credential with workflow scope; later adapters remain tied to R06/R09 |
-| R16 | Library/docs/site delivery | Cohesive API/migrations, runnable docs, visual website checks, supported-Python tests, packaging, verified pushes/releases, no overstated claims | In progress: current judge study published in README/docs/live website; Faithfulness coverage fixes verified on Python 3.10/3.12 with development migration notes. Packaging and publication of accumulated development changes remain |
+| R16 | Library/docs/site delivery | Cohesive API/migrations, runnable docs, visual website checks, supported-Python tests, packaging, verified pushes/releases, no overstated claims | Delivered for 0.19.0: Faithfulness coverage fixes, provider evidence, declared execution contracts, report schema/migrations and experimental adapters published to PyPI and GitHub; clean Python 3.10/3.12 installs, public docs and the live website verified. Broader production claims remain gated by R17 |
 | R17 | Industrial/customer validity | User-provided target or permissioned real-world cases; independently reviewed usefulness. Synthetic demonstration alone cannot prove production value or demand | Owner selected regulated enterprise teams and requested public target research. Financial evidence review recommended using upstream data; permissioned customer workflow and independent usefulness remain unproven |
 
 ## Implementation order
@@ -81,7 +81,13 @@ coverage and per-call thresholds. Published 0.18.0 passed all four controlled
 fault cases; development blocks them while retaining supported/unsupported
 controls. These are injected-judge software checks, not accuracy measurements.
 Full Python 3.12: 2,116 passed, 18 skipped, 10 warnings; focused Python 3.10:
-177 passed. All 72 MDX pages parse. The fix is development-only pending release.
+177 passed. All 73 MDX pages parse. The fix shipped in 0.19.0.
+
+2026-09-17 release: published multivon-eval 0.19.0 to PyPI and GitHub from
+commit 12181bf. The wheel and source archive passed Twine checks, their PyPI
+hashes matched the locally built artifacts, and the source archive rebuilt and
+installed cleanly on Python 3.10 and 3.12. The 0.19 migration guide is live at
+docs.multivon.ai, and multivon.ai serves the updated 0.19.0 release snapshot.
 
 2026-09-17: Revalidated clean library main at 8ea3cdc and active goal. Located
 multivon-mcp checkout; pdfhell/eval-action need local discovery or isolated clones.
