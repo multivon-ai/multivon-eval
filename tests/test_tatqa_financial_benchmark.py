@@ -2,10 +2,13 @@ import json
 import sys
 from pathlib import Path
 
+import anthropic
+import httpx
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "benchmarks" / "industrial"))
 
+import run_tatqa_financial as runner
 from tatqa_financial import (
     annotation_locations,
     location_scores,
@@ -15,6 +18,8 @@ from tatqa_financial import (
     prediction_locations,
     prompt_for,
 )
+
+from multivon_eval import ProviderJournal, provider_http_hooks
 
 
 @pytest.fixture
@@ -91,3 +96,64 @@ def test_annotation_location_scores_do_not_call_agreement_semantic_validity():
     assert scores["annotation_location_precision"] == 0
     assert scores["annotation_location_recall"] == 0
     assert scores["annotation_location_f1"] == 0
+
+
+def native_client(handler):
+    http_client = anthropic.DefaultHttpxClient(
+        transport=httpx.MockTransport(handler),
+        event_hooks=provider_http_hooks(),
+    )
+    return anthropic.Anthropic(api_key="fixture", max_retries=0, http_client=http_client)
+
+
+def test_runner_retains_wire_evidence_and_provider_errors(context, tmp_path):
+    reply = {
+        "id": "msg_fixture",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-sonnet-5",
+        "content": [
+            {
+                "type": "text",
+                "text": json.dumps(
+                    {
+                        "responses": [
+                            {"id": "q1", "answer": "12", "scale": "million"},
+                            {"id": "q2", "answer": "increased", "scale": ""},
+                        ]
+                    }
+                ),
+            }
+        ],
+        "stop_reason": "end_turn",
+        "stop_sequence": None,
+        "usage": {"input_tokens": 10, "output_tokens": 20},
+    }
+    runner._LOCAL.client = native_client(lambda _: httpx.Response(200, json=reply))
+    with ProviderJournal(tmp_path / "success.sqlite") as journal:
+        result = runner.execute(context, "answer_only", "claude-sonnet-5", 100, journal)
+        events = journal.events()
+    assert result["status"] == "scored"
+    assert result["coverage_gaps"] == []
+    assert [event["kind"] for event in events] == [
+        "capture_started",
+        "operation_started",
+        "http_request",
+        "http_response_headers",
+        "http_response",
+        "operation_finished",
+        "capture_finished",
+    ]
+
+    error_body = {
+        "type": "error",
+        "error": {"type": "invalid_request_error", "message": "fixture concurrency limit"},
+    }
+    runner._LOCAL.client = native_client(lambda _: httpx.Response(400, json=error_body))
+    with ProviderJournal(tmp_path / "error.sqlite") as journal:
+        result = runner.execute(context, "answer_only", "claude-sonnet-5", 100, journal)
+    assert result["status"] == "error"
+    assert result["status_code"] == 400
+    assert result["provider_error_type"] == "invalid_request_error"
+    assert result["provider_error_message"] == "fixture concurrency limit"
+    del runner._LOCAL.client

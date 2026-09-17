@@ -85,6 +85,16 @@ The probe is not part of the result. Focused tests, Ruff and an all-failure
 full-population scorer rehearsal passed. No benchmark result is claimed until
 the committed protocol completes and is scored.
 
+The first post-freeze execution at revision 19cc6bf is invalidated, retained
+locally and excluded from scoring: only 188 of 554 context/treatment calls
+completed before 366 transient HTTP 400 failures. Its direct SDK clients also
+recorded capture boundaries without wire attempts, leaving the failure cause
+unauditable. The corrected runner uses the library's instrumented native HTTP
+client, explicit provider-operation scope, structured provider error fields and
+four workers. A live call that had failed in the invalid run then succeeded and
+retained the request, response, usage and complete operation lifecycle. That
+diagnostic call is also excluded from the benchmark result.
+
 2026-09-17 Faithfulness follow-up: block empty extraction, malformed claim types,
 ten-claim prefix scoring and missing verdicts from manufacturing passes. Add a
 configurable complete-set claim bound, duplicate normalization, structured

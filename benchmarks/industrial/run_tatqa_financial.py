@@ -32,6 +32,8 @@ from tatqa_financial import (
 )
 
 from multivon_eval import ProviderJournal, capture_provider_events
+from multivon_eval.provider_evidence import provider_operation
+from multivon_eval.provider_http import sdk_http_client
 
 SEED = 17092026
 SYSTEM = """You are a financial-document question answering system. Return the
@@ -48,7 +50,11 @@ _LOCAL = threading.local()
 
 def client() -> anthropic.Anthropic:
     if not hasattr(_LOCAL, "client"):
-        _LOCAL.client = anthropic.Anthropic(max_retries=2, timeout=180)
+        _LOCAL.client = anthropic.Anthropic(
+            max_retries=2,
+            timeout=180,
+            http_client=sdk_http_client(anthropic),
+        )
     return _LOCAL.client
 
 
@@ -57,6 +63,19 @@ def text_content(message: Any) -> str:
     if len(blocks) != 1:
         raise ValueError(f"Expected one text output block, got {len(blocks)}")
     return blocks[0]
+
+
+def error_evidence(error: Exception) -> dict[str, Any]:
+    evidence: dict[str, Any] = {"error_type": type(error).__name__}
+    if isinstance(error, anthropic.APIStatusError):
+        evidence["status_code"] = error.status_code
+        body = error.body
+        if isinstance(body, dict) and isinstance(body.get("error"), dict):
+            provider_error = body["error"]
+            evidence["provider_error_type"] = provider_error.get("type")
+            evidence["provider_error_message"] = provider_error.get("message")
+        evidence["request_id"] = error.request_id
+    return evidence
 
 
 def execute(
@@ -69,19 +88,25 @@ def execute(
     identity = {"context_id": context["context_id"], "treatment": treatment}
     result: dict[str, Any] = dict(identity)
     started = time.monotonic()
-    with capture_provider_events(journal=journal, labels={"experiment": "tatqa-financial-v1", **identity}) as capture:
+    with capture_provider_events(
+        journal=journal, labels={"experiment": "tatqa-financial-v2", **identity}
+    ) as capture:
         try:
-            message = client().messages.create(
-                model=model,
-                max_tokens=max_tokens,
-                thinking={"type": "adaptive"},
-                output_config={
-                    "effort": "low",
-                    "format": {"type": "json_schema", "schema": output_schema(context, treatment)},
-                },
-                system=SYSTEM,
-                messages=[{"role": "user", "content": prompt_for(context, treatment)}],
-            )
+            with provider_operation("anthropic", "target", model):
+                message = client().messages.create(
+                    model=model,
+                    max_tokens=max_tokens,
+                    thinking={"type": "adaptive"},
+                    output_config={
+                        "effort": "low",
+                        "format": {
+                            "type": "json_schema",
+                            "schema": output_schema(context, treatment),
+                        },
+                    },
+                    system=SYSTEM,
+                    messages=[{"role": "user", "content": prompt_for(context, treatment)}],
+                )
             raw = text_content(message)
             parsed = parse_response(raw, context, treatment)
             result.update(
@@ -93,7 +118,7 @@ def execute(
                 request_id=getattr(message, "_request_id", None),
             )
         except Exception as error:  # noqa: BLE001 - failures stay in the denominator
-            result.update(status="error", error_type=type(error).__name__)
+            result.update(status="error", **error_evidence(error))
     evidence = capture.snapshot()
     result.update(
         seconds=time.monotonic() - started,
@@ -193,7 +218,7 @@ def main() -> None:
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--model", default=MODEL)
-    parser.add_argument("--workers", type=int, default=12)
+    parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--max-tokens", type=int, default=8192)
     parser.add_argument("--resume", action="store_true")
     args = parser.parse_args()
