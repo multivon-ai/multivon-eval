@@ -16,14 +16,14 @@ No hosted account is required.
 [Documentation](https://docs.multivon.ai/) · [Examples](examples/README.md) ·
 [Benchmarks](benchmarks/README.md) · [Changelog](CHANGELOG.md)
 
-**Current release: 0.18.0 — September 17, 2026.** Python 3.10+, Apache 2.0.
-[Migration notes](docs/guides/migration-0-18.mdx).
+**Current release: 0.19.0 — September 17, 2026.** Python 3.10+, Apache 2.0.
+[Migration notes](docs/guides/migration-0-19.mdx).
 
 [Case manifests and trial evidence](docs/guides/versioned-evidence.mdx)
 support safer comparisons and regrading. Use Hugging Face for dataset operations,
 [Inspect for execution](docs/guides/inspect-integration.mdx), and Multivon's
 [acceptance policies](docs/guides/acceptance-policies.mdx) for required checks and
-task slices. These features ship in 0.18.0. The
+task slices. These features ship in 0.19.0. The
 [implementation program](plans/industrial-evaluation.md) tracks unfinished work;
 [reuse decisions](plans/reuse-decisions.md) keep the integration boundaries explicit.
 
@@ -62,7 +62,7 @@ Open `results.html` to inspect each verdict. The example verifies a small
 lookup fixture; it does not establish the quality of a real AI application.
 Start your own suite by [defining task success](docs/guides/task-success.mdx).
 
-For development builds, the [Label Studio review bridge](docs/guides/review-labels.mdx)
+The [Label Studio review bridge](docs/guides/review-labels.mdx)
 exchanges saved text/trace trials and preserves review disagreements and missing
 coverage. [Saved-score calibration](docs/guides/review-calibration.mdx) reuses
 scikit-learn and SciPy for development fitting and held-out source analysis.
@@ -83,7 +83,7 @@ keeps missing measurements separate from model failures.
 state forecasts to native environment transitions and tests action effects,
 uncertainty and actual planning outcomes. Its tested scope is fully observed
 state-space models, not video generation or real robots.
-These previews and fixes are not included in PyPI 0.18.0.
+These experimental interfaces ship in 0.19.0 with their documented scope limits.
 
 ## A real workflow example
 
@@ -236,25 +236,26 @@ multivon-eval doctor --no-ping --json          # check configuration offline
 `doctor` exits 0 when clean, 2 when it finds warnings, and 1 when it finds an error.
 Use `multivon-eval --help` for all commands.
 
-## Current release — 0.18.0
+## Current release — 0.19.0
 
-- Reuse Hugging Face Datasets for loading; retain versioned case manifests and source groups.
-- Retain individual outputs, grader results, retries and traces for inspection and regrading.
-- Use Inspect for execution, native provider logs and crash recovery.
-- Apply required-check, coverage and slice contracts with accept/reject/indeterminate decisions.
-- Block paired significance when identity, retained trials or recorded grader settings are incompatible.
-- Preserve missing trace observations and use exact small-sample McNemar tests.
+- Retain provider attempts and native usage in a durable journal; reconcile costs only when coverage is complete.
+- Bind target, grader and Inspect retry compatibility to recorded settings and declared dependencies.
+- Reuse Label Studio, OpenTelemetry, Gymnasium, Hugging Face and Inspect through explicit adapters.
+- Retain content-bound media, environment outcomes and controlled-robustness evidence.
+- Block incomplete claim extraction, capped prefixes and missing claim verdicts from passing `Faithfulness`.
+- Validate report envelopes with a packaged JSON Schema and preserve historical report loading.
 
-See [migration notes](docs/guides/migration-0-18.mdx), the [worked document study](benchmarks/industrial/DOCUMENT_RESULTS.md),
-and the [changelog](CHANGELOG.md). This release does not complete provider accounting,
-opaque callback compatibility, customer validation or the remaining industrial program.
+See [migration notes](docs/guides/migration-0-19.mdx), the [worked document study](benchmarks/industrial/DOCUMENT_RESULTS.md),
+and the [changelog](CHANGELOG.md). This release does not establish complete
+provider capture, opaque callback compatibility, customer validation or SoTA accuracy.
 
-Development work after 0.18.0 adds [strict agent judgment evidence](docs/evaluators/agent.mdx)
-and [declared grader dependencies and native provider evidence](docs/guides/versioned-evidence.mdx).
+[Strict agent judgment evidence](docs/evaluators/agent.mdx) and
+[declared grader dependencies and native provider evidence](docs/guides/versioned-evidence.mdx)
+ship in 0.19.0.
 Instrumented SDK calls retain request attempts and complete native usage fields;
 an optional SQLite journal preserves dispatched attempts after process death.
 Unobserved transports, streaming usage and missing responses stay explicit gaps.
-The [development accounting workflow](docs/guides/provider-accounting.mdx) reuses
+The [accounting workflow](docs/guides/provider-accounting.mdx) reuses
 LiteLLM pricing and rejects incomplete provider budget evidence. Recorded judge
 subtotals do not establish a complete run cost.
 Target/runner snapshots and `declare_target` expose intended interventions and
@@ -269,8 +270,8 @@ bind retry compatibility to task inputs, grader settings and dependency revision
 The native retry study includes a changed-rule control where preserved scores look
 perfect while fresh grading rejects the task; mixed evidence cannot pass acceptance.
 Agent judge failures remain missing measurements; opaque grader callback contracts and
-observed dependency drift block verified comparisons. These changes are not yet
-published to PyPI and do not establish judge accuracy or complete provider accounting.
+observed dependency drift block verified comparisons. These capabilities do not
+establish judge accuracy or complete provider accounting.
 
 ## Related tools and contributing
 

@@ -165,7 +165,7 @@ cases = generate_unicode_obfuscation_cases(
 
 ## `validate_adversarial_cases(cases, baseline)` — empirical hardness filter
 
-Runs each generated case **N times** against a baseline model and evaluator, then filters fully measured cases by empirical failure rate. This measures behavior under that baseline and grader; it does not validate the task oracle. The accounting changes below are a development preview, not in PyPI 0.18.0.
+Runs each generated case **N times** against a baseline model and evaluator, then filters fully measured cases by empirical failure rate. This measures behavior under that baseline and grader; it does not validate the task oracle. Complete hardness accounting ships in PyPI 0.19.0.
 
 ```python
 from multivon_eval.auto import generate_adversarial_cases, validate_adversarial_cases

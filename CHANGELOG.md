@@ -4,7 +4,9 @@ All notable changes to `multivon-eval`. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
-### Faithfulness measurement coverage (development)
+## [0.19.0] — 2026-09-17
+
+### Faithfulness measurement coverage
 
 - Empty extracted claim lists are unmeasured, not perfect passes. Reject claim
   arrays containing nonstrings or blank strings before verification.
@@ -17,7 +19,7 @@ All notable changes to `multivon-eval`. The format follows [Keep a Changelog](ht
   state. Changed grading contracts require fresh baselines; old calibration
   packs are starting points, not validation of this stricter measurement protocol.
 
-### Extension and report compatibility (development)
+### Extension and report compatibility
 
 - Fix imported-run replay pairing under reordering, concurrency and repeats.
   Deprecate `CaseImporter.as_model_fn` in favor of explicit saved-output pairs;
@@ -31,7 +33,7 @@ All notable changes to `multivon-eval`. The format follows [Keep a Changelog](ht
   contributor fixtures and an offline installed-wheel check that rejects source
   shadowing. Imported-output examples preserve unknown target latency.
 
-### Inspect retry compatibility (development)
+### Inspect retry compatibility
 
 - Add `bind_inspect_task` to bind native task/sample metadata to caller-declared
   code/configuration dependencies, named file hashes and existing grader/engine
@@ -47,7 +49,7 @@ All notable changes to `multivon-eval`. The format follows [Keep a Changelog](ht
   scores at 3/3 while fresh grading gives 2/3. Guarded retry blocks extra target
   calls; unguarded mixed evidence is diagnosed after import.
 
-### Execution controls and upstream limit evidence (development)
+### Execution controls and upstream limit evidence
 
 - Reject nonpositive/noninteger repeat and concurrency controls before grader
   preparation; reject nonfinite or out-of-range quality/error gates. Zero async
@@ -64,7 +66,7 @@ All notable changes to `multivon-eval`. The format follows [Keep a Changelog](ht
   control, sample/connection concurrency and cancellation. Synthetic usage is
   explicitly separated from provider usage, billing and hard spend caps.
 
-### Target execution evidence (development)
+### Target execution evidence
 
 - Retain before/after target configuration and runner policies in reports and
   individual trials, including sync, parallel, async, retries and saved grading.
@@ -79,7 +81,7 @@ All notable changes to `multivon-eval`. The format follows [Keep a Changelog](ht
   prompt and retain context handling. Custom adapters now reject unsupported
   prompt wrapping instead of silently ignoring the prompt.
 
-### Provider accounting and budget integrity (development)
+### Provider accounting and budget integrity
 
 - Reconcile closed native provider journals with `account_provider_events`.
   Retain every physical attempt, native usage and pricing provenance; incomplete
@@ -97,7 +99,7 @@ All notable changes to `multivon-eval`. The format follows [Keep a Changelog](ht
   sources. Remove speculative rates/model IDs and free-self-hosting assumptions.
   Historical study artifacts retain their original data.
 
-### Native provider evidence (development)
+### Native provider evidence
 
 - Retain serialized HTTP attempts and native response/usage bodies using SDK
   HTTPX hooks. Bind target/judge operations to trial, run and retry positions;

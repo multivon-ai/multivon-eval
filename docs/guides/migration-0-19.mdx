@@ -1,0 +1,70 @@
+---
+title: Migrating to 0.19
+description: Adopt complete claim coverage, provider evidence, retry contracts, and the new experimental adapters.
+---
+
+Version 0.19.0 publishes the development work accumulated after 0.18.0. Existing
+reports remain readable. New comparisons and acceptance decisions are stricter
+when evidence, grader dependencies, execution state, or claim coverage is missing.
+
+```bash
+pip install --upgrade "multivon-eval==0.19.0"
+```
+
+## Revalidate Faithfulness baselines
+
+`Faithfulness` no longer treats an empty extracted claim list as a perfect score,
+checks only the first ten claims, or drops unknown verdicts from its denominator.
+It now verifies every unique extracted claim up to `max_claims=10`. Empty or
+over-limit extraction is skipped; malformed claims raise an evaluator error; any
+unknown verdict raises `JudgeUnavailable`.
+
+```python
+from multivon_eval import Faithfulness
+
+# Increase deliberately when long answers need complete extracted-set coverage.
+faithfulness = Faithfulness(threshold=0.9, max_claims=30)
+```
+
+This may make more judge calls. A perfect score covers the extracted claims; it
+does not prove the extractor found every claim. Require `faithfulness` in an
+`AcceptancePolicy` when missing measurements must block a release. Regenerate or
+regrade baselines before comparison because the grading contract changed. Shipped
+historical calibration packs have not been revalidated for this stricter protocol.
+
+## Bind comparisons and retries to their dependencies
+
+Use `declare_dependencies` for custom graders and `declare_target` for target
+callbacks whose behavior depends on code, configuration or named files. Use
+`bind_inspect_task` before importing or retrying native Inspect logs. Unknown or
+changed dependencies remain diagnostic and block controlled comparisons instead
+of being inferred from callable names.
+
+## Capture and account for provider calls
+
+Wrap supported native SDK execution with `capture_provider_events`, optionally
+backed by `ProviderJournal`. `account_provider_events` reconciles observed physical
+attempts and native usage. A dollar total requires explicit complete-run coverage,
+no observed gaps and a validated estimator; `recorded_cost_usd` remains a scoped
+subtotal. The optional `pricing` extra provides the LiteLLM bridge.
+
+```bash
+pip install "multivon-eval[pricing]==0.19.0"
+```
+
+Captured prompts and responses can contain sensitive application data. Apply your
+own retention and access controls. Missing responses remain execution and billing
+unknown rather than being retried automatically.
+
+## Experimental adapters
+
+The release includes bounded adapters and evidence profiles for Label Studio,
+OpenTelemetry, Gymnasium, media inputs, robustness validation and numeric vector
+dynamics. They reuse upstream tools and preserve unknown states. Their guides
+describe tested versions and limitations; none constitutes regulatory validation,
+security isolation, complete trace capture, or a general world-model claim.
+
+The packaged report JSON Schema validates v1, v2 and schema-less legacy envelopes.
+Unknown versions, malformed field types and nonfinite values now fail loading.
+Extension authors should use the public protocols and compatibility fixtures in
+[extensions and compatibility](./extensions-and-compatibility).

@@ -3,7 +3,7 @@ title: Review saved trials with Label Studio
 description: Reuse an annotation platform while binding every review to the output and rubric actually reviewed.
 ---
 
-**Development preview on `main`; not included in PyPI 0.18.0.** The JSON
+**Available in PyPI 0.19.0.** The JSON
 adapter has no extra runtime dependencies. Its configuration and generated
 annotations were checked with Label Studio SDK 2.1.1 and a local Label Studio
 Community 1.23.0 server. A desktop browser submission exported and re-imported
@@ -105,7 +105,7 @@ people or independent sources.
 `suite.calibrate()` measures agreement by running graders again; it does not
 fit thresholds or preserve this annotation provenance automatically. The
 [saved-score threshold-fitting and held-out analysis workflow](/guides/review-calibration)
-is also available as a development preview, using scikit-learn and SciPy. Do not present the existing historical threshold packs as evidence
+is also available in 0.19.0, using scikit-learn and SciPy. Do not present the existing historical threshold packs as evidence
 that a grader meets your task's acceptance criteria.
 
 The runnable checkout example supports export and import without any model API

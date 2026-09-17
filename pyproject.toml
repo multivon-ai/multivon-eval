@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "multivon-eval"
-version = "0.18.0"
+version = "0.19.0"
 description = "AI evaluation for teams that ship models to production"
 readme = "README.md"
 license = "Apache-2.0"
@@ -51,11 +51,16 @@ media = ["Pillow>=12,<13", "pypdfium2>=5.13,<6", "av>=16,<18"]
 langgraph = ["langgraph>=0.2.0", "langchain-core>=0.3.0"]
 openai-agents = ["openai-agents>=0.0.1"]
 all = [
-    "litellm>=1.0.0", "bert-score>=0.3.0", "requests>=2.28.0",
+    "litellm>=1.101.0,<2", "bert-score>=0.3.0", "requests>=2.28.0",
     "playwright>=1.40.0", "pytest>=7.0.0",
     "google-genai>=1.0.0",
     "langgraph>=0.2.0", "langchain-core>=0.3.0",
     "openai-agents>=0.0.1",
+    "datasets>=5.0.1,<6", "inspect-ai>=0.3.263,<0.4",
+    "scikit-learn>=1.5,<2", "scipy>=1.11,<2",
+    "opentelemetry-sdk>=1.44,<2", "opentelemetry-exporter-otlp-proto-http>=1.44,<2",
+    "gymnasium>=1.2,<2",
+    "Pillow>=12,<13", "pypdfium2>=5.13,<6", "av>=16,<18",
 ]
 dev = [
     "pytest>=7.0.0",

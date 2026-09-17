@@ -197,7 +197,7 @@ Requires `context` on the `EvalCase`.
 | `max_claims` (development) | positive `int` | `10` | Maximum unique claims to verify; exceeding it makes the measurement unscored |
 
 <Note>
-  **Development behavior, not included in PyPI 0.18.0:** every unique extracted
+  **Changed in 0.19.0:** every unique extracted
   claim must receive a valid verdict. Empty extraction or exceeding `max_claims`
   returns a skipped measurement, not a pass. Invalid claim types raise an
   evaluator error; any unknown verdict raises `JudgeUnavailable`. Older versions
