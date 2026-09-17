@@ -4,6 +4,23 @@ All notable changes to `multivon-eval`. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+### Execution controls and upstream limit evidence (development)
+
+- Reject nonpositive/noninteger repeat and concurrency controls before grader
+  preparation; reject nonfinite or out-of-range quality/error gates. Zero async
+  concurrency no longer hangs and NaN gates cannot silently pass.
+- Cancel and drain owned async case/evaluator tasks when a child cancels or an
+  unexpected error escapes. Synchronous worker threads remain non-terminable by
+  asyncio cancellation. Clarify that `evaluator_concurrency` applies across a run.
+- Preserve native Inspect limit stops, invalidation, execution errors, selected
+  resource/generation settings and measured durations in trial evidence.
+  Undeclared limit stops and invalidated samples cannot pass acceptance; named
+  `accepted_limits` supports explicit bounded-task contracts. Regrading preserves
+  these execution constraints instead of clearing them with a fresh text score.
+- Add an offline native Inspect protocol for six limit types, a completed SQLite
+  control, sample/connection concurrency and cancellation. Synthetic usage is
+  explicitly separated from provider usage, billing and hard spend caps.
+
 ### Target execution evidence (development)
 
 - Retain before/after target configuration and runner policies in reports and

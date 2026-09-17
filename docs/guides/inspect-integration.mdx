@@ -86,6 +86,74 @@ after a successful retry. The bridge cannot discover omitted historical logs.
 Use [Inspect View](https://inspect.aisi.org.uk/log-viewer.html) for the full native
 conversation and events. The adapter does not implement another generic log UI.
 
+## Execution limits and completion evidence (development)
+
+Use Inspect's [sample limits](https://inspect.aisi.org.uk/setting-limits.html)
+and [concurrency controls](https://inspect.aisi.org.uk/parallelism.html) directly.
+For example, the offline task above can run with explicit controls:
+
+```python
+logs = inspect_eval(task, model="mockllm/model", log_dir="inspect-bounded-logs",
+                    max_samples=2, max_connections=1, time_limit=60,
+                    display="none", log_model_api=True)
+report = from_inspect_log(logs[0])
+```
+
+These are example values, not production recommendations. `max_samples` bounds
+simultaneous samples; `max_connections` bounds upstream model connections.
+Inspect still scores the partial output after a sample limit stops execution.
+A native log marked `success` therefore does not imply every task completed.
+
+Development imports retain the native stop reason, invalidation, selected
+resource/generation settings and measured durations under each trial's
+`upstream.execution`. Unknown completion after a limit produces an infrastructure
+error in the bridge and an indeterminate acceptance decision, while retaining
+all grader scores. Native invalidations and errors also remain blocking evidence.
+Regrading saved text cannot clear these execution constraints.
+
+If the task was explicitly defined to score output at a token boundary, declare
+that policy when importing:
+
+```python
+bounded_report = from_inspect_log(logs[0], accepted_limits=("token",))
+```
+
+This declaration permits that limit type; it does not establish that the task
+succeeded. Require independent outcome checks and apply the same declared policy
+to the entire retry chain. Unknown limit types are rejected. A time, operator or
+other stop remains blocking unless its type is also explicitly accepted; errors
+and invalidations cannot be overridden with `accepted_limits`.
+
+The offline [control experiment](https://github.com/multivon-ai/multivon-eval/blob/main/benchmarks/industrial/execution_controls_experiment.py)
+uses Inspect's actual runtime and mock provider plus a real SQLite ledger.
+It contrasts an acknowledgment with an independent persisted-state query, and
+includes a completed positive control. Token and cost limits check observed usage;
+an in-flight generation can exceed the threshold. The tested Inspect 0.3.263
+`turn_limit=1` path made two mock generations before stopping. These controls must
+not be presented as strict request reservations or hard monetary ceilings.
+
+Cancellation stops cooperative async work and retains native cancellation/error
+logs; it does not undo completed remote calls or SQLite commits. Configure
+provider/tool timeouts and a safe replay policy for side effects. Worker threads
+and code that blocks or suppresses cancellation require process/sandbox controls.
+
+## Native offline runner controls (development)
+
+`EvalSuite.run` accepts positive integer `workers` and `runs`; `workers=None`
+selects the documented default. `run_async` also requires positive integer
+`concurrency` and, when set, `evaluator_concurrency`. The latter bounds evaluators
+**across the whole run**; it is not multiplied by the number of cases. Invalid
+controls and nonfinite/out-of-range quality gates fail before preparation or calls.
+
+On cancellation or an escaping child error, the async runner cancels and awaits
+its owned async tasks without cancelling unrelated application tasks. Default
+synchronous graders execute in threads: their awaits can be cancelled, but Python
+cannot terminate the underlying thread. Use cooperative async graders/provider
+timeouts or upstream sandbox isolation where stopping work is a requirement.
+The native runner does not add durable resumption or a second deadline scheduler;
+use Inspect for those execution facilities. Post-run `assert_budget` is a gate,
+not an execution spend cap.
+
 ## Current boundaries
 
 The importer requires samples and scorer metadata produced by this bridge.

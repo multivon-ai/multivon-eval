@@ -152,6 +152,8 @@ def execution_scope(function, args, kwargs):
     bound = inspect.signature(function).bind(*args, **kwargs)
     bound.apply_defaults()
     values = bound.arguments
+    from .execution_controls import validate_run_options
+    validate_run_options(values)
     target = values.get('model_fn')
     policy = {key: values[key] for key in ('runs', 'workers', 'concurrency', 'evaluator_concurrency',
               'early_stop', 'fail_threshold', 'max_error_rate') if key in values}

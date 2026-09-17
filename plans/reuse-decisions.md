@@ -162,3 +162,21 @@ horizon error, state-offset persistence, interval coverage/width and planning
 outcomes each address different questions. The plausible product contribution
 is connecting independently observed domain outcomes to usable release evidence;
 this small simulator result alone establishes neither a moat nor industry demand.
+
+## Execution controls checkpoint (2026-09-17)
+
+Reuse Inspect's native sample time/working/message/token/turn/cost limits,
+model connection limits, sample concurrency, cancellation and durable logs.
+Do not build a replacement scheduler or promise hard spend reservation from
+post-response usage checks. The bridge preserves native stop/invalidation evidence
+and adds explicit task acceptance at named boundaries. Independent SQLite outcome
+checks demonstrate why a fluent acknowledgment is insufficient task evidence.
+Native offline-runner repairs only validate controls and own/cancel its existing
+async child tasks; threads remain outside cooperative cancellation guarantees.
+
+Sources: [Inspect limits](https://inspect.aisi.org.uk/setting-limits.html),
+[parallelism](https://inspect.aisi.org.uk/parallelism.html), and installed
+Inspect 0.3.263 source. The actual upstream runtime is used by the
+[control experiment](../benchmarks/industrial/execution_controls_experiment.py).
+Its synthetic usage and tariffs are test fixtures, not a model benchmark,
+new dataset, provider invoice or evidence of scientific novelty.

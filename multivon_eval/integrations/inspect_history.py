@@ -6,6 +6,19 @@ from dataclasses import replace
 from ..result import EvalReport
 
 
+def execution_issues(execution: dict) -> list[str]:
+    """Preserve upstream execution validity when importing or regrading scores."""
+    issues = []
+    if execution.get('error') is not None:
+        issues.append(f"Inspect sample error: {execution['error']}")
+    if execution.get('invalidation') is not None:
+        issues.append('Inspect sample was invalidated; retained scores are not valid acceptance evidence')
+    limit = execution.get('limit')
+    if limit is not None and limit['type'] not in execution.get('accepted_limits', []):
+        issues.append(f"Inspect {limit['type']} limit stopped execution; task acceptance at this boundary is undeclared")
+    return issues
+
+
 def merge_history(current: EvalReport, earlier: list[EvalReport]) -> EvalReport:
     previous_by_id = {}
     for report in earlier:

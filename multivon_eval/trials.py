@@ -193,6 +193,14 @@ def regrade(report: EvalReport, suite: EvalSuite) -> EvalReport:
             else:
                 graded = suite.run_on_cases([(case, data["output"])], verbose=False,
                                             latencies_ms=[data["latency_ms"]]).case_results[0]
+            upstream = data.get('upstream', {})
+            if upstream.get('format') == 'inspect':
+                from .integrations.inspect_history import execution_issues
+                issues = execution_issues(upstream.get('execution', {}))
+                if 'execution' not in upstream and data.get('evaluator_error'):
+                    issues.append('Original Inspect execution error remains unresolved: ' + data['evaluator_error'])
+                if issues:
+                    graded.evaluator_error = '; '.join(filter(None, [graded.evaluator_error, *issues]))
             provider_evidence = graded.trials[0].data.get("provider_evidence") if graded.trials else None
             attach_trial(graded, snapshot, origin="regrade", provider_evidence=provider_evidence, evaluation_snapshot=evaluation_snapshot,
                          latency_known=data["latency_ms"] is not None)

@@ -11,6 +11,7 @@ from .trials import attach_trial, capture_case
 from .exceptions import JudgeUnavailable
 from .dependencies import finish_lock
 from .execution_evidence import execution_snapshot
+from .execution_controls import gather_owned
 from .provider_evidence import capture_trial, capture_run, capture_provider_events, run_provider_evidence, finish_trial_capture, provider_position
 from .evaluators.agent_judgments import error_evidence
 from .result import (
@@ -1480,10 +1481,10 @@ class EvalSuite:
             max_error_rate:         Error budget for the gate — see :meth:`run`.
             concurrency:            Max concurrent cases in flight (default 5).
             runs:                   Times to run each case (default 1).
-            evaluator_concurrency:  Max concurrent evaluators *per case*.
+            evaluator_concurrency:  Max concurrent evaluators across this run.
                                     Defaults to running all evaluators in
                                     parallel. Set to 1 for strictly sequential
-                                    evaluation within a case.
+                                    evaluation across all cases.
             judge_retry:            :class:`JudgeRetry` policy for transient
                                     judge / timeout errors. See
                                     :meth:`run` for semantics. Async path uses
@@ -1564,7 +1565,7 @@ class EvalSuite:
                         latency_ms = (time.time() - t0) * 1000
                         evaluation_snapshot = capture_case(case)
 
-                        ev_results = await asyncio.gather(*[
+                        ev_results = await gather_owned(*[
                             _gated_eval(ev, case, output, latency_ms, async_model_error)
                             for ev in self._evaluators
                         ])
@@ -1644,7 +1645,7 @@ class EvalSuite:
         cost_token = set_active_tracker(cost_tracker)
 
         try:
-            case_results = await asyncio.gather(
+            case_results = await gather_owned(
                 *[_run_one_async_with_retry(c) for c in self._cases]
             )
         finally:

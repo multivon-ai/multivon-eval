@@ -247,6 +247,11 @@ LiteLLM pricing and rejects incomplete provider budget evidence. Recorded judge
 subtotals do not establish a complete run cost.
 Target/runner snapshots and `declare_target` expose intended interventions and
 observed changes during execution; regrading preserves original target evidence.
+[Execution controls](docs/guides/inspect-integration.mdx#execution-limits-and-completion-evidence-development)
+reuse native Inspect limits and retain stop reasons. Saved-output regrading cannot
+erase an undeclared stop or invalidation; bounded-task acceptance requires an
+explicit policy and outcome checks. Native async cancellation drains owned tasks,
+with synchronous worker-thread limits documented.
 Agent judge failures remain missing measurements; opaque grader callback contracts and
 observed dependency drift block verified comparisons. These changes are not yet
 published to PyPI and do not establish judge accuracy or complete provider accounting.

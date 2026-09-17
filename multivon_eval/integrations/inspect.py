@@ -136,14 +136,27 @@ def as_inspect_scorer(evaluator: Evaluator, *, name: str | None = None):
     return factory()
 
 
-def from_inspect_log(log: Any, *, previous_logs: list[Any] | None = None) -> EvalReport:
+def from_inspect_log(log: Any, *, previous_logs: list[Any] | None = None,
+                     accepted_limits: tuple[str, ...] = ()) -> EvalReport:
     """Import a log, optionally including earlier retry logs oldest first.
 
     Native retry logs can preserve completed samples while omitting failed
     attempts. Supply those earlier logs to retain the complete provided history.
     The bridge cannot infer that an omitted log exists. Keep native logs together.
+
+    Limit-stopped samples are indeterminate by default, even if their partial
+    output passes a grader. Explicitly accept named limit types only when the
+    task contract permits scoring at that boundary. Native errors/invalidation
+    are never cleared by this declaration.
     """
-    current = _from_inspect_log(log)
+    _require_inspect()
+    from inspect_ai.log import EvalSampleLimit
+    from typing import get_args
+    if not isinstance(accepted_limits, tuple) or any(
+            not isinstance(kind, str) or kind not in get_args(EvalSampleLimit.model_fields['type'].annotation)
+            for kind in accepted_limits):
+        raise ValueError('accepted_limits must be a tuple of native Inspect limit types')
+    current = _from_inspect_log(log, accepted_limits)
     if not previous_logs:
         return current
     if any(previous.status == "started" for previous in previous_logs):
@@ -152,10 +165,10 @@ def from_inspect_log(log: Any, *, previous_logs: list[Any] | None = None) -> Eva
            for previous in previous_logs):
         raise ValueError("Inspect retry history must use the same task ID and model")
     from .inspect_history import merge_history
-    return merge_history(current, [_from_inspect_log(previous) for previous in previous_logs])
+    return merge_history(current, [_from_inspect_log(previous, accepted_limits) for previous in previous_logs])
 
 
-def _from_inspect_log(log: Any) -> EvalReport:
+def _from_inspect_log(log: Any, accepted_limits: tuple[str, ...] = ()) -> EvalReport:
     """Import a native EvalLog produced with this bridge, grouping epochs.
 
     Keeps an upstream sample content digest, log location, and model usage on
@@ -188,8 +201,23 @@ def _from_inspect_log(log: Any) -> EvalReport:
                     and digest(score.metadata[_EVALUATION_CASE]) != digest(case_to_dict(evaluation_case))):
                 raise ValueError("Inspect scorer case differs from recorded messages")
         error = sample.error.message if sample.error else None
+        limit = sample.limit.model_dump(mode='json') if sample.limit is not None else None
+        invalidation = sample.invalidation.model_dump(mode='json') if sample.invalidation is not None else None
+        execution = {
+            'error': error, 'limit': limit, 'invalidation': invalidation,
+            'accepted_limits': list(accepted_limits),
+            'total_time': sample.total_time, 'working_time': sample.working_time,
+            'policy': {key: value for key, value in log.eval.config.model_dump(mode='json').items()
+                       if key in ('max_samples', 'max_tasks', 'max_subprocesses', 'max_sandboxes',
+                                  'message_limit', 'token_limit', 'turn_limit', 'time_limit',
+                                  'working_limit', 'cost_limit', 'retry_on_error', 'score_on_error')},
+            'generation_policy': {key: value for key, value in log.plan.config.model_dump(mode='json').items()
+                                  if key in ('max_connections', 'max_retries', 'timeout', 'attempt_timeout',
+                                             'stream_idle_timeout', 'max_tokens', 'adaptive_connections')},
+        }
+        from .inspect_history import execution_issues
         cr = CaseResult(case.input, sample.output.completion, results, tags=case.tags,
-                        evaluator_error=f"Inspect sample error: {error}" if error else None,
+                        evaluator_error='; '.join(execution_issues(execution)) or None,
                         agent_trace=evaluation_case.agent_trace)
         attach_trial(cr, capture_case(case), origin="inspect", latency_known=False,
                      evaluation_snapshot=capture_case(evaluation_case))
@@ -202,6 +230,7 @@ def _from_inspect_log(log: Any) -> EvalReport:
                 "epoch": sample.epoch, "sample_uuid": sample.uuid,
                 "sample_digest": digest(sample.model_dump(mode="json")),
                 "model_usage": {k: v.model_dump(mode="json") for k, v in sample.model_usage.items()},
+                "execution": execution,
             }
             data["evidence_gaps"] = [
                 "Execution events and provider requests remain in the referenced native Inspect log",
