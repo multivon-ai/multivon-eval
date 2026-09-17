@@ -1,0 +1,184 @@
+{
+  "limits": [
+    {
+      "kind": "complete",
+      "native_status": "success",
+      "limit": null,
+      "strict_decision": "accept",
+      "relaxed_error_budget_decision": "accept",
+      "declared_boundary_decision": "accept",
+      "outcome_decision": "accept",
+      "native_usage": {},
+      "model_calls": 0,
+      "solver_cleanup": true,
+      "persisted_entries": 1,
+      "log": "complete/2026-09-17T04-22-11-00-00_task_b87YimTU7erRpj2ZGNWT6r.eval",
+      "critique": "The text check alone accepts all outputs; the independent SQLite query distinguishes missing commits"
+    },
+    {
+      "kind": "time",
+      "native_status": "success",
+      "limit": {
+        "type": "time",
+        "limit": 1.0,
+        "reason": "Time limit exceeded. limit: 1 seconds"
+      },
+      "strict_decision": "indeterminate",
+      "relaxed_error_budget_decision": "indeterminate",
+      "declared_boundary_decision": "accept",
+      "outcome_decision": "reject",
+      "native_usage": {},
+      "model_calls": 0,
+      "solver_cleanup": true,
+      "persisted_entries": 0,
+      "log": "time/2026-09-17T04-22-12-00-00_task_WF7DSuPHubX8RL8RsvGDpg.eval",
+      "critique": "The text check alone accepts all outputs; the independent SQLite query distinguishes missing commits"
+    },
+    {
+      "kind": "working",
+      "native_status": "success",
+      "limit": {
+        "type": "working",
+        "limit": 1.0,
+        "reason": "Working time limit exceeded. limit: 1 seconds"
+      },
+      "strict_decision": "indeterminate",
+      "relaxed_error_budget_decision": "indeterminate",
+      "declared_boundary_decision": "accept",
+      "outcome_decision": "reject",
+      "native_usage": {},
+      "model_calls": 0,
+      "solver_cleanup": true,
+      "persisted_entries": 0,
+      "log": "working/2026-09-17T04-22-13-00-00_task_NqsfnqJ379dHBvwkYN9uSK.eval",
+      "critique": "The text check alone accepts all outputs; the independent SQLite query distinguishes missing commits"
+    },
+    {
+      "kind": "message",
+      "native_status": "success",
+      "limit": {
+        "type": "message",
+        "limit": 2.0,
+        "reason": "Message limit exceeded. count: 3; limit: 2"
+      },
+      "strict_decision": "indeterminate",
+      "relaxed_error_budget_decision": "indeterminate",
+      "declared_boundary_decision": "accept",
+      "outcome_decision": "reject",
+      "native_usage": {},
+      "model_calls": 0,
+      "solver_cleanup": true,
+      "persisted_entries": 0,
+      "log": "message/2026-09-17T04-22-14-00-00_task_KmtBvo88txHr669zPFJCLK.eval",
+      "critique": "The text check alone accepts all outputs; the independent SQLite query distinguishes missing commits"
+    },
+    {
+      "kind": "token",
+      "native_status": "success",
+      "limit": {
+        "type": "token",
+        "limit": 8.0,
+        "reason": "Token limit exceeded. value: 10; limit: 8"
+      },
+      "strict_decision": "indeterminate",
+      "relaxed_error_budget_decision": "indeterminate",
+      "declared_boundary_decision": "accept",
+      "outcome_decision": "reject",
+      "native_usage": {
+        "mockllm/controls": {
+          "input_tokens": 4,
+          "output_tokens": 6,
+          "total_tokens": 10,
+          "input_tokens_cache_write": null,
+          "input_tokens_cache_read": null,
+          "reasoning_tokens": null,
+          "total_cost": 9.999999999999999e-06
+        }
+      },
+      "model_calls": 1,
+      "solver_cleanup": true,
+      "persisted_entries": 0,
+      "log": "token/2026-09-17T04-22-15-00-00_task_DbhzGVeFCbUbrYYmXtoXfR.eval",
+      "critique": "The text check alone accepts all outputs; the independent SQLite query distinguishes missing commits"
+    },
+    {
+      "kind": "cost",
+      "native_status": "success",
+      "limit": {
+        "type": "cost",
+        "limit": 8e-06,
+        "reason": "Cost limit exceeded. value: $0.0000; limit: $0.0000"
+      },
+      "strict_decision": "indeterminate",
+      "relaxed_error_budget_decision": "indeterminate",
+      "declared_boundary_decision": "accept",
+      "outcome_decision": "reject",
+      "native_usage": {
+        "mockllm/controls": {
+          "input_tokens": 4,
+          "output_tokens": 6,
+          "total_tokens": 10,
+          "input_tokens_cache_write": null,
+          "input_tokens_cache_read": null,
+          "reasoning_tokens": null,
+          "total_cost": 9.999999999999999e-06
+        }
+      },
+      "model_calls": 1,
+      "solver_cleanup": true,
+      "persisted_entries": 0,
+      "log": "cost/2026-09-17T04-22-15-00-00_task_k9SnJ6iPsF6k4KUoKapoh3.eval",
+      "critique": "The text check alone accepts all outputs; the independent SQLite query distinguishes missing commits"
+    },
+    {
+      "kind": "turn",
+      "native_status": "success",
+      "limit": {
+        "type": "turn",
+        "limit": 1.0,
+        "reason": "Turn limit exceeded. value: 2; limit: 1"
+      },
+      "strict_decision": "indeterminate",
+      "relaxed_error_budget_decision": "indeterminate",
+      "declared_boundary_decision": "accept",
+      "outcome_decision": "reject",
+      "native_usage": {
+        "mockllm/controls": {
+          "input_tokens": 8,
+          "output_tokens": 12,
+          "total_tokens": 20,
+          "input_tokens_cache_write": null,
+          "input_tokens_cache_read": null,
+          "reasoning_tokens": null,
+          "total_cost": 1.9999999999999998e-05
+        }
+      },
+      "model_calls": 2,
+      "solver_cleanup": true,
+      "persisted_entries": 0,
+      "log": "turn/2026-09-17T04-22-15-00-00_task_bMtRnHs6gQVZayQ7n6gWjR.eval",
+      "critique": "The text check alone accepts all outputs; the independent SQLite query distinguishes missing commits"
+    }
+  ],
+  "concurrency": {
+    "solvers": 0,
+    "solver_peak": 2,
+    "models": 0,
+    "model_peak": 1,
+    "model_calls": 6,
+    "cases": 6,
+    "max_samples": 2,
+    "max_connections": 1,
+    "log": "concurrency/2026-09-17T04-22-15-00-00_task_RafdK5u6kq7dPrP3PGJvd5.eval"
+  },
+  "cancellation": {
+    "started": 2,
+    "active": 0,
+    "cleaned": 2,
+    "cancelled_error_propagated": true,
+    "native_status": "cancelled",
+    "recorded_samples": 2,
+    "log": "cancellation/2026-09-17T04-22-16-00-00_task_5SRe7NeLZDq8H7hJB4ThjP.eval"
+  },
+  "attempted_network_connections": 0
+}

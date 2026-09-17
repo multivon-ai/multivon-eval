@@ -133,6 +133,8 @@ includes a completed positive control. Token and cost limits check observed usag
 an in-flight generation can exceed the threshold. The tested Inspect 0.3.263
 `turn_limit=1` path made two mock generations before stopping. These controls must
 not be presented as strict request reservations or hard monetary ceilings.
+The [validation study and raw evidence](https://github.com/multivon-ai/multivon-eval/blob/main/benchmarks/industrial/EXECUTION_CONTROLS_VALIDATION.md)
+retain all seven ledger scenarios, concurrency and cancellation results.
 
 Cancellation stops cooperative async work and retains native cancellation/error
 logs; it does not undo completed remote calls or SQLite commits. Configure

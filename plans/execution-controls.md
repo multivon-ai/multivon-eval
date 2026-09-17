@@ -62,3 +62,18 @@ control probes include six stop types, invalidation and repeated regrading,
 sample/connection overlap, cancellation with a queued sample, and the documented
 synchronous-thread limitation. This verification makes no accuracy or production
 reliability claim and made no paid provider requests.
+
+## Frozen result
+
+Final source `ad1d015` passed the full 2,041-test Python 3.12 suite. Its clean
+offline protocol retained all nine native logs and seven ledgers with zero
+attempted network connections. Six interrupted writes had zero persisted rows;
+only the completed control had one. Text-only declared-boundary acceptance
+accepted the incomplete acknowledgments, while the independent state invariant
+rejected them. Two active calls cleaned up on cancellation, and six concurrency
+samples respected the measured 2-solver / 1-model peaks. See the
+[study and checksummed evidence](../benchmarks/industrial/EXECUTION_CONTROLS_VALIDATION.md).
+
+The acceptance follow-up keeps stop/invalidation validity separate from a general
+error budget, including after regrading. Dedicated final checks passed 76 tests
+on Python 3.12 and 52 on Python 3.10; no additional paid requests were made.

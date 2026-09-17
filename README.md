@@ -95,6 +95,11 @@ posts, transcription-only mismatches and integration errors, with raw-log hashes
 cost accounting and a reproducible protocol. It is a sandbox study, not proof
 of production readiness or a new dataset.
 
+The [execution-control study](benchmarks/industrial/EXECUTION_CONTROLS_VALIDATION.md)
+shows why a successful text reply can coexist with an unfinished task: native
+Inspect limits stop six local writes, and independent SQLite checks catch the
+missing commits. A completed control verifies the positive path.
+
 ## Why use it
 
 | Need | Available today |

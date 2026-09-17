@@ -4,7 +4,27 @@ Maintainer-run evaluation of multivon-eval configurations against dataset labels
 
 Scripts and stored results are published here. Hosted judge responses, dependency versions, and dataset revisions can change, so rerunning does not guarantee identical numbers.
 
-**0.17.0 note:** these live benchmarks have not been rerun after the stricter verdict parser and removal of refusal shortcuts. Historical thresholds and scores need revalidation. The offline regression suite verifies software behavior, not evaluator accuracy.
+## Current development studies
+
+Start here for the industrial evaluation program. Each study records its tested
+scope, upstream dependencies and limitations; these are not interchangeable
+accuracy benchmarks. Development features may not be in the latest PyPI release.
+
+| Question | Evidence and reused infrastructure |
+|---|---|
+| Did the agent complete the business task? | [Document-to-ledger study](industrial/DOCUMENT_RESULTS.md): CORD, pdfhell, Inspect and independently queried SQLite outcomes. |
+| Do limits and cancellation preserve honest outcomes? | [Execution controls](industrial/EXECUTION_CONTROLS_VALIDATION.md): actual Inspect limits, cancellation and concurrency, with complete/incomplete ledger controls. |
+| Which calls and costs are actually accounted for? | [Native request evidence](industrial/PROVIDER_EVIDENCE_VALIDATION.md) and [offline accounting](industrial/PROVIDER_ACCOUNTING_VALIDATION.md): SDK hooks and upstream LiteLLM prices, with explicit coverage limits. |
+| Can state forecasts support better decisions? | [World-model experiment](industrial/WORLD_MODEL_RESULTS.md): Gymnasium CartPole, scikit-learn dynamics and SciPy planning. |
+| Is a robustness transformation's answer still valid? | [Controlled robustness](industrial/ROBUSTNESS_VALIDATION.md): code-derived oracles and Hypothesis checks, including invalid and unknown candidates. |
+| Can retained evidence be inspected and reviewed? | [Media](industrial/MEDIA_VALIDATION.md), [review workflow](industrial/REVIEW_WORKFLOW_VALIDATION.md) and [failure investigation](industrial/INVESTIGATION_VALIDATION.md): native formats and existing review tools. |
+
+## Historical benchmark scripts
+
+The live benchmark scores below predate 0.17.0's stricter verdict parser and
+removal of refusal shortcuts and have not been rerun with those changes.
+Historical thresholds and scores need revalidation. The offline regression suite
+verifies software behavior, not evaluator accuracy.
 
 ```bash
 pip install multivon-eval deepeval python-dotenv
@@ -15,7 +35,7 @@ python benchmarks/run_all_benchmarks.py
 
 ---
 
-## Summary
+## Historical benchmark summary
 
 | Task | multivon-eval | DeepEval | Simple LLM judge | Keyword overlap / Exact match |
 |------|:---:|:---:|:---:|:---:|

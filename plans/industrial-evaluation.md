@@ -341,3 +341,20 @@ rehashing, configuration mutation across all runner paths, private-value hashing
 malformed/rehashed records, legacy migration, and schema/callback/judge drift.
 The concurrency check measures simultaneous grader execution rather than including
 snapshot setup in a wall-clock threshold. No API calls or PyPI release were made.
+
+### R03 execution controls follow-up (2026-09-17)
+
+Source `ad1d015` validates native controls before preparation, drains owned async
+tasks on cancellation, and retains Inspect stop/invalidation evidence through
+import, error-budget policy and repeated regrading. Existing upstream scheduling
+and limits remain authoritative; no new durable runner is introduced.
+
+The frozen offline study uses seven SQLite ledger scenarios plus native
+concurrency and cancellation probes. It retains all nine native logs and 35
+checksummed artifacts, with zero attempted network connections. Text-only
+bounded-task policies accepted all six missing writes; a required independently
+queried state invariant rejected them and accepted the completed control.
+Full tracked Python 3.12 verification: 2,041 passed / 18 skipped / 7 warnings.
+See [execution protocol](execution-controls.md) and its linked result bundle.
+Checkpoint compatibility, remote side effects, distributed failure and hard
+resource guarantees remain open; no paid requests or PyPI release were made.
