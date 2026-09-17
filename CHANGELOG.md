@@ -4,6 +4,21 @@ All notable changes to `multivon-eval`. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+### Failure investigation
+
+- Expose exact saved trials, errors, evidence references and coverage warnings in
+  offline HTML reports. Add labelled filters, keyboard controls, responsive trial
+  comparison and full evidence/candidate downloads. Preserve unknown measurements.
+- Correct comparison reasons for different cases sharing an input; display
+  unmatched cases and comparability gaps. Bind generated directory links to
+  path identity and file contents so changed files cannot silently switch evidence.
+- Add consensus-bound Label Studio review promotion with an explicitly authored
+  expected result, retained source group and development-only manifest. Candidate
+  downloads are unreviewed and never infer an oracle from the failed answer.
+- Check local viewer Host/Origin, block framing and remote content requests, and
+  exclude symlinked/out-of-root report paths. Browser serving remains read-only.
+  Keep native conversations and timelines in Inspect View; document its mobile limit.
+
 ### Environment outcomes
 
 - Reuse Gymnasium's Env/Wrapper lifecycle and native space JSON codecs to

@@ -140,9 +140,10 @@ def test_index_lists_valid_and_collapses_skipped(report_dir):
     assert "run_b" in html
     # Skipped collapse to a single muted footer count with an [expand].
     assert "3 file(s) skipped (not eval reports)" in html
-    assert "[expand]" in html
+    assert "show files</summary>" in html
     # Each row links to OPEN and offers a per-row diff dropdown.
-    assert 'href="/r/0"' in html
+    assert 'href="/r/0?key=' in html
+    assert '&amp;digest=' in html
     assert "diff vs" in html
     assert "/diff?a=" in html
 

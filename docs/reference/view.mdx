@@ -1,52 +1,79 @@
 ---
-title: "Report browser (view --dir)"
-description: "Browse a folder of eval reports locally — a sortable index, any report rendered verbatim, and a diff of two runs with stacked judge reasons. Read-only, no new dependencies."
+title: "Inspect reports and compare saved evidence"
+description: "Browse local reports, compare matched cases, filter failures, and inspect exact saved trials."
 ---
 
-Once you've run a suite a few times, the reports pile up: one JSON per run,
-in a directory, with no easy way to see them together. `multivon-eval view`
-already renders a single report as HTML. Point it at a directory instead
-and you get an index, click-through, and a diff.
-
-Shipped in [0.15.0](https://github.com/multivon-ai/multivon-eval/blob/main/CHANGELOG.md#0150--2026-06-16).
-It runs on the same stdlib HTTP server `view` already uses — read-only,
-local, no new dependencies, fully offline.
-
 ```bash
-multivon-eval view --dir runs/           # browse a folder of reports
-multivon-eval view runs/                 # same thing — a directory enters directory mode
-multivon-eval view --dir runs/ --recursive   # walk subdirectories too (off by default)
-```
-
-## INDEX
-
-The landing page is a sortable table of every eval-report JSON in the
-directory: suite, model, when, n, pass rate with a Wilson CI bar, error and
-flaky badges, and cost. A structural validator decides what counts as a
-report — a file needs the real `{summary.pass_rate, cases[]}` shape to make
-the table. Anything that doesn't collapses into one "k files skipped" line
-rather than being parsed as an empty report. Runs with an error rate at or
-above 10% are flagged.
-
-## OPEN
-
-Click any row to open that report at `/r/<idx>`, served by the same
-`EvalReport.to_html()` that renders a single file, with a breadcrumb back
-to the index. There's no second renderer to drift out of sync.
-
-## DIFF
-
-Pick two runs and `/diff?a=&b=` wraps `report_a.compare(report_b)`:
-pass-rate and avg-score deltas, McNemar p with a significance label, and
-four buckets — Regressed, Fixed, Still failing, Unchanged. Regressed rows
-stack both runs' judge reasons (matched by case input) as prose, so you
-read exactly why a verdict flipped instead of guessing.
-
-## Single-file view is unchanged
-
-```bash
+multivon-eval view --dir runs/
 multivon-eval view results.json
 ```
 
-A single JSON path still renders one report exactly as before. Only a
-directory (or `--dir`) switches into browser mode.
+Directory browsing and comparison are available in 0.18.0. **The trial cards,
+filters, reviewed-candidate workflow and request protections described below are
+development changes on `main`, not yet included in PyPI 0.18.0.**
+
+The viewer serves a self-contained report on loopback. It does not call a model,
+fetch remote evidence, or write to the report directory. Add `--no-browser` to
+print the URL without opening a browser, `--port 0` to choose an available port,
+or `--recursive` to include reports in subdirectories.
+
+## Browse and compare
+
+The directory index lists saved suites, models, case counts, pass-rate summaries,
+errors, variability and costs. A comparison selector opens baseline and proposal
+side by side. Generated links bind the report path identity and exact file digest:
+adding a different file cannot silently switch their target. An overwritten
+report asks you to reload the index. Old bare numeric URLs remain live directory
+indices; use the generated links when retaining an investigation reference.
+
+Comparison follows stable case identity and content checks from `compare_reports`.
+Two distinct cases can share an input string without sharing their reasons or
+outputs. Added/removed cases and comparison evidence issues remain visible.
+Unavailable significance is shown as unavailable; a non-significant result does
+not establish equivalence. Legacy ambiguous cases cannot supply reliable pairing.
+
+## Inspect exact trials
+
+Use the labelled tag/status/search controls to narrow the case list. The summary
+metrics above it continue to describe the full report. Open **Case details** with
+a mouse or keyboard, then open saved trials together to compare repeated runs and
+attempts. Each trial retains its own output, grader results, errors, origin
+references, full digest and recorded limitations.
+
+Unknown latency and unmeasured checks are labelled accordingly. Report-level
+capture issues appear before summary scores. A passing score alone is not an
+[acceptance-policy](/guides/acceptance-policies) decision.
+
+**Full saved trial JSON** exposes the retained artifact and offers a local
+JSON download. The HTML contains this evidence, including any retained upstream
+payloads, so its size and data scope follow the saved report. Legacy aggregate
+reports cannot reconstruct individual trials that were never recorded.
+
+For native Inspect conversations, timing, tool events and media, open the original
+log in [Inspect View](https://inspect.aisi.org.uk/log-viewer.html). Reference paths
+are displayed as data; the Multivon viewer does not automatically read or open
+them. Review collection stays in [Label Studio](/guides/review-labels).
+
+## Turn a reviewed failure into a regression
+
+**Download candidate for review** creates a candidate bound to the selected trial.
+It preserves the original case definition and requires review. It never infers
+the correct answer from the observed output. The
+[failure investigation workflow](/guides/failure-investigation) shows how to
+reconcile Label Studio reviews, explicitly author the expected result and create
+a development regression manifest while preserving source grouping.
+
+## Local access and tested limits
+
+The development viewer checks loopback Host and same-origin browser requests,
+blocks framing, disables remote content fetching and browser writes, and skips
+symlinked report files or paths resolving outside the selected directory. These
+checks reduce accidental exposure and cross-origin access; they are not user
+accounts or a sandbox against other processes with your filesystem permissions.
+Keep it local. Standalone exported HTML does not have HTTP response protections.
+
+The index, expanded report and comparison were rendered at 1,440- and 390-pixel
+widths. Native details, labelled inputs, visible keyboard focus and accessible
+status text support keyboard use. Automated accessibility checks are one part of
+verification, not a complete screen-reader or accessibility certification. See the
+[validation record](https://github.com/multivon-ai/multivon-eval/blob/main/benchmarks/industrial/INVESTIGATION_VALIDATION.md).

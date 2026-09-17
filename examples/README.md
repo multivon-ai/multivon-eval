@@ -50,7 +50,9 @@ not in PyPI 0.18.0. They use synthetic fixtures and make no model API calls.
 | `calibrate_reviewed_scores.py` | Frozen development fitting and source-disjoint held-out analysis | `pip install -e '.[review]'` |
 | `otel_evidence.py` | Official SDK/OTLP trace and evaluation-event round trip; optional real MCP stdio | `pip install -e '.[otel]'` |
 
-Run each with `--output-dir` pointing to a new directory. The OTel example's
+The calibration and OTel demonstrations take `--output-dir` pointing to a new
+directory. The review exchange uses `export` / `import` subcommands; run it with
+`--help` or follow the review guide. The OTel example's
 optional `--mcp-python` selects a Python executable with multivon-mcp installed;
 its calling environment also needs the official `mcp` client package.
 
@@ -65,3 +67,16 @@ python -m benchmarks.industrial.analyze_environment ledger-outcomes
 This reuses the document study's SQLite handler, retains the databases and
 observations, and compares answer-only checks with the explicit outcome contract.
 See the [validation and critique](../benchmarks/industrial/ENVIRONMENT_VALIDATION.md).
+
+
+For the saved-evidence investigation and regression workflow:
+
+```bash
+python examples/investigate_failures.py --output-dir investigation-demo
+multivon-eval view --dir investigation-demo
+```
+
+The example uses synthetic reviews, never inferred human labels.
+`examples/promote_reviewed_case.py --help` shows the separate command for your
+saved reports and native Label Studio exports. It requires a new expected-output
+file and rationale, preserves source grouping, and creates a development manifest.

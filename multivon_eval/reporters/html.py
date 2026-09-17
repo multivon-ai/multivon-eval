@@ -6,267 +6,19 @@ dark theme, per-evaluator breakdown, per-case expandable table,
 multi-run flakiness indicators.
 """
 from __future__ import annotations
+
 import html
-import math
+import json
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ..result import EvalReport, CaseResult
+    from ..result import CaseResult, EvalReport
 
 __all__ = ["to_html"]
 
-_CSS = """
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-:root {
-  --bg:        #0d0d12;
-  --bg-card:   #14141c;
-  --bg-table:  #111118;
-  --bg-detail: #0b0b10;
-  --border:    rgba(255,255,255,0.06);
-  --text:      #e2e8f0;
-  --muted:     rgba(255,255,255,0.35);
-  --accent:    #7c3aed;
-  --accent-lt: #a78bfa;
-  --green:     #22c55e;
-  --yellow:    #f59e0b;
-  --orange:    #fb923c;   /* infra errors — distinct from quality failures */
-  --red:       #ef4444;
-  --slate:     #94a3b8;   /* skipped cases — neutral, not a failure */
-  --radius:    10px;
-}
-
-body {
-  background: var(--bg);
-  color: var(--text);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
-  font-size: 14px;
-  line-height: 1.5;
-  padding: 32px 24px 80px;
-}
-
-a { color: var(--accent-lt); }
-
-header {
-  margin-bottom: 32px;
-}
-header h1 {
-  font-size: 22px;
-  font-weight: 600;
-  color: #fff;
-  margin-bottom: 4px;
-}
-.meta {
-  color: var(--muted);
-  font-size: 12px;
-}
-
-/* ── Summary cards ────────────────────────────────────────── */
-.summary {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin-bottom: 32px;
-}
-.card {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 14px 20px;
-  min-width: 110px;
-  text-align: center;
-}
-.card .val {
-  font-size: 24px;
-  font-weight: 700;
-  color: #fff;
-  display: block;
-}
-.card .lbl {
-  font-size: 11px;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: .05em;
-  margin-top: 2px;
-  display: block;
-}
-.card.c-pass .val { color: var(--green); }
-.card.c-fail .val { color: var(--red); }
-.card.c-warn .val { color: var(--yellow); }
-.card.c-accent .val { color: var(--accent-lt); }
-
-/* ── Sections ─────────────────────────────────────────────── */
-section { margin-bottom: 40px; }
-section h2 {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: .07em;
-  margin-bottom: 12px;
-}
-
-/* ── Tables ───────────────────────────────────────────────── */
-table {
-  width: 100%;
-  border-collapse: collapse;
-  background: var(--bg-table);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  overflow: hidden;
-}
-th {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: .06em;
-  padding: 10px 12px;
-  text-align: left;
-  border-bottom: 1px solid var(--border);
-  background: rgba(255,255,255,0.02);
-}
-th.r, td.r { text-align: right; }
-td {
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--border);
-  vertical-align: top;
-  color: var(--text);
-}
-tr:last-child td { border-bottom: none; }
-tr.case-row { cursor: pointer; }
-tr.case-row:hover td { background: rgba(255,255,255,0.025); }
-
-/* ── Score badges ─────────────────────────────────────────── */
-.score {
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-.score.s-green { color: var(--green); }
-.score.s-yellow { color: var(--yellow); }
-.score.s-red { color: var(--red); }
-.score-std { color: var(--muted); font-size: 12px; margin-left: 3px; }
-
-/* ── Status pills ─────────────────────────────────────────── */
-.pill {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 9999px;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: .04em;
-}
-.pill.pass    { background: rgba(34,197,94,.15);  color: var(--green); }
-.pill.fail    { background: rgba(239,68,68,.15);  color: var(--red); }
-.pill.flaky   { background: rgba(245,158,11,.15); color: var(--yellow); }
-/* 0.7.0 — infra errors are NOT quality failures; distinct color so the
-   reader doesn't confuse a transient outage with a model regression. */
-.pill.error   { background: rgba(251,146,60,.18); color: var(--orange); }
-.pill.skipped { background: rgba(148,163,184,.18); color: var(--slate); }
-.pill[title]  { cursor: help; border-bottom: 1px dotted currentColor; }
-
-/* ── Detail rows ─────────────────────────────────────────── */
-tr.detail-row td {
-  padding: 0;
-  background: var(--bg-detail);
-}
-.detail-inner {
-  padding: 12px 16px 16px;
-  display: flex;
-  gap: 24px;
-  flex-wrap: wrap;
-}
-.detail-block { flex: 1; min-width: 280px; }
-.detail-block h4 {
-  font-size: 11px;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: .06em;
-  margin-bottom: 8px;
-}
-.detail-text {
-  font-size: 13px;
-  color: rgba(255,255,255,0.75);
-  background: rgba(255,255,255,0.03);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 8px 10px;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-.eval-detail-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
-}
-.eval-detail-table th {
-  font-size: 11px;
-  padding: 6px 10px;
-}
-.eval-detail-table td {
-  padding: 6px 10px;
-  border-bottom: 1px solid var(--border);
-}
-.eval-detail-table tr:last-child td { border-bottom: none; }
-.reason-text {
-  color: var(--muted);
-  font-size: 12px;
-  max-width: 420px;
-}
-
-/* ── Flaky callout ────────────────────────────────────────── */
-.flaky-callout {
-  background: rgba(245,158,11,.07);
-  border: 1px solid rgba(245,158,11,.2);
-  border-radius: var(--radius);
-  padding: 14px 18px;
-  margin-bottom: 20px;
-  font-size: 13px;
-}
-.flaky-callout strong { color: var(--yellow); }
-.flaky-list { margin-top: 8px; list-style: none; }
-.flaky-list li { color: var(--muted); margin-top: 4px; }
-.flaky-list li::before { content: "• "; color: var(--yellow); }
-
-/* ── Progress bar ─────────────────────────────────────────── */
-.bar-wrap {
-  height: 4px;
-  background: rgba(255,255,255,0.07);
-  border-radius: 9999px;
-  overflow: hidden;
-  margin-top: 20px;
-  max-width: 520px;
-}
-.bar-fill {
-  height: 100%;
-  border-radius: 9999px;
-  background: var(--accent);
-  transition: width .3s;
-}
-
-/* ── Footer ───────────────────────────────────────────────── */
-.footer {
-  margin-top: 48px;
-  text-align: center;
-  color: var(--muted);
-  font-size: 11px;
-}
-.footer a { color: var(--muted); }
-"""
-
-_JS = """
-function toggle(id) {
-  var row = document.getElementById('d-' + id);
-  if (!row) return;
-  var hidden = row.getAttribute('hidden') !== null;
-  if (hidden) {
-    row.removeAttribute('hidden');
-  } else {
-    row.setAttribute('hidden', '');
-  }
-}
-"""
+from .evidence_html import case_filters, coverage_warning, trial_details
+from .html_assets import _CSS, _JS
 
 
 def _score_class(score: float) -> str:
@@ -277,7 +29,7 @@ def _score_class(score: float) -> str:
     return "s-red"
 
 
-def _status_pill(cr: "CaseResult") -> str:
+def _status_pill(cr: CaseResult) -> str:
     """Render a status badge for one case.
 
     Surfaces the 0.7.0 EvalStatus enum so a reader sees at a glance
@@ -345,7 +97,7 @@ def _truncate(text: str, n: int = 120) -> str:
     return text[:n] + "…"
 
 
-def to_html(report: "EvalReport") -> str:
+def to_html(report: EvalReport) -> str:
     multi_run = report.runs_per_case > 1
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
@@ -495,6 +247,8 @@ def to_html(report: "EvalReport") -> str:
             else ""
         )
         score_cell = f'<span class="score {sc}">{cr.score:.2f}</span>{std_html}'
+        if cr.status.value not in {'passed', 'failed_quality'}:
+            score_cell = '<span class="meta">unmeasured</span>'
 
         extra_cells = ""
         if multi_run:
@@ -505,8 +259,8 @@ def to_html(report: "EvalReport") -> str:
                 else '<span style="color:var(--green);font-size:12px">stable</span>'
             )
             extra_cells = (
-                f'<td class="r"><span class="score {pr_c}">{cr.run_pass_rate:.0%}</span></td>'
-                f'<td>{stab_pill}</td>'
+                f'<td data-label="Run pass rate" class="r"><span class="score {pr_c}">{cr.run_pass_rate:.0%}</span></td>'
+                f'<td data-label="Variability">{stab_pill}</td>'
             )
 
         tags_html = ""
@@ -518,14 +272,14 @@ def to_html(report: "EvalReport") -> str:
 
         # Main row
         case_rows += (
-            f'<tr class="case-row" onclick="toggle({i})">'
-            f'<td style="color:var(--muted)">{i + 1}</td>'
-            f'<td style="max-width:200px;word-break:break-word">{_h(_truncate(cr.case_input, 100))}</td>'
-            f'<td style="max-width:200px;word-break:break-word">{_h(_truncate(cr.actual_output, 100))}</td>'
-            f'<td class="r">{score_cell}</td>'
+            f'<tr class="case-row" data-index="{i}" data-tags="{_h(json.dumps(cr.tags))}" data-status="{cr.status.value}" data-search="{_h(cr.case_input + " " + (cr.case_id or ""))}">'
+            f'<td><button type="button" id="toggle-{i}" aria-expanded="false" aria-controls="d-{i}" onclick="toggle({i})">Case {i + 1} details</button></td>'
+            f'<td data-label="Input" style="max-width:200px;word-break:break-word">{_h(_truncate(cr.case_input, 100))}</td>'
+            f'<td data-label="Output" style="max-width:200px;word-break:break-word">{_h(_truncate(cr.actual_output, 100))}</td>'
+            f'<td data-label="Score" class="r">{score_cell}</td>'
             f'{extra_cells}'
-            f'<td>{_status_pill(cr)}</td>'
-            f'<td class="r" style="color:var(--muted)">{cr.latency_ms:.0f}ms</td>'
+            f'<td data-label="Status">{_status_pill(cr)}</td>'
+            f'<td data-label="Latency" class="r" style="color:var(--muted)">{"unknown" if cr.trials and cr.trials[-1].data["latency_ms"] is None else f"{cr.latency_ms:.0f}ms"}</td>'
             f'</tr>'
         )
 
@@ -536,11 +290,12 @@ def to_html(report: "EvalReport") -> str:
             r_pass = ('<span class="pill">SKIPPED</span>' if r.metadata.get("skipped")
                       else '<span class="pill pass">✓</span>' if r.passed
                       else '<span class="pill fail">✗</span>')
-            reason_cell = f'<span class="reason-text">{_h(r.reason[:300])}</span>' if r.reason else '<span style="color:var(--muted)">—</span>'
+            reason_cell = f'<span class="reason-text">{_h(r.reason)}</span>' if r.reason else '<span style="color:var(--muted)">—</span>'
+            measured_score = '—' if r.metadata.get('skipped') or r.metadata.get('error_kind') else f'{r.score:.2f}'
             eval_rows += (
                 f'<tr>'
                 f'<td>{_h(r.evaluator)}</td>'
-                f'<td class="r"><span class="score {r_sc}">{r.score:.2f}</span></td>'
+                f'<td class="r"><span class="score {r_sc}">{measured_score}</span></td>'
                 f'<td class="r">{r_pass}</td>'
                 f'<td>{reason_cell}</td>'
                 f'</tr>'
@@ -549,8 +304,8 @@ def to_html(report: "EvalReport") -> str:
         colspan = 6 + (2 if multi_run else 0)
         detail_content = (
             f'<div class="detail-inner">'
-            f'<div class="detail-block"><h4>Input</h4><div class="detail-text">{_h(cr.case_input)}</div></div>'
-            f'<div class="detail-block"><h4>Output</h4><div class="detail-text">{_h(cr.actual_output)}</div></div>'
+            f'<div class="detail-block"><h3>Input</h3><div class="detail-text">{_h(cr.case_input)}</div></div>'
+            f'<div class="detail-block"><h3>Output</h3><div class="detail-text">{_h(cr.actual_output)}</div></div>'
             f'</div>'
         )
         if eval_rows:
@@ -564,6 +319,7 @@ def to_html(report: "EvalReport") -> str:
             )
         if tags_html:
             detail_content += f'<div style="padding:0 16px 14px">{tags_html}</div>'
+        detail_content += trial_details(cr, prefix=f'case-{i}')
 
         case_rows += (
             f'<tr class="detail-row" id="d-{i}" hidden>'
@@ -574,9 +330,9 @@ def to_html(report: "EvalReport") -> str:
     col_span_extra = '<th class="r">Pass Rate</th><th>Stability</th>' if multi_run else ""
     cases_section = (
         f'<section>'
-        f'<h2>Cases <span style="color:var(--muted);font-size:11px;font-weight:400">— click a row to expand</span></h2>'
+        f'<h2>Cases</h2>{case_filters(report)}'
         f'{flaky_html}'
-        f'<table>'
+        f'<table class="case-table">'
         f'<thead><tr>'
         f'<th>#</th>'
         f'<th>Input</th>'
@@ -602,19 +358,22 @@ def to_html(report: "EvalReport") -> str:
   <style>{_CSS}</style>
 </head>
 <body>
+  <main>
   <header>
     <h1>{title}</h1>
     <p class="meta">{meta_html}</p>
   </header>
+  {coverage_warning(report)}
   {summary_html}
   {bar_html}
   <br>
   {ev_section}
   {tag_section}
   {cases_section}
-  <div class="footer">
-    Generated by <a href="https://multivon.ai" target="_blank">multivon-eval</a>
-  </div>
+  </main>
+  <footer class="footer">
+    Generated by <a href="https://multivon.ai" target="_blank" rel="noopener">multivon-eval</a>
+  </footer>
   <script>{_JS}</script>
 </body>
 </html>"""

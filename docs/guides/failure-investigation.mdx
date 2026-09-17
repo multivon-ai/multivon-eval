@@ -1,0 +1,102 @@
+---
+title: From a failed trial to a reviewed regression case
+description: Reuse Inspect View and Label Studio, then preserve the evidence and source identity behind a new development case.
+---
+
+**Development preview on `main`; not included in PyPI 0.18.0.** Install a checkout
+with `pip install -e .`. The report UI and review exchange need no new runtime
+dependencies. Use the optional Inspect package for native Inspect logs.
+
+## Start from evidence
+
+```bash
+python examples/investigate_failures.py --output-dir investigation-demo
+multivon-eval view --dir investigation-demo
+```
+
+This offline example creates a baseline and proposal, two repeated trials per
+case, intentionally missing capture evidence, hostile text to verify escaping,
+and two explicitly synthetic review annotations. It makes no model calls and
+does not claim independent human review.
+
+Open the proposal, filter by tag or case ID, and expand a trial. Compare it with
+the baseline using the directory selector. Separate three questions: what the
+application did, whether the grader judged it correctly, and whether the evidence
+is complete enough for your release policy. Preserve errors and disagreements.
+
+For executions owned by Inspect:
+
+```bash
+inspect view --log-dir inspect-logs --port 7575
+```
+
+Use its existing messages, scoring, metadata and timeline views. Multivon does not
+rebuild the native trace viewer. The tested Inspect 0.3.263 sample view overflowed
+a 390-pixel viewport to 450 pixels; use a desktop viewport for that upstream view.
+The Multivon report pages have a separate responsive layout.
+
+## Review the selected execution
+
+Download the trial JSON and candidate from the report if you need portable
+references. The candidate is not an approved case or an oracle. Export the report's
+saved trials with an explicit rubric using the existing
+[Label Studio exchange](/guides/review-labels):
+
+```bash
+python examples/review_saved_trials.py export proposal.json \
+  --evaluator exact_match --rubric-file rubric.txt --output-dir review-tasks
+```
+
+Retain the original task file. Review in Label Studio and export its full JSON.
+The importer validates the original trial binding and retains reviewer kind,
+unknown/cancelled labels and disagreement. Reviewer IDs do not authenticate
+independent people. Declare `human`, `model` or `synthetic` accurately.
+
+## Author the expectation and promote deliberately
+
+Write the expected result to `expected.txt`, and explain its authoritative source
+and intended task behavior in `rationale.txt`. A rejected answer does not by itself
+prove what the correct answer should be. Review that expectation separately.
+For non-text outcomes, keep the independently verified outcome contract; a text
+reference alone cannot replace database, tool or environment assertions.
+
+```bash
+python examples/promote_reviewed_case.py \
+  --report proposal.json \
+  --tasks review-tasks/tasks.json \
+  --export label-studio-export.json \
+  --trial-digest YOUR_SELECTED_TRIAL_DIGEST \
+  --evaluator exact_match \
+  --case-id regression-invoice-17 \
+  --expected-output-file expected.txt \
+  --rationale-file rationale.txt \
+  --reviewer-kind human \
+  --min-reviewers 2 \
+  --output development-regressions.json
+```
+
+The command requires consensus for that bound trial and refuses unknown,
+insufficient or disagreeing reviews. Consensus may identify an application failure
+or a grader false rejection; the explicit expectation determines the new case.
+It writes a new file and does not overwrite existing manifests.
+
+The promoted case has a new ID and preserves its original source group. If the
+original case lacks a source group, supply `--source-id` based on actual provenance.
+The recorded trace is cleared for a future execution, and a callable reference
+cannot silently become its expected output. The manifest retains review evidence,
+parent trial/content digests and the expectation rationale.
+
+Promotion assigns the case to **development**. Once you investigate and tune
+against a held-out failure, that source is no longer untouched validation evidence.
+Keep its variants together and reserve new untouched sources for the final check.
+Do not rename source IDs to make inspected data appear independent.
+
+## Reuse boundaries and limits
+
+Inspect owns native log inspection; Label Studio owns review UI and users;
+Hugging Face remains the dataset platform. The Multivon additions bind saved
+trials to reports, review decisions and explicitly authored development cases.
+They do not establish a new dataset, independent labels or a scientifically
+novel failure-discovery method. See the
+[validation and critique](https://github.com/multivon-ai/multivon-eval/blob/main/benchmarks/industrial/INVESTIGATION_VALIDATION.md)
+for actual browser, HTTP-boundary and promotion checks.

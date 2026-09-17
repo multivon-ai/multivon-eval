@@ -70,7 +70,9 @@ scikit-learn and SciPy for development fitting and held-out source analysis.
 OTLP traces and emits standard evaluation events through your existing SDK.
 [Environment outcome checks](docs/guides/environment-outcomes.mdx) reuse Gymnasium
 and independently observed state to catch missing writes, duplicate writes and
-forbidden changes. These previews are not included in PyPI 0.18.0.
+forbidden changes. The [failure investigation workflow](docs/guides/failure-investigation.mdx)
+connects saved trial comparison to Label Studio review and development regression
+cases. These previews are not included in PyPI 0.18.0.
 
 ## A real workflow example
 

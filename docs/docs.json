@@ -105,6 +105,7 @@
               "guides/otel-evidence",
               "guides/environment-outcomes",
               "guides/review-labels",
+              "guides/failure-investigation",
               "guides/review-calibration",
               "guides/document-workflows",
               "guides/input-quality",

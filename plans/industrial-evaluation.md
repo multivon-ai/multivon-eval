@@ -24,7 +24,7 @@ Gymnasium at their established boundaries.
 | R05 | Review and calibration | Label import/export, review disagreements, development-only fitting, held-out evaluation, uncertainty/false-accept reporting and no leakage verified | Development preview: native Label Studio server/browser round trip and saved-score development/held-out source analysis validated with synthetic fixtures; mobile/accessibility limits documented; independent task-label validity remains under R17 |
 | R06 | Trace interoperability | OpenTelemetry ingestion/export, documented schema/version handling, actual round trips with supported companion integrations | Development preview: native SDK/OTLP protobuf, actual Collector JSON and published MCP 0.4.0 round trips verified; convention profile and unsupported projections documented; production capture authenticity remains outside the bridge |
 | R07 | Task/environment/outcome interfaces | Setup/reset/action/observation/cleanup, isolated repeated episodes, real end-state assertions, forbidden side effects, partial failures and recovery cases | Development preview: native Gymnasium lifecycle plus immutable state evidence and outcome checks; 14 actual SQLite environment instances validate separate resources, forbidden history, partial commits and explicit recovery; security isolation and durable execution stay upstream under R03 |
-| R08 | Failure investigation UI | Trial comparison, evidence references, slices, review, case promotion, local security and accessibility; rendered desktop/mobile verification | Pending |
+| R08 | Failure investigation UI | Trial comparison, evidence references, slices, review, case promotion, local security and accessibility; rendered desktop/mobile verification | Development preview: saved trial comparison/filtering, native Inspect references, Label Studio consensus-bound promotion and local request protections validated; six browser scans passed with keyboard/download checks; upstream mobile limitations and missing manual screen-reader validation documented |
 | R09 | Typed multimodal artifacts | Images/pages/audio/video, content identity, timestamps/regions, actual artifact rendering and grounded verdict references, extraction-versus-perception comparisons | Pending |
 | R10 | Controlled robustness suite | Validated invariant-preserving and semantic-changing transformations; reviewed or code-derived answers; no transformations that silently corrupt the oracle | Pending |
 | R11 | World-model evaluation (experimental) | Real adapter demo; action responsiveness, horizons, state persistence, uncertainty, planning utility; model and simulator errors separated; reproducible measured results | Pending |
@@ -200,3 +200,17 @@ over a good bespoke checker. Full Python 3.12 checks: 1,661 passed, 4 skipped,
 7 warnings; focused Python 3.10: 86 passed. Also fixed regrading to retain prior
 capture issues and upstream provenance. No model calls or new PyPI release.
 See benchmarks/industrial/ENVIRONMENT_VALIDATION.md; the wider program remains active.
+
+
+2026-09-17 investigation checkpoint: reuse Inspect View for native logs and
+Label Studio for review. Corrected comparison reason pairing for distinct cases
+sharing a prompt; expose exact trial evidence and coverage in the existing HTML
+report. Added keyboard-operable details, tag/status/ID filters and source-preserving
+reviewed development-case promotion. Browser candidate downloads require intact
+evidence and never infer an expectation from failed output. Local servers check
+Host/Origin, block remote fetching/framing and preserve generated link identity
+across directory changes. Six desktop/mobile axe scans passed with no detected
+violations or page overflow; native Inspect sample view still overflows on mobile.
+Full Python 3.12 checks: 1,674 passed, 5 skipped, 7 warnings; focused Python 3.10:
+76 passed, 1 directory-only skip. All 67 MDX pages compiled. No model calls or
+new PyPI release. Validation and critique: benchmarks/industrial/INVESTIGATION_VALIDATION.md.

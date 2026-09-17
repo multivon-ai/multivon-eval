@@ -20,12 +20,12 @@ single-file ``cmd_view`` path exactly — see :func:`serve_directory`.
 """
 from __future__ import annotations
 
+import hashlib
 import html as _html
 import json
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 # Hoisted out of f-string expressions: nesting a quoted string inside an
 # f-string's {} braces requires PEP 701 (Python 3.12+); on 3.10/3.11 it is
@@ -82,10 +82,15 @@ class ReportEntry:
     errors: int
     evaluated: int
     flaky: int
-    total_cost: Optional[float]
+    total_cost: float | None
     mtime: float
-    pass_hat_k: Optional[float] = None  # absent in pre-pass^k reports
+    pass_hat_k: float | None = None  # absent in pre-pass^k reports
     saturated: bool = False  # absent in pre-saturation-monitor reports
+    content_digest: str = ""
+
+    @property
+    def key(self) -> str:
+        return hashlib.sha256(str(self.path.relative_to(self.base_dir)).encode()).hexdigest()
 
     @property
     def stem(self) -> str:
@@ -115,7 +120,7 @@ def _entry_from_dict(idx: int, path: Path, base_dir: Path, data: dict) -> Report
     costs = summary.get("costs") or {}
     total_cost = costs.get("total_cost_usd") if isinstance(costs, dict) else None
     phk = summary.get("pass_hat_k")
-    pass_hat_k: Optional[float]
+    pass_hat_k: float | None
     try:
         pass_hat_k = float(phk["value"]) if isinstance(phk, dict) and phk.get("value") is not None else None
     except (TypeError, ValueError):
@@ -148,6 +153,7 @@ def discover(base_dir: Path, recursive: bool) -> tuple[list[ReportEntry], list[P
     Index is assigned in stable (sorted-path) order so /r/<idx> URLs are
     deterministic across requests.
     """
+    base_dir = base_dir.resolve()
     pattern = "**/*.json" if recursive else "*.json"
     paths = sorted(p for p in base_dir.glob(pattern) if p.is_file())
 
@@ -156,22 +162,34 @@ def discover(base_dir: Path, recursive: bool) -> tuple[list[ReportEntry], list[P
     idx = 0
     for p in paths:
         try:
-            data = json.loads(p.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
+            if p.is_symlink() or not p.resolve().is_relative_to(base_dir):
+                skipped.append(p)
+                continue
+            payload = p.read_bytes()
+            data = json.loads(payload)
+            if is_eval_report(data):
+                entry = _entry_from_dict(idx, p, base_dir, data)
+                entry.content_digest = hashlib.sha256(payload).hexdigest()
+                valid.append(entry)
+                idx += 1
+            else:
+                skipped.append(p)
+        except (OSError, ValueError, TypeError, OverflowError):
             skipped.append(p)
             continue
-        if is_eval_report(data):
-            valid.append(_entry_from_dict(idx, p, base_dir, data))
-            idx += 1
-        else:
-            skipped.append(p)
     return valid, skipped
 
 
-def load_report(path: Path):
+def load_report(path: Path, *, expected_digest: str | None = None, base_dir: Path | None = None):
     """Reconstruct a full EvalReport from a file (lazy, per request)."""
     from .result import EvalReport
-    data = json.loads(path.read_text(encoding="utf-8"))
+    resolved = path.resolve()
+    if base_dir is not None and not resolved.is_relative_to(base_dir.resolve()):
+        raise ValueError('Report path is outside the selected directory')
+    payload = resolved.read_bytes()
+    if expected_digest is not None and hashlib.sha256(payload).hexdigest() != expected_digest:
+        raise ValueError('Report content changed; reload the index')
+    data = json.loads(payload)
     return EvalReport.from_dict(data)
 
 
@@ -201,20 +219,29 @@ _STYLE = (
     ".row .body{padding:0 14px 12px;border-top:1px solid var(--line)}.row .body .ci{color:var(--muted);font-size:12px;margin:8px 0 4px}"
     ".reason{font-size:13px;margin:6px 0 10px}.reason .who{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.04em}.arrow{color:var(--muted)}"
 )
+_STYLE += (
+    ":root{--muted:#b3bdd0;--line:#373744;--bad:#fca5a5;--accent:#a6beff}"
+    "a:focus-visible,button:focus-visible,select:focus-visible,summary:focus-visible,[tabindex]:focus-visible{outline:3px solid #a78bfa;outline-offset:3px}"
+    ".table-scroll{overflow:auto;max-width:100%}.wrap{overflow-wrap:anywhere}.compare-columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}"
+    ".badge.errflag{background:#7f1d1d;color:#fecaca}"
+    "pre{white-space:pre-wrap;overflow-wrap:anywhere}summary{overflow-wrap:anywhere}select{min-height:36px;max-width:180px}"
+    "@media(max-width:650px){.wrap{padding:16px 12px}.compare-columns{grid-template-columns:1fr}.strip{gap:14px}}"
+)
 
 
 def _page(title: str, body: str, *, crumb: str = "") -> str:
-    crumb_html = f'<div class="crumb">{crumb}</div>' if crumb else ""
+    from .reporters.html_assets import _EVIDENCE_CSS, _EVIDENCE_JS
+    crumb_html = f'<nav class="crumb" aria-label="Reports">{crumb}</nav>' if crumb else ""
     return (
         "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\">"
         "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
         f"<title>{_html.escape(title)} — multivon-eval</title>"
-        f"<style>{_STYLE}</style></head><body>{crumb_html}"
-        f"<div class=\"wrap\">{body}</div></body></html>"
+        f"<style>{_STYLE}{_EVIDENCE_CSS}</style></head><body>{crumb_html}"
+        f"<main class=\"wrap\">{body}</main><script>{_EVIDENCE_JS}</script></body></html>"
     )
 
 
-def _rel_time(mtime: float, now: Optional[float] = None) -> str:
+def _rel_time(mtime: float, now: float | None = None) -> str:
     now = time.time() if now is None else now
     d = max(0.0, now - mtime)
     if d < 60:
@@ -267,7 +294,7 @@ def _sort_header(label: str, key: str, sort: str, direction: str) -> str:
 def render_index(
     reports: list[ReportEntry], skipped: list[Path], *,
     sort: str = "when", direction: str = "desc",
-    base_dir: Optional[Path] = None, now: Optional[float] = None,
+    base_dir: Path | None = None, now: float | None = None,
 ) -> str:
     """Render the sortable INDEX table. Pure — no server needed."""
     if sort not in _SORT_KEYS:
@@ -277,7 +304,7 @@ def render_index(
     ordered = sorted(reports, key=_SORT_KEYS[sort], reverse=(direction == "desc"))
 
     options = "".join(
-        f'<option value="{e.idx}">{_html.escape(e.stem)}</option>'
+        f'<option value="{e.idx}&amp;ka={e.key}&amp;da={e.content_digest}">{_html.escape(e.stem)}</option>'
         for e in reports
     )
 
@@ -287,7 +314,7 @@ def render_index(
             f'<span class="dim">{_html.escape(e.parent_prefix)}/</span>'
             if e.parent_prefix else ""
         )
-        run_cell = f'{prefix}<a href="/r/{e.idx}">{_html.escape(e.stem)}</a>'
+        run_cell = f'{prefix}<a href="/r/{e.idx}?key={e.key}&amp;digest={e.content_digest}">{_html.escape(e.stem)}</a>'
         pr = f'{e.pass_rate:.0%}'
         flagged = e.error_rate >= 0.10
         badges: list[str] = []
@@ -310,8 +337,8 @@ def render_index(
         cost = "—" if e.total_cost is None else f"${e.total_cost:.4f}"
         # Per-row diff control: pick a baseline from the dropdown, jump to DIFF.
         diff_ctl = (
-            f'<select onchange="if(this.value!=\'\')'
-            f'location.href=\'/diff?a=\'+this.value+\'&b={e.idx}\'">'
+            f'<select aria-label="Compare {_html.escape(e.stem, quote=True)} with baseline" onchange="if(this.value!=\'\')'
+            f'location.href=\'/diff?a=\'+this.value+\'&b={e.idx}&kb={e.key}&db={e.content_digest}\'">'
             f'<option value="">diff vs…</option>{options}</select>'
         )
         suite_cell = _html.escape(e.suite) or _DIM_DASH
@@ -343,9 +370,9 @@ def render_index(
             '<th class="r">pass^k</th>'
             "<th>flags</th>"
             f'<th class="r">{_sort_header("cost", "cost", sort, direction)}</th>'
-            "<th></th></tr>"
+            "<th>Compare</th></tr>"
         )
-        table = f"<table><thead>{head}</thead><tbody>{''.join(rows)}</tbody></table>"
+        table = f'<div class="table-scroll" role="region" aria-label="Saved reports" tabindex="0"><table><thead>{head}</thead><tbody>{"".join(rows)}</tbody></table></div>'
     else:
         table = '<p class="dim">No eval reports found in this directory.</p>'
 
@@ -355,13 +382,9 @@ def render_index(
             f"<li>{_html.escape(p.name)}</li>" for p in skipped
         )
         foot = (
-            '<div class="footnote">'
-            f'{len(skipped)} file(s) skipped (not eval reports) '
-            '<a href="#" onclick="document.getElementById(\'sk\').style.display='
-            '(document.getElementById(\'sk\').style.display==\'block\'?\'none\':\'block\');'
-            'return false">[expand]</a>'
-            f'<ul class="skiplist" id="sk" style="display:none">{items}</ul>'
-            "</div>"
+            '<details class="footnote">'
+            f'<summary>{len(skipped)} file(s) skipped (not eval reports) — show files</summary>'
+            f'<ul class="skiplist">{items}</ul></details>'
         )
 
     src = str(base_dir) if base_dir else ""
@@ -386,130 +409,19 @@ def render_open(report, entry: ReportEntry) -> str:
     # Self-contained inline style — the report doc carries its own CSS, so
     # the breadcrumb can't rely on dirview's _STYLE being present.
     crumb = (
-        '<div style="font:12px/1.5 -apple-system,sans-serif;background:#15151d;'
-        'color:#8a8a9a;padding:10px 20px;border-bottom:1px solid #26263340">'
-        '<a href="/" style="color:#5b8def;text-decoration:none">← all reports</a>'
-        f' &nbsp;/&nbsp; {label}</div>'
+        '<nav aria-label="Reports" style="font:12px/1.5 -apple-system,sans-serif;background:#15151d;'
+        'color:#b3bdd0;padding:10px 20px;border-bottom:1px solid #414150">'
+        '<a href="/" style="color:#a6beff;text-decoration:none">← all reports</a>'
+        f' &nbsp;/&nbsp; {label}</nav>'
     )
     return doc.replace("<body>", "<body>" + crumb, 1) if "<body>" in doc else crumb + doc
 
 
 # ── DIFF ─────────────────────────────────────────────────────────────────────
 
-def _reasons_by_input(report) -> dict[str, list[str]]:
-    """Map case_input → list of evaluator reasons for that case.
-
-    Judge reasons live on CaseResult.results[].reason — NOT on CaseDiff —
-    so DIFF re-derives them from the full report by case_input.
-    """
-    out: dict[str, list[str]] = {}
-    for cr in report.case_results:
-        reasons = [r.reason for r in cr.results if r.reason]
-        out.setdefault(cr.case_input, reasons)
-    return out
-
-
-def _signed_pp(x: float) -> str:
-    return ("+" if x >= 0 else "") + f"{x * 100:.1f}pp"
-
-
-def _signed(x: float) -> str:
-    return ("+" if x >= 0 else "") + f"{x:.3f}"
-
-
-def _reason_block(who: str, reasons: list[str]) -> str:
-    text = " ".join(_html.escape(r) for r in reasons) if reasons else "(no judge reason recorded)"
-    return f'<div class="reason"><span class="who">{_html.escape(who)}</span><br>{text}</div>'
-
-
-def render_diff(report_a, report_b, *, name_a: str = "", name_b: str = "") -> str:
-    """Render report_a.compare(report_b) → ReportDiff as HTML. Pure."""
-    diff = report_a.compare(report_b)
-    name_a = name_a or diff.baseline_name or "A"
-    name_b = name_b or diff.proposal_name or "B"
-
-    reasons_a = _reasons_by_input(report_a)
-    reasons_b = _reasons_by_input(report_b)
-
-    pr_d = diff.pass_rate_delta
-    sc_d = diff.avg_score_delta
-    pr_cls = "delta up" if pr_d >= 0 else "delta down"
-    sc_cls = "delta up" if sc_d >= 0 else "delta down"
-    if diff.mcnemar_p is None:
-        sig = '<span class="nsig">McNemar: n/a</span>'
-    elif diff.mcnemar_p < 0.05:
-        sig = f'<span class="sig">McNemar p={diff.mcnemar_p:.4f} (significant)</span>'
-    else:
-        sig = f'<span class="nsig">McNemar p={diff.mcnemar_p:.4f} (not significant)</span>'
-
-    strip = (
-        '<div class="strip">'
-        f'<div><div class="m">comparing</div><div class="v num">'
-        f'{_html.escape(name_a)} <span class="arrow">→</span> {_html.escape(name_b)}</div></div>'
-        f'<div><div class="m">pass rate Δ</div><div class="v num {pr_cls}">{_signed_pp(pr_d)}</div></div>'
-        f'<div><div class="m">avg score Δ</div><div class="v num {sc_cls}">{_signed(sc_d)}</div></div>'
-        f'<div><div class="m">significance</div><div class="v" style="font-size:13px">{sig}</div></div>'
-        "</div>"
-    )
-
-    # Bucket paired cases. STILL FAILING = paired, unchanged-direction,
-    # and both sides not passing.
-    from .result import EvalStatus
-    regressed = diff.regressions
-    fixed = diff.improvements
-    still_failing = [
-        c for c in diff.unchanged
-        if c.baseline_status != EvalStatus.PASSED
-        and c.proposal_status != EvalStatus.PASSED
-        and c.baseline_status != EvalStatus.SKIPPED
-        and c.proposal_status != EvalStatus.SKIPPED
-    ]
-    truly_unchanged = [c for c in diff.unchanged if c not in still_failing]
-
-    def case_row(c, *, expand_reasons: bool) -> str:
-        title = _html.escape(c.case_input[:120])
-        statuses = (
-            f'<span class="num">{c.baseline_status.value} '
-            f'<span class="arrow">→</span> {c.proposal_status.value}</span>'
-        )
-        if not expand_reasons:
-            return (
-                f'<div class="row"><summary style="list-style:none">'
-                f'{title} &nbsp; {statuses}</summary></div>'
-            )
-        ra = reasons_a.get(c.case_input, [])
-        rb = reasons_b.get(c.case_input, [])
-        body = (
-            '<div class="body">'
-            f'<div class="ci">{_html.escape(c.case_input)}</div>'
-            f'{_reason_block(name_a, ra)}{_reason_block(name_b, rb)}'
-            "</div>"
-        )
-        return (
-            f'<details class="row"><summary>{title} &nbsp; {statuses}'
-            f' <span class="num">({c.baseline_score:.2f}→{c.proposal_score:.2f})</span>'
-            f'</summary>{body}</details>'
-        )
-
-    def section(title: str, cases, *, cls: str, open_: bool, expand: bool) -> str:
-        rows = "".join(case_row(c, expand_reasons=expand) for c in cases) \
-            or '<p class="dim">none</p>'
-        attr = " open" if open_ else ""
-        return (
-            f'<details class="sect {cls}"{attr}>'
-            f'<summary>{_html.escape(title)} ({len(cases)})</summary>{rows}</details>'
-        )
-
-    sections = (
-        section("Regressed", regressed, cls="reg", open_=True, expand=True)
-        + section("Fixed", fixed, cls="", open_=False, expand=True)
-        + section("Still failing", still_failing, cls="", open_=False, expand=True)
-        + section("Unchanged", truly_unchanged, cls="", open_=False, expand=False)
-    )
-
-    crumb = '<a href="/">← all reports</a>'
-    body = f"<h1>diff</h1>{strip}{sections}"
-    return _page("diff", body, crumb=crumb)
+def render_diff(*args, **kwargs) -> str:
+    from .dirview_diff import render_diff as render
+    return render(*args, **kwargs)
 
 
 # The HTTP harness wiring these renderers to routes lives in
@@ -520,6 +432,12 @@ def serve_directory(*args, **kwargs) -> int:
     return _serve(*args, **kwargs)
 
 __all__ = [
-    "is_eval_report", "discover", "load_report", "ReportEntry",
-    "render_index", "render_open", "render_diff", "serve_directory",
+    "ReportEntry",
+    "discover",
+    "is_eval_report",
+    "load_report",
+    "render_diff",
+    "render_index",
+    "render_open",
+    "serve_directory",
 ]

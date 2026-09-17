@@ -26,6 +26,7 @@ from .dirview import (
     render_index,
     render_open,
 )
+from .viewer_security import LocalViewerSecurity
 
 
 def serve_directory(base_dir: Path, *, recursive: bool, port: int, no_browser: bool) -> int:
@@ -43,7 +44,7 @@ def serve_directory(base_dir: Path, *, recursive: bool, port: int, no_browser: b
 
     base_dir = base_dir.resolve()
 
-    class _Handler(http.server.BaseHTTPRequestHandler):
+    class _Handler(LocalViewerSecurity, http.server.BaseHTTPRequestHandler):
         def log_message(self, fmt, *args):  # suppress access logs
             pass
 
@@ -60,6 +61,8 @@ def serve_directory(base_dir: Path, *, recursive: bool, port: int, no_browser: b
             return discover(base_dir, recursive)
 
         def do_GET(self):
+            if not self.allow_viewer_request():
+                return
             parsed = urlparse(self.path)
             path = parsed.path
             qs = parse_qs(parsed.query)
@@ -74,19 +77,19 @@ def serve_directory(base_dir: Path, *, recursive: bool, port: int, no_browser: b
                     ))
                     return
                 if path.startswith("/r/"):
-                    self._open(path)
+                    self._open(path, qs)
                     return
                 if path == "/diff":
                     self._diff(qs)
                     return
                 self._send(404, _page("not found", "<h1>404</h1>"
                                       '<p><a href="/">← all reports</a></p>'))
-            except Exception as ex:  # never leak a traceback to the browser
+            except Exception as ex:  # noqa: BLE001 - report errors without exposing tracebacks
                 self._send(500, _page("error", f"<h1>error</h1>"
                                       f"<p class='dim'>{_html.escape(str(ex))}</p>"
                                       "<p><a href='/'>← all reports</a></p>"))
 
-        def _open(self, path: str) -> None:
+        def _open(self, path: str, qs: dict) -> None:
             reports, _ = self._entries()
             by_idx = {e.idx: e for e in reports}
             try:
@@ -94,12 +97,17 @@ def serve_directory(base_dir: Path, *, recursive: bool, port: int, no_browser: b
             except ValueError:
                 self._send(404, _page("not found", "<h1>404</h1>"))
                 return
-            entry = by_idx.get(idx)
+            key = (qs.get('key') or [None])[0]
+            entry = next((e for e in reports if e.key == key), None) if key else by_idx.get(idx)
             if entry is None:
                 self._send(404, _page("not found", "<h1>404</h1>"
                                       '<p><a href="/">← all reports</a></p>'))
                 return
-            report = load_report(entry.path)
+            expected = (qs.get('digest') or [None])[0]
+            if expected and expected != entry.content_digest:
+                self._send(409, _page('report changed', '<h1>Report changed</h1><p>Reload the report index before opening this evidence.</p><a href="/">All reports</a>'))
+                return
+            report = load_report(entry.path, expected_digest=expected, base_dir=base_dir)
             self._send(200, render_open(report, entry))
 
         def _diff(self, qs: dict) -> None:
@@ -114,11 +122,20 @@ def serve_directory(base_dir: Path, *, recursive: bool, port: int, no_browser: b
                                       '<p><a href="/">← all reports</a></p>'))
                 return
             ea, eb = by_idx.get(a), by_idx.get(b)
+            if qs.get('ka'):
+                ea = next((e for e in reports if e.key == qs['ka'][0]), None)
+            if qs.get('kb'):
+                eb = next((e for e in reports if e.key == qs['kb'][0]), None)
             if ea is None or eb is None:
                 self._send(404, _page("not found", "<h1>404</h1>"
                                       '<p><a href="/">← all reports</a></p>'))
                 return
-            ra, rb = load_report(ea.path), load_report(eb.path)
+            da, db = (qs.get('da') or [None])[0], (qs.get('db') or [None])[0]
+            if (da and da != ea.content_digest) or (db and db != eb.content_digest):
+                self._send(409, _page('report changed', '<h1>Report changed</h1><p>Reload the index before comparing these files.</p><a href="/">All reports</a>'))
+                return
+            ra = load_report(ea.path, expected_digest=da, base_dir=base_dir)
+            rb = load_report(eb.path, expected_digest=db, base_dir=base_dir)
             self._send(200, render_diff(ra, rb, name_a=ea.stem, name_b=eb.stem))
 
     class _ReusableServer(socketserver.TCPServer):

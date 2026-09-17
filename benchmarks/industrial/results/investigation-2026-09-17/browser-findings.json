@@ -1,0 +1,80 @@
+[
+  {
+    "name": "desktop",
+    "label": "index",
+    "viewport": 1440,
+    "width": 1440,
+    "injected": false,
+    "violations": []
+  },
+  {
+    "name": "desktop",
+    "label": "expanded-report",
+    "viewport": 1440,
+    "width": 1440,
+    "injected": false,
+    "violations": []
+  },
+  {
+    "name": "desktop",
+    "label": "comparison",
+    "viewport": 1440,
+    "width": 1440,
+    "injected": false,
+    "violations": []
+  },
+  {
+    "name": "desktop",
+    "errors": [],
+    "remoteRequests": []
+  },
+  {
+    "name": "mobile",
+    "label": "index",
+    "viewport": 390,
+    "width": 390,
+    "injected": false,
+    "violations": []
+  },
+  {
+    "name": "mobile",
+    "label": "expanded-report",
+    "viewport": 390,
+    "width": 390,
+    "injected": false,
+    "violations": []
+  },
+  {
+    "name": "mobile",
+    "label": "comparison",
+    "viewport": 390,
+    "width": 390,
+    "injected": false,
+    "violations": []
+  },
+  {
+    "name": "mobile",
+    "errors": [],
+    "remoteRequests": []
+  },
+  {
+    "nativeInspect": true,
+    "tab": "MESSAGES",
+    "textLength": 645
+  },
+  {
+    "nativeInspect": true,
+    "tab": "SCORING",
+    "textLength": 917
+  },
+  {
+    "nativeInspect": true,
+    "tab": "METADATA",
+    "textLength": 1271
+  },
+  {
+    "nativeInspect": true,
+    "viewport": 390,
+    "width": 450
+  }
+]
