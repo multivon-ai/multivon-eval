@@ -95,7 +95,8 @@ Reuse boundaries for R09:
   and [Media Fragments](https://www.w3.org/TR/media-frags/) supply region and time
   reference semantics. The missing Multivon behavior is binding these references
   to exact retained content and validating the evidence used by a verdict.
-  These planned bindings are not implemented by the legacy image metadata keys.
+  A development bridge now implements this narrow content/reference profile;
+  legacy image metadata keys do not automatically consume it.
 
 Question-based visual scoring already has substantial prior art:
 [TIFA](https://github.com/Yushi-Hu/tifa) provides question generation, filtering,
@@ -107,3 +108,13 @@ For generated-image alignment, evaluate those upstream implementations before
 inventing a new metric. Their original task does not validate invoice totals,
 state changes or industrial release decisions. No upstream code/data was copied
 or a new dataset downloaded for this parser audit.
+
+
+2026-09-17 media checkpoint: reused native Hugging Face image bytes, Inspect
+image/audio/video/document content and View, Pillow 12.3.0, PDFium through
+pypdfium2 5.13.0 and PyAV 17.1.0. The optional descriptor/reference layer owns no
+storage, network fetch, codec or dataset. Four actual viewer samples exposed a
+PDF badge-only view and mobile overflow; rendered-page and audio/video playback
+checks passed. Six Haiku calls reused pdfhell 0.6.2's existing hidden-OCR fixtures;
+the two-source result and critique are in benchmarks/industrial/MEDIA_VALIDATION.md.
+The standard annotation profile validates reference bounds, not semantic support.

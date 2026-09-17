@@ -27,16 +27,19 @@ def _require_inspect() -> None:
         raise ImportError("Install multivon-eval[inspect] for the Inspect integration") from exc
 
 
-def to_inspect_dataset(manifest: CaseManifest, *, split: str | None = None):
+def to_inspect_dataset(manifest: CaseManifest, *, split: str | None = None, media_resolver=None):
     """Create native Inspect samples with stable IDs and full case metadata.
 
     Text context becomes a system message. Conversation messages precede the
-    current input. Multimodal attachments and agent tool events need explicit
-    task/solver configuration; metadata is preserved without guessing wiring.
+    current input. Bound media requires an explicit media_resolver that returns
+    bytes; they are verified and embedded using native Inspect content types.
+    Other legacy metadata attachments and tool events still need task wiring.
     """
     _require_inspect()
     from inspect_ai.dataset import MemoryDataset, Sample
     from inspect_ai.model import ChatMessageAssistant, ChatMessageSystem, ChatMessageUser
+
+    from .inspect_media import media_message
     samples = []
     for case in manifest.split(split) if split else manifest.cases:
         case_id, case_digest = case.identity()
@@ -48,11 +51,12 @@ def to_inspect_dataset(manifest: CaseManifest, *, split: str | None = None):
             if message["role"] not in roles:
                 raise ValueError("Tool conversation messages require an explicit Inspect task mapper")
             messages.append(roles[message["role"]](content=message["content"]))
-        messages.append(ChatMessageUser(content=case.input))
+        messages.append(ChatMessageUser(content=media_message(case, media_resolver)))
         samples.append(Sample(id=case_id, input=messages, target=case.expected_output or "",
                               metadata={_NAMESPACE: {"case": case_to_dict(case),
                                         "case_id": case_id, "case_digest": case_digest,
-                                        "manifest_digest": manifest.digest}}))
+                                        "manifest_digest": manifest.digest,
+                                        "input_message_index": len(messages) - 1}}))
     return MemoryDataset(samples, name=manifest.manifest["name"])
 
 
@@ -66,6 +70,17 @@ def _case_from_metadata(metadata: dict, sample_id: str | int) -> EvalCase:
     if str(sample_id) != envelope["case_id"]:
         raise ValueError("Inspect sample ID differs from case identity")
     return case
+
+
+def _verify_bound_media(case: EvalCase, metadata: dict, messages: list) -> None:
+    from ..media import case_media
+    from .inspect_media import verify_media_message
+    if not case_media(case):
+        return
+    index = metadata[_NAMESPACE].get("input_message_index")
+    if type(index) is not int or not 0 <= index < len(messages):
+        raise ValueError("Inspect log lacks the original bound media message")
+    verify_media_message(case, messages[index])
 
 
 def _execution_case(case: EvalCase, messages: list) -> EvalCase:
@@ -102,7 +117,9 @@ def as_inspect_scorer(evaluator: Evaluator, *, name: str | None = None):
         if hasattr(evaluator, "prepare"):
             evaluator.prepare()
         async def score(state, target):
-            case = _execution_case(_case_from_metadata(state.metadata, state.sample_id), state.messages)
+            original = _case_from_metadata(state.metadata, state.sample_id)
+            _verify_bound_media(original, state.metadata, state.messages)
+            case = _execution_case(original, state.messages)
             if isinstance(evaluator, (Latency, MaxLatency)):
                 result = EvalResult(evaluator.name, 0.0, False,
                                     "Inspect task duration is not target request latency", {"skipped": True})
@@ -154,6 +171,7 @@ def _from_inspect_log(log: Any) -> EvalReport:
         evidence_issues.append(f"Inspect evaluation status is {log.status}; expected samples may be missing")
     for sample in log.samples or []:
         case = _case_from_metadata(sample.metadata, sample.id)
+        _verify_bound_media(case, sample.metadata, sample.messages)
         results = []
         evaluation_case = _execution_case(case, sample.messages)
         for score_name, score in (sample.scores or {}).items():

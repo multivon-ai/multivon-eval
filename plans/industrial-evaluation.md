@@ -25,7 +25,7 @@ Gymnasium at their established boundaries.
 | R06 | Trace interoperability | OpenTelemetry ingestion/export, documented schema/version handling, actual round trips with supported companion integrations | Development preview: native SDK/OTLP protobuf, actual Collector JSON and published MCP 0.4.0 round trips verified; convention profile and unsupported projections documented; production capture authenticity remains outside the bridge |
 | R07 | Task/environment/outcome interfaces | Setup/reset/action/observation/cleanup, isolated repeated episodes, real end-state assertions, forbidden side effects, partial failures and recovery cases | Development preview: native Gymnasium lifecycle plus immutable state evidence and outcome checks; 14 actual SQLite environment instances validate separate resources, forbidden history, partial commits and explicit recovery; security isolation and durable execution stay upstream under R03 |
 | R08 | Failure investigation UI | Trial comparison, evidence references, slices, review, case promotion, local security and accessibility; rendered desktop/mobile verification | Development preview: saved trial comparison/filtering, native Inspect references, Label Studio consensus-bound promotion and local request protections validated; six browser scans passed with keyboard/download checks; upstream mobile limitations and missing manual screen-reader validation documented |
-| R09 | Typed multimodal artifacts | Images/pages/audio/video, content identity, timestamps/regions, actual artifact rendering and grounded verdict references, extraction-versus-perception comparisons | In progress: legacy vision measurement failures and current Anthropic SDK incompatibility corrected; Inspect/HF/W3C reuse boundaries documented. Typed content bindings, grounded references and rendering validation remain |
+| R09 | Typed multimodal artifacts | Images/pages/audio/video, content identity, timestamps/regions, actual artifact rendering and grounded verdict references, extraction-versus-perception comparisons | Development preview: content/probe bindings, native HF/Inspect round trips, W3C references, PDF page rendering and actual image/audio/video viewing verified; six Haiku calls on two synthetic pdfhell sources compare PDF/pixels/text. General selectors, video regions, full packet validation and semantic citation validity remain outside the tested profile |
 | R10 | Controlled robustness suite | Validated invariant-preserving and semantic-changing transformations; reviewed or code-derived answers; no transformations that silently corrupt the oracle | Pending |
 | R11 | World-model evaluation (experimental) | Real adapter demo; action responsiveness, horizons, state persistence, uncertainty, planning utility; model and simulator errors separated; reproducible measured results | Pending |
 | R12 | FOSS extension/stability contract | Public plugin/environment protocols, versioned report schemas, optional heavy dependencies, contributor fixtures, compatibility matrix and release checks | Pending |
@@ -229,3 +229,23 @@ a measurement audit, not vision accuracy or robustness validation. Typed media
 bindings/rendering and full provider evidence remain open. See
 benchmarks/industrial/VISION_MEASUREMENT_AUDIT.md and the Inspect/HF/W3C/TIFA/
 VQAScore reuse assessment.
+
+
+2026-09-17 media checkpoint: introduced content/provenance-bound descriptors
+without new storage or dataset loading. Reuse Pillow/PDFium/PyAV metadata and
+native Inspect content; verify hashes and re-probe properties at use time.
+Grounded verdicts retain W3C references with explicit bounds and unknown states;
+reference validity never supplies semantic truth. Native HF bytes and saved
+Inspect logs round-trip, while changed/missing media reject. Browser checks
+verified page pixels and WAV/MP4 playback; native PDF remains a badge and all
+four upstream panels overflow on mobile. Six live Haiku calls reused two
+synthetic pdfhell development sources: PDF 2/2, pixels 2/2, text 1/2, with known
+usage estimate $0.007014. This is not a statistically supported ranking or
+independent customer validation. MCP 0.4.0 reproduced the policy rejection over
+stdio. The 262,047-byte archive retains 28 checksum-verified files and replays
+without target calls; post-run source-snapshot timing is explicitly disclosed.
+Full Python 3.12: 1,739 passed, 5 skipped, 7 warnings; after adding codec/orientation
+checks, focused Python 3.10 and 3.12 each passed 33 tests; 68 MDX pages compiled.
+No new PyPI release. See benchmarks/industrial/MEDIA_VALIDATION.md. R10 controlled
+robustness and R11 world-model experiments remain active, alongside R02/R03/R12
+execution/evidence/stability requirements and final cross-project delivery.

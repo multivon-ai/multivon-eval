@@ -74,6 +74,8 @@ forbidden changes. The [failure investigation workflow](docs/guides/failure-inve
 connects saved trial comparison to Label Studio review and development regression
 cases. The [vision grader audit](docs/evaluators/multimodal.mdx) corrects empty-claim
 perfect scores, invalid-judgment handling and Anthropic SDK 1.x compatibility.
+[Content-bound media](docs/guides/media-evidence.mdx) connects verified image,
+PDF, audio and video inputs to native Inspect logs and W3C verdict references.
 These previews and fixes are not included in PyPI 0.18.0.
 
 ## A real workflow example

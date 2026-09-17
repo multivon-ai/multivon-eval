@@ -42,7 +42,8 @@ not create a results JSON or a captured output file.
 ## Development integration demonstrations
 
 These examples require a checkout of `main`; the review and OTel previews are
-not in PyPI 0.18.0. They use synthetic fixtures and make no model API calls.
+not in PyPI 0.18.0. They use synthetic fixtures. The media example has an explicit
+optional live-model mode; the other demonstrations below make no model API calls.
 
 | Script | What it checks | Installation |
 |---|---|---|
@@ -80,3 +81,19 @@ The example uses synthetic reviews, never inferred human labels.
 `examples/promote_reviewed_case.py --help` shows the separate command for your
 saved reports and native Label Studio exports. It requires a new expected-output
 file and rationale, preserves source grouping, and creates a development manifest.
+
+
+For typed media and native Inspect viewing:
+
+```bash
+pip install -e '.[media,inspect]' 'pdfhell[pixels]==0.6.2'
+python examples/media_evidence.py --output-dir media-demo
+inspect view --log-dir media-demo/logs
+```
+
+The default uses mock responses for all media and proves no model accuracy.
+`--document-model anthropic/claude-haiku-4-5-20251001` makes six target requests
+on two synthetic pdfhell development documents, with no retry and at most 128
+output tokens per request. It needs `ANTHROPIC_API_KEY`; audio/video remain
+mock-only. The native cost limit is a runtime stop condition, not a billing cap.
+See [measured results and limitations](../benchmarks/industrial/MEDIA_VALIDATION.md).

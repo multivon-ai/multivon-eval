@@ -1,0 +1,57 @@
+{
+  "scope": "Integration probe with two synthetic development sources; no independent human labels",
+  "cost_is_invoice": false,
+  "estimated_usd": 0.007014,
+  "base_git_revision": "09088403bddc38ad4f0f55f39d1c90a73b43b79b",
+  "source_snapshot_note": "Replay source was captured after execution. MediaArtifact.verify was hardened after the live run to re-probe properties; saved native logs were then successfully re-imported with that hardening. Do not interpret this as a pre-run source attestation.",
+  "live_events": [
+    {
+      "case_id": "501-pdf",
+      "uuid": "VdHcmNWTqxDJTWCvhMHq4K",
+      "retries": null,
+      "error": null,
+      "has_request": true,
+      "has_response": true
+    },
+    {
+      "case_id": "501-pixels",
+      "uuid": "GQfLdH5jHPbVmPhjzdpYM9",
+      "retries": null,
+      "error": null,
+      "has_request": true,
+      "has_response": true
+    },
+    {
+      "case_id": "501-text",
+      "uuid": "mLad758xLCQfDGd6CSyKfU",
+      "retries": null,
+      "error": null,
+      "has_request": true,
+      "has_response": true
+    },
+    {
+      "case_id": "502-pdf",
+      "uuid": "AJ78S5cpbxtgTBaZhi4SSP",
+      "retries": null,
+      "error": null,
+      "has_request": true,
+      "has_response": true
+    },
+    {
+      "case_id": "502-pixels",
+      "uuid": "Srq5UdSRbjkFXk2nQz5oV4",
+      "retries": null,
+      "error": null,
+      "has_request": true,
+      "has_response": true
+    },
+    {
+      "case_id": "502-text",
+      "uuid": "ZC2rahViceJW6hrcPLPRwR",
+      "retries": null,
+      "error": null,
+      "has_request": true,
+      "has_response": true
+    }
+  ]
+}

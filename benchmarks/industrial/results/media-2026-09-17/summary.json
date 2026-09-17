@@ -1,0 +1,100 @@
+{
+  "transport": {
+    "status": "success",
+    "model": "mockllm/model",
+    "cases": 4,
+    "passed": 4,
+    "errors": 0,
+    "usage": {
+      "mockllm/model": {
+        "input_tokens": 1035,
+        "output_tokens": 28,
+        "total_tokens": 1063,
+        "input_tokens_cache_write": null,
+        "input_tokens_cache_read": null,
+        "reasoning_tokens": null,
+        "total_cost": null
+      }
+    },
+    "outputs": [
+      {
+        "case_id": "native-pdf",
+        "output": "fixture",
+        "passed": true
+      },
+      {
+        "case_id": "page-image",
+        "output": "fixture",
+        "passed": true
+      },
+      {
+        "case_id": "ramp.mp4",
+        "output": "fixture",
+        "passed": true
+      },
+      {
+        "case_id": "silence.wav",
+        "output": "fixture",
+        "passed": true
+      }
+    ]
+  },
+  "documents": {
+    "status": "success",
+    "model": "anthropic/claude-haiku-4-5-20251001",
+    "cases": 6,
+    "passed": 5,
+    "errors": 0,
+    "usage": {
+      "anthropic/claude-haiku-4-5-20251001": {
+        "input_tokens": 6744,
+        "output_tokens": 54,
+        "total_tokens": 6798,
+        "input_tokens_cache_write": 0,
+        "input_tokens_cache_read": 0,
+        "reasoning_tokens": null,
+        "total_cost": 0.007013999999999999
+      }
+    },
+    "outputs": [
+      {
+        "case_id": "501-pdf",
+        "output": "$18,900.25",
+        "passed": true
+      },
+      {
+        "case_id": "501-pixels",
+        "output": "$18,900.25",
+        "passed": true
+      },
+      {
+        "case_id": "501-text",
+        "output": "$23,900.25",
+        "passed": false
+      },
+      {
+        "case_id": "502-pdf",
+        "output": "$12,345.67",
+        "passed": true
+      },
+      {
+        "case_id": "502-pixels",
+        "output": "$12,345.67",
+        "passed": true
+      },
+      {
+        "case_id": "502-text",
+        "output": "$12,345.67",
+        "passed": true
+      }
+    ]
+  },
+  "versions": {
+    "inspect-ai": "0.3.263",
+    "pdfhell": "0.6.2",
+    "av": "17.1.0",
+    "pypdfium2": "5.13.0",
+    "Pillow": "12.3.0",
+    "anthropic": "1.6.0"
+  }
+}

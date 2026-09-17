@@ -84,3 +84,12 @@ forbidden changes followed by restoration and failure after commit. This is
 synthetic integration evidence, not model accuracy or production validation.
 The offline ablation makes the comparison against simple answer/state checks
 explicit and does not claim an advantage over a complete bespoke outcome checker.
+
+
+## Media evidence validation (development preview)
+
+[Content-bound media validation](MEDIA_VALIDATION.md) records native dataset/log
+round trips, actual media playback, a six-call PDF/pixels/text probe on two
+synthetic pdfhell sources, and a small raw archive for offline reproduction.
+The result demonstrates an evidence/representation boundary, not general model
+accuracy, statistically supported superiority or customer validation.

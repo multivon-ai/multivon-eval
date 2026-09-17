@@ -4,6 +4,21 @@ All notable changes to `multivon-eval`. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+### Content-bound media
+
+- Add immutable media descriptors with byte hashes, parser-probed geometry or
+  duration, provenance and ordered case identity. Re-verify bytes and properties
+  before native Inspect transport; missing/changed/unresolved input cannot
+  silently become a text-only task or a successful import.
+- Reuse Pillow, PDFium and PyAV through an optional media extra. PDF page renders
+  retain the parent descriptor, page and recipe; media loading/storage stay with
+  the caller and existing dataset tools.
+- Attach a narrow W3C annotation profile to explicit task verdicts: whole
+  artifacts, still-image pixel regions and closed audio/video time intervals.
+  Reference bounds do not establish semantic support or oracle independence.
+- Add native HF/Inspect checks, actual viewer playback and a six-call pdfhell
+  PDF/pixels/text probe with preserved raw evidence and explicit limitations.
+
 ### Vision measurement correctness
 
 - Fix Anthropic SDK 1.x vision calls using its documented `extra_body` migration

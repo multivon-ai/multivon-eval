@@ -1,0 +1,102 @@
+{
+  "findings": [
+    {
+      "id": "page-image",
+      "media": {
+        "images": [
+          {
+            "width": 918,
+            "height": 1188,
+            "complete": true,
+            "source": "data:image/png;base64,iVBORw0KGgoAAAANSU"
+          }
+        ],
+        "audio": [],
+        "video": [],
+        "embeds": []
+      },
+      "text": "/tmp/multivon-media-live-01\nlogs\n2026-09-17T00-43-14-00-00_transport_YMMYYhX36rPpXiwjYkkcQn.eval\nsample\nSample page-image (Epoch 1)\npage-image\n·\nEpoch 1\n·\ntransport\n·\nmockllm/model\nINPUT\n\nRetain page pixels.\n(Image)\n\nTARGET\n\nfixture\n\nANSWER\n\nfixture\n\nSCORE\n1\nPASSED\nT\nTRANSCRIPT\nMESSAGES\nSCORING\nUSAGE\nMETADATA\nJSON\nRaw\nCopy\nDownload\nPrint\nUSER\n1\n\nRetain page pixels.\n\nless...\nASSISTANT\n2\n\nfixture\n\nSearch"
+    },
+    {
+      "id": "page-image",
+      "mobile": {
+        "viewport": 390,
+        "width": 450
+      }
+    },
+    {
+      "id": "silence.wav",
+      "playbackPosition": 0.161403
+    },
+    {
+      "id": "silence.wav",
+      "media": {
+        "images": [],
+        "audio": [
+          {
+            "ready": 4,
+            "duration": 1,
+            "src": "data:audio/wav;base64,UklGRqQ+AABXQVZFZm"
+          }
+        ],
+        "video": [],
+        "embeds": []
+      },
+      "text": "/tmp/multivon-media-live-01\nlogs\n2026-09-17T00-43-14-00-00_transport_YMMYYhX36rPpXiwjYkkcQn.eval\nsample\nSample silence.wav (Epoch 1)\nsilence.wav\n·\nEpoch 1\n·\ntransport\n·\nmockllm/model\nINPUT\n\nRetain fixture media.\n(Audio)\n\nTARGET\n\nfixture\n\nANSWER\n\nfixture\n\nSCORE\n1\nPASSED\nT\nTRANSCRIPT\nMESSAGES\nSCORING\nUSAGE\nMETADATA\nJSON\nRaw\nCopy\nDownload\nPrint\nUSER\n1\n\nRetain fixture media.\n\nASSISTANT\n2\n\nfixture\n\nSearch"
+    },
+    {
+      "id": "silence.wav",
+      "mobile": {
+        "viewport": 390,
+        "width": 450
+      }
+    },
+    {
+      "id": "ramp.mp4",
+      "playbackPosition": 0.303306
+    },
+    {
+      "id": "ramp.mp4",
+      "media": {
+        "images": [],
+        "audio": [],
+        "video": [
+          {
+            "ready": 4,
+            "duration": 1,
+            "width": 64,
+            "height": 48,
+            "src": "data:video/mp4;base64,AAAAIGZ0eXBpc29tAA"
+          }
+        ],
+        "embeds": []
+      },
+      "text": "/tmp/multivon-media-live-01\nlogs\n2026-09-17T00-43-14-00-00_transport_YMMYYhX36rPpXiwjYkkcQn.eval\nsample\nSample ramp.mp4 (Epoch 1)\nramp.mp4\n·\nEpoch 1\n·\ntransport\n·\nmockllm/model\nINPUT\n\nRetain fixture media.\n(Video)\n\nTARGET\n\nfixture\n\nANSWER\n\nfixture\n\nSCORE\n1\nPASSED\nT\nTRANSCRIPT\nMESSAGES\nSCORING\nUSAGE\nMETADATA\nJSON\nRaw\nCopy\nDownload\nPrint\nUSER\n1\n\nRetain fixture media.\n\nless...\nASSISTANT\n2\n\nfixture\n\nSearch"
+    },
+    {
+      "id": "ramp.mp4",
+      "mobile": {
+        "viewport": 390,
+        "width": 450
+      }
+    },
+    {
+      "id": "native-pdf",
+      "media": {
+        "images": [],
+        "audio": [],
+        "video": [],
+        "embeds": []
+      },
+      "text": "/tmp/multivon-media-live-01\nlogs\n2026-09-17T00-43-14-00-00_transport_YMMYYhX36rPpXiwjYkkcQn.eval\nsample\nSample native-pdf (Epoch 1)\nnative-pdf\n·\nEpoch 1\n·\ntransport\n·\nmockllm/model\nINPUT\n\nRetain native PDF.\n(Document)\n\nTARGET\n\nfixture\n\nANSWER\n\nfixture\n\nSCORE\n1\nPASSED\nT\nTRANSCRIPT\nMESSAGES\nSCORING\nUSAGE\nMETADATA\nJSON\nRaw\nCopy\nDownload\nPrint\nUSER\n1\n\nRetain native PDF.\n\ndocument.pdf\nASSISTANT\n2\n\nfixture\n\nSearch"
+    },
+    {
+      "id": "native-pdf",
+      "mobile": {
+        "viewport": 390,
+        "width": 450
+      }
+    }
+  ],
+  "errors": []
+}

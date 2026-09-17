@@ -1,0 +1,145 @@
+---
+title: "Content-bound media evidence"
+description: "Keep native media in Inspect and bind verdict references to verified content."
+---
+
+<Note>
+Development preview, not included in PyPI 0.18.0. Install the development
+checkout with `pip install -e '.[media,inspect]'`. Dataset loading remains in
+Hugging Face; media transport and viewing remain in Inspect.
+</Note>
+
+A media path is a location, not an immutable input. `MediaArtifact` records a
+SHA-256 of supplied bytes, their length and type, geometry or duration, parser
+versions and provenance. The ordered descriptors enter the case identity.
+The caller retains the bytes using their existing storage system.
+
+## Capture and run native media
+
+```python
+from pathlib import Path
+from multivon_eval import CaseManifest, EvalCase
+from multivon_eval.media import MediaArtifact, with_media
+from multivon_eval.integrations.inspect import to_inspect_dataset
+
+content = Path("invoice.png").read_bytes()  # Explicit, caller-authorized access.
+artifact = MediaArtifact.capture(content, "image/png", provenance={
+    "source": "invoice-source-001", "split": "development",
+})
+case = with_media(EvalCase(
+    "Read the visible total.", case_id="invoice-001", source_id="invoice-source-001",
+), artifact)
+manifest = CaseManifest("invoice development", [case])
+samples = to_inspect_dataset(manifest, media_resolver=lambda reference: content)
+```
+
+The resolver receives each descriptor and must return matching bytes. Missing
+resolvers or changed content raise before constructing a text-only substitute.
+Verification also re-probes geometry/timing to reject descriptors whose bounds
+were changed and rehashed. No path, URL, JSON-LD context or content identifier
+is fetched by these helpers. A resolver can perform caller-authorized storage
+access; the resolver owns that behavior.
+
+The bridge emits native `ContentImage`, `ContentAudio`, `ContentVideo` and
+`ContentDocument` values. Providers still differ in supported modalities.
+Reading a persisted Inspect log requires resolved attachments:
+
+```python
+from inspect_ai.log import read_eval_log
+from multivon_eval.integrations.inspect import from_inspect_log
+
+log = read_eval_log("run.eval", resolve_attachments=True)
+report = from_inspect_log(log)
+```
+
+The scorer and importer check the original bound user message. Missing, changed,
+unresolved or type-mismatched media cannot silently pass. Later model/tool media
+is retained in the native log but is outside this original-input binding.
+Native log/provider-request authenticity is not established by a hash.
+
+## Supported capture profile
+
+| Media | Probe | Limits |
+|---|---|---|
+| PNG, JPEG, WebP | Pillow decodes one image and records dimensions/orientation | Multiple frames rejected; at most 40 million pixels |
+| PDF | PDFium opens the document and counts pages | This does not render or validate every page |
+| WAV, MP3 | PyAV reads one primary audio stream's metadata | Packet decoding and audible correctness are not established |
+| MP4 | PyAV reads one primary video stream's metadata | Rotation/display geometry and frame correctness are not established |
+
+Capture defaults to a 32 MiB byte limit. Audio/video duration may be unknown;
+a time citation then cannot validate. The PyAV path uses explicit formats and
+disables external protocol/reference resolution. These limits are not a codec
+sandbox or a guaranteed execution deadline. Isolate hostile media upstream.
+
+Descriptors can round-trip through `artifact.data` and
+`MediaArtifact.from_dict(data)`. A descriptor alone does not prove possession of
+bytes or trustworthy provenance. Use `artifact.verify(content)` before use.
+Changing parser results can invalidate verification; record a deliberate new
+case revision instead of quietly changing its geometry.
+
+For Hugging Face media features, use `decode=False` and feed the resulting bytes
+(or explicitly read the returned path) to capture inside the existing
+`from_huggingface(..., record_to_case=...)` mapper. Preserve dataset revision,
+license and source grouping in the manifest. This does not create a new dataset,
+loader, cache or artifact store.
+
+## Document pages
+
+```python
+from multivon_eval.media_pdf import render_pdf_page
+
+pdf = Path("invoice.pdf").read_bytes()
+parent = MediaArtifact.capture(pdf, "application/pdf")
+page, png = render_pdf_page(parent, pdf, page=1, scale=1.5)
+```
+
+Page numbers are one-based; scale is pixels per PDF point. The PNG's provenance
+retains the parent descriptor, page, PDFium version and recipe. Regions refer to
+the resulting raster, not PDF points. Form widgets are not initialized by this
+renderer. Calls made by this module share a PDFium lock; unrelated PDFium users
+must coordinate separately or use separate processes because PDFium is not
+thread-safe.
+
+A descriptor's local `urn:multivon:media:` identifier includes provenance. Two
+pages with identical pixels can retain different parent/page roles. The bytes'
+SHA-256 remains separate. These application identifiers are not network URLs.
+
+## Reference regions and time intervals
+
+```python
+from multivon_eval.grounding import annotation, grounded_result
+
+reference = annotation(page, "Expected total appears in this page region.",
+                       region=(0, 0, 200, 100))  # x, y, width, height in pixels
+result = grounded_result("visible_total", None, "Awaiting a task-specific oracle",
+                         annotations=[reference], artifacts=[page])
+```
+
+This uses a narrow [W3C Web Annotation](https://www.w3.org/TR/annotation-model/)
+profile with [Media Fragment selectors](https://www.w3.org/TR/media-frags/):
+whole artifacts, integer pixel rectangles on orientation-1 still images and
+closed `time=(start_seconds, end_seconds)` intervals on audio/video. Regions
+outside bounds are rejected rather than clipped. Percent coordinates, open
+intervals, duplicate dimensions, arbitrary selectors and video spatial regions
+are unsupported. Extract a frame explicitly before citing a video region.
+
+`grounded_result` attaches checked references to a caller-supplied boolean or
+unknown verdict. Known verdicts require a reference; unknown verdicts stay
+unmeasured. Reference validity proves neither semantic support nor oracle
+independence. Keep the task check and its version explicit, and require it in
+an acceptance policy.
+
+## Worked evidence and limitations
+
+`examples/media_evidence.py` runs an offline native-media transport fixture and
+reuses pdfhell's hidden-OCR generator for PDF/pixels/extracted-text treatments.
+An optional bounded live document run is separate from mock audio/video transport.
+See the repository's `benchmarks/industrial/MEDIA_VALIDATION.md` for actual
+versions, rendered checks, six-call results and their limits.
+
+Use `inspect view --log-dir OUTPUT/logs` to inspect native media. Multivon's HTML
+trial cards retain descriptors and verdict annotations as JSON; they do not
+implement another general media player or annotate overlays in Inspect.
+In the tested upstream viewer, the PDF is a badge; the retained PNG provides
+page inspection. Sample panels overflow at 390 pixels, so prefer desktop use.
+These are content/reference bindings, not a new multimodal scoring algorithm.

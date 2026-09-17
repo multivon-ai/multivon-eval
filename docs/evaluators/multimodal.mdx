@@ -36,7 +36,9 @@ image-only graders.
 Local paths are read with the caller's filesystem access. HTTP(S) URLs may be
 fetched by the Anthropic/OpenAI provider. This Google adapter accepts local
 paths and data URIs only. These legacy path/URL fields do not hash or freeze media
-contents; retain the original bytes separately for reproducibility. Do not
+contents; retain the original bytes separately for reproducibility. The separate
+[content-bound media bridge](/guides/media-evidence) provides verified native
+Inspect inputs; these legacy graders do not automatically consume that profile. Do not
 populate them from untrusted model output without authorizing the access.
 
 ## Choose a judge and threshold

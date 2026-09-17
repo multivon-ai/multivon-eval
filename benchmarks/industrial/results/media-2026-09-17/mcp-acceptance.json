@@ -1,0 +1,37 @@
+{
+  "schema": "multivon.acceptance/v1",
+  "decision": "reject",
+  "exit_code": 1,
+  "policy_digest": "ee09b57cff81ffa65e6cc0be39c7f7c28eeb4a62cfd8e0da905895b892b19b5b",
+  "findings": [
+    {
+      "kind": "quality",
+      "code": "critical_failure",
+      "scope": "all",
+      "message": "all/visible_amount_exact: critical invariant failed"
+    }
+  ],
+  "measurements": [
+    {
+      "scope": "all",
+      "metric": "case_error_rate",
+      "cases": 6,
+      "errored_cases": 0,
+      "value": 0.0
+    },
+    {
+      "scope": "all",
+      "metric": "source_groups",
+      "value": 2
+    },
+    {
+      "scope": "all",
+      "metric": "visible_amount_exact",
+      "cases": 6,
+      "measured_cases": 6,
+      "passed_cases": 5,
+      "coverage": 1.0,
+      "pass_rate": 0.8333333333333334
+    }
+  ]
+}
