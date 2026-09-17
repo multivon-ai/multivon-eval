@@ -1,0 +1,17 @@
+{
+  "source": {
+    "protocol.json": "f594158b53be83caa14fc0c76dccd71a37948244268ee6a79dd4bd9038b08c41",
+    "predictions.jsonl": "a8f5678bd104c2fcc38192b947c4a83e86f85b1f948add513ba44c314bf0f767",
+    "events.sqlite": "ce07d2fbfa9fd87bffa0a7968c1740c87ea3bdeed8bfdc0a24077f187e208582",
+    "execution.json": "5d93f57b9e05ee70f540b559a7ef66e78eadd1dde134a5b3eed5e006ab579ebe",
+    "inputs.json": "208b23a1304155a1aaddda3930fc25003b6f0f95912578941686dd33d844a5fb",
+    "manifest.json": "3e97690a913a966faa5b6908d9444f6e4a4162c9e009650c85ed3caa7072506e",
+    "tatqa_eval.py": "a4110626c477e7ed88f42b5edeb8449eaa9a4370740a627631b4a462bcf43762",
+    "tatqa_metric.py": "2aeeac479f89f8c76300af1cc0e8d098eb86af84bc386b38b6ab4af484a6dea8",
+    "tatqa_utils.py": "a84bb2f960737cf0a53733637a674cc4b20ef030a2be6a4b21dc2c4356f415ec",
+    "multivon_scorer.py": "ecc8f820040126805754bfb3c52883010081e10a82df045e69b9962b25b8b662",
+    "multivon_projection.py": "13d92a70d455e2d8478dbacc1ae81aeb966a76319b1c8bd13ed059b95a73d52c"
+  },
+  "results.json": "9e184070bce13fe84c03183b9a325a795bf079f71ce0c5aeb64c0656e18ba67b",
+  "question-metrics.jsonl": "7a534da31690e8df065248ec2630d86f4fccfd1932750da92646f54be7e83107"
+}

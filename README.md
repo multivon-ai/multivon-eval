@@ -100,6 +100,15 @@ shows why a successful text reply can coexist with an unfinished task: native
 Inspect limits stop six local writes, and independent SQLite checks catch the
 missing commits. A completed control verifies the positive path.
 
+The [full TAT-QA financial study](benchmarks/industrial/results/tatqa-financial-2026-09-17/README.md)
+tests 1,663 released test questions with the official scorer. Requiring Claude
+Sonnet 5 to emit answer and evidence locations together reduced exact match from
+74.74% to 72.22% and F1 from 82.76% to 79.96%; both paired context-bootstrap
+intervals exclude zero. The joint record also cost 41.70% more. The result argues
+for testing answer generation and evidence binding as separate stages, with
+missing support remaining indeterminate. It is not a SoTA or customer-validity
+claim.
+
 ## Why use it
 
 | Need | Available today |
@@ -205,6 +214,12 @@ preference on 280 cases (95% case-bootstrap interval **0.413–0.572**).
 It does not establish an advantage over a same-model direct judge: the paired
 interval includes zero, and the ranking reverses under a post-hoc formatting
 check. QAG used four calls per response versus one for the direct judge.
+
+The [TAT-QA evidence-record study](benchmarks/industrial/results/tatqa-financial-2026-09-17/README.md)
+is a separate answer-workflow measurement. Its negative result shows that
+structured evidence requirements can reduce answer quality even when location
+syntax is usually valid. Public labels, a mutable model alias and annotation
+location ambiguity prevent a leaderboard or generalization claim.
 
 One cross-task measurement reported F1 **0.830** on 60 HaluEval summarization
 outputs from 30 source examples, using a QA-selected threshold. It is a small,

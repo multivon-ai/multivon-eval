@@ -4,6 +4,19 @@ These are synthetic maintainer-run experiments. They test specific failure
 mechanisms and integration contracts; they do not establish customer usefulness
 or state-of-the-art model performance.
 
+## Financial answer and evidence-record study
+
+The [complete TAT-QA study](results/tatqa-financial-2026-09-17/README.md)
+compares answer-only and joint answer-plus-evidence prompts on all 1,663 released
+test-gold questions, using Claude Sonnet 5 and the pinned official scorer. The
+joint treatment significantly reduced exact match and F1 while increasing cost
+and latency. Numeric question-level results, provider accounting, hashes,
+context-bootstrap uncertainty and the malformed-output audit are published.
+
+This is a public financial-document reasoning target, not a customer deployment
+or a SoTA claim. Its design implication—test answer generation and evidence
+binding as separate stages—is a follow-up hypothesis rather than a measured win.
+
 ## Process crash after a committed ledger write
 
 The first experiment reuses Inspect 0.3.263 for process recovery and SQLite for

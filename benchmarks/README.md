@@ -12,6 +12,7 @@ accuracy benchmarks. Development features may not be in the latest PyPI release.
 
 | Question | Evidence and reused infrastructure |
 |---|---|
+| Does requiring one response to answer and bind evidence improve a financial workflow? | [Full TAT-QA financial study](industrial/results/tatqa-financial-2026-09-17/README.md): 1,663 questions with the official scorer; joint evidence generation significantly reduced EM/F1 while increasing cost and latency. |
 | Does current QAG outperform a direct judge? | [Full RAGChecker judge study](industrial/results/ragchecker-judges-2026-09-17/README.md): same Haiku model, 280 cases; inconclusive paired difference, parser-sensitive ranking and fourfold QAG call count. |
 | What is an established evaluator-accuracy baseline? | [RAGChecker reproduction](industrial/results/ragchecker-meta-2026-09-17/README.md): unchanged upstream scorer matches published correlations on 280 cases; released predictions, not a Multivon score. |
 | Did the agent complete the business task? | [Document-to-ledger study](industrial/DOCUMENT_RESULTS.md): CORD, pdfhell, Inspect and independently queried SQLite outcomes. |

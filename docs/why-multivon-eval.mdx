@@ -22,6 +22,26 @@ Start with [task success](/guides/task-success), then use the
 [offline quickstart](/quickstart). For behavior changes in the current release,
 read the [0.19.0 migration guide](/guides/migration-0-19).
 
+## Current workflow measurement: TAT-QA
+
+On September 17, 2026, a paired Claude Sonnet 5 study covered all 1,663
+questions in TAT-QA's released test-gold file. The answer-only treatment reached
+74.74% exact match and 82.76% F1. Requiring the same response to include table or
+paragraph evidence locations reduced those scores to 72.22% and 79.96%.
+
+The paired context-bootstrap intervals exclude zero in the negative direction.
+The joint response also increased estimated cost 41.70% and median latency
+35.24%. Valid location syntax alone was insufficient: only 55.20% of questions
+met the strict rule of an exact answer, valid references and full agreement with
+released annotation locations.
+
+This result rejects the tested joint-generation prompt. It motivates a separate
+evidence-binding stage that cannot change the preserved answer, but that design
+still needs a new experiment. Read the [study and practical implications](/guides/financial-evidence-study)
+or inspect the [numeric artifacts and protocol](https://github.com/multivon-ai/multivon-eval/tree/main/benchmarks/industrial/results/tatqa-financial-2026-09-17).
+Public-label contamination, a mutable model alias and missing customer review
+prevent a SoTA or industrial-validity claim.
+
 ## Current judge measurement: RAGChecker
 
 On September 17, 2026, the existing `AnswerAccuracy` evaluator scored all 560

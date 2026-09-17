@@ -1,0 +1,286 @@
+{
+  "study": "TAT-QA financial answer and evidence-record comparison",
+  "population": {
+    "contexts": 277,
+    "questions": 1663,
+    "treatments": 2
+  },
+  "official_tatqa": {
+    "answer_only": {
+      "exact_match": 0.7474443776307877,
+      "f1": 0.8276187612748049,
+      "scale_accuracy": 0.8725195429945881,
+      "questions": 1663
+    },
+    "evidence_record": {
+      "exact_match": 0.7221888153938665,
+      "f1": 0.7995911004209268,
+      "scale_accuracy": 0.8743235117257967,
+      "questions": 1663
+    }
+  },
+  "paired_context_bootstrap": {
+    "em_difference": {
+      "evidence_record_minus_answer_only": -0.025324840108061308,
+      "ci95": [
+        -0.042092603728202005,
+        -0.008418520745640423
+      ],
+      "probability_greater_than_zero": 0.001
+    },
+    "f1_difference": {
+      "evidence_record_minus_answer_only": -0.02811672373694929,
+      "ci95": [
+        -0.04365108238123874,
+        -0.013085890493381448
+      ],
+      "probability_greater_than_zero": 0.0
+    },
+    "resamples": 5000,
+    "unit": "TAT-QA context; all questions within a sampled context retained",
+    "seed": 17092026
+  },
+  "exact_match_discordance": {
+    "evidence_record_only_correct": 61,
+    "answer_only_only_correct": 103,
+    "discordant_questions": 164,
+    "two_sided_exact_mcnemar_p": 0.0012955826170011162,
+    "note": "Question-level test is secondary; context bootstrap is the primary uncertainty analysis"
+  },
+  "answer_type_slices": {
+    "answer_only": {
+      "arithmetic": {
+        "questions": 699,
+        "exact_match": 0.7868383404864091,
+        "f1": 0.7868383404864091
+      },
+      "count": {
+        "questions": 40,
+        "exact_match": 1.0,
+        "f1": 1.0
+      },
+      "multi-span": {
+        "questions": 210,
+        "exact_match": 0.8333333333333334,
+        "f1": 0.9016666666666666
+      },
+      "span": {
+        "questions": 714,
+        "exact_match": 0.6694677871148459,
+        "f1": 0.8361064425770308
+      }
+    },
+    "evidence_record": {
+      "arithmetic": {
+        "questions": 699,
+        "exact_match": 0.7567954220314735,
+        "f1": 0.7567954220314735
+      },
+      "count": {
+        "questions": 40,
+        "exact_match": 0.9,
+        "f1": 0.9
+      },
+      "multi-span": {
+        "questions": 210,
+        "exact_match": 0.8238095238095238,
+        "f1": 0.8913809523809524
+      },
+      "span": {
+        "questions": 714,
+        "exact_match": 0.6484593837535014,
+        "f1": 0.8088655462184874
+      }
+    }
+  },
+  "evidence_record": {
+    "questions": 1663,
+    "valid_location_rate": 0.9957907396271798,
+    "mean_annotation_location_precision": 0.7727142570798615,
+    "mean_annotation_location_recall": 0.7875927039486871,
+    "mean_annotation_location_f1": 0.7767135683852461,
+    "strict_workflow_acceptance": 0.5520144317498497,
+    "answer_exact_questions": 1201,
+    "strictly_accepted_questions": 918,
+    "exact_answer_not_strictly_accepted": 283,
+    "questions_with_full_annotation_location_recall": 1276,
+    "questions_without_prediction_due_to_context_error": 6,
+    "by_answer_type": {
+      "arithmetic": {
+        "questions": 699,
+        "answer_exact_match": 0.7567954220314735,
+        "mean_annotation_location_recall": 0.8180972818311875,
+        "strict_workflow_acceptance": 0.6080114449213162
+      },
+      "count": {
+        "questions": 40,
+        "answer_exact_match": 0.9,
+        "mean_annotation_location_recall": 0.125,
+        "strict_workflow_acceptance": 0.125
+      },
+      "multi-span": {
+        "questions": 210,
+        "answer_exact_match": 0.8238095238095238,
+        "mean_annotation_location_recall": 0.8376984126984126,
+        "strict_workflow_acceptance": 0.7095238095238096
+      },
+      "span": {
+        "questions": 714,
+        "answer_exact_match": 0.6484593837535014,
+        "mean_annotation_location_recall": 0.7801120448179272,
+        "strict_workflow_acceptance": 0.47478991596638653
+      }
+    },
+    "by_location_kind": {
+      "table": {
+        "predicted_locations": 2396,
+        "annotated_locations": 2256,
+        "overlap": 1741,
+        "micro_precision": 0.7266277128547579,
+        "micro_recall": 0.7717198581560284,
+        "micro_f1": 0.7484952708512468
+      },
+      "paragraph": {
+        "predicted_locations": 450,
+        "annotated_locations": 460,
+        "overlap": 427,
+        "micro_precision": 0.9488888888888889,
+        "micro_recall": 0.9282608695652174,
+        "micro_f1": 0.9384615384615385
+      }
+    },
+    "limitation": "Location agreement is against one released annotation and does not establish semantic support or reject valid alternate evidence"
+  },
+  "provider": {
+    "by_treatment": {
+      "answer_only": {
+        "logical_requests": 277,
+        "status_counts": {
+          "scored": 277
+        },
+        "usage": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "input_tokens": 505845,
+          "output_tokens": 95306
+        },
+        "estimated_usd": 1.96475,
+        "cost_is_invoice": false,
+        "latency_seconds": {
+          "median": 4.570535625331104,
+          "p95": 6.648806833289562
+        },
+        "responses_with_capture_gaps": 0
+      },
+      "evidence_record": {
+        "logical_requests": 277,
+        "status_counts": {
+          "scored": 276,
+          "error": 1
+        },
+        "usage": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "input_tokens": 590720,
+          "output_tokens": 160261
+        },
+        "estimated_usd": 2.78405,
+        "cost_is_invoice": false,
+        "latency_seconds": {
+          "median": 6.1813320415094495,
+          "p95": 9.273405016772447
+        },
+        "responses_with_capture_gaps": 0
+      }
+    },
+    "total_estimated_usd": 4.7488,
+    "evidence_record_relative_to_answer_only": {
+      "estimated_cost_increase": 0.4169996182720448,
+      "input_token_increase": 0.16778855182911756,
+      "output_token_increase": 0.6815415608671018,
+      "median_latency_increase": 0.3524305569900583
+    },
+    "pricing": {
+      "input_per_million_usd": 2.0,
+      "output_per_million_usd": 10.0,
+      "source": "https://docs.anthropic.com/en/docs/about-claude/pricing",
+      "retrieved": "2026-09-17"
+    }
+  },
+  "coverage": {
+    "answer_only": {
+      "contexts_scored": 277,
+      "contexts_total": 277,
+      "questions_with_predictions": 1663,
+      "questions_total": 1663
+    },
+    "evidence_record": {
+      "contexts_scored": 276,
+      "contexts_total": 277,
+      "questions_with_predictions": 1657,
+      "questions_total": 1663
+    }
+  },
+  "protocol": {
+    "study": "TAT-QA financial answer and evidence-record comparison",
+    "revision": "a7c0de62fd6fa7e75254187a25dabd454f4774d7",
+    "runner_sha256": "807bd03271749dbc9cb1ee2c235fb889de349159ffd5a9b73e1bce858863cfc0",
+    "common_sha256": "13d92a70d455e2d8478dbacc1ae81aeb966a76319b1c8bd13ed059b95a73d52c",
+    "inputs_sha256": "208b23a1304155a1aaddda3930fc25003b6f0f95912578941686dd33d844a5fb",
+    "manifest_sha256": "3e97690a913a966faa5b6908d9444f6e4a4162c9e009650c85ed3caa7072506e",
+    "python": "3.12.13",
+    "packages": {
+      "anthropic": "0.125.0",
+      "multivon-eval": "0.16.1"
+    },
+    "model": "claude-sonnet-5",
+    "model_snapshot": "Provider response model retained per request; API lists no dated Sonnet 5 ID",
+    "thinking": {
+      "type": "adaptive",
+      "effort": "low"
+    },
+    "temperature": "omitted",
+    "max_tokens_per_context": 8192,
+    "structured_outputs": "Anthropic JSON schema output_config",
+    "treatments": [
+      "answer_only",
+      "evidence_record"
+    ],
+    "contexts": 277,
+    "questions": 1663,
+    "planned_logical_requests": 554,
+    "workers": 4,
+    "shuffle_seed": 17092026,
+    "retry_policy": "Anthropic Python SDK max_retries=2; observed attempts retained by ProviderJournal",
+    "primary": "Official TAT-QA exact match and F1 on all 1663 released test-gold questions",
+    "paired_uncertainty": "5000 context-bootstrap resamples; paired treatments retained together",
+    "evidence_secondary": "Agreement with released annotation locations; paragraph agreement is order-level",
+    "missing_or_malformed": "Retained as zero official score and zero workflow acceptance",
+    "tuning": "No labels supplied to the model; no prompt/model selection after test outcomes",
+    "pricing": {
+      "input_per_million_usd": 2.0,
+      "output_per_million_usd": 10.0,
+      "source": "https://docs.anthropic.com/en/docs/about-claude/pricing",
+      "retrieved": "2026-09-17"
+    },
+    "limits": [
+      "Public released test labels may be contaminated in model training",
+      "Annotation-location agreement is not proof of semantic citation validity",
+      "The model alias is mutable and does not identify immutable weights",
+      "Public data and simulated review records do not establish customer usefulness"
+    ]
+  },
+  "source_hashes": {
+    "protocol.json": "f594158b53be83caa14fc0c76dccd71a37948244268ee6a79dd4bd9038b08c41",
+    "predictions.jsonl": "a8f5678bd104c2fcc38192b947c4a83e86f85b1f948add513ba44c314bf0f767",
+    "events.sqlite": "ce07d2fbfa9fd87bffa0a7968c1740c87ea3bdeed8bfdc0a24077f187e208582",
+    "execution.json": "5d93f57b9e05ee70f540b559a7ef66e78eadd1dde134a5b3eed5e006ab579ebe",
+    "inputs.json": "208b23a1304155a1aaddda3930fc25003b6f0f95912578941686dd33d844a5fb",
+    "manifest.json": "3e97690a913a966faa5b6908d9444f6e4a4162c9e009650c85ed3caa7072506e",
+    "tatqa_eval.py": "a4110626c477e7ed88f42b5edeb8449eaa9a4370740a627631b4a462bcf43762",
+    "tatqa_metric.py": "2aeeac479f89f8c76300af1cc0e8d098eb86af84bc386b38b6ab4af484a6dea8",
+    "tatqa_utils.py": "a84bb2f960737cf0a53733637a674cc4b20ef030a2be6a4b21dc2c4356f415ec",
+    "multivon_scorer.py": "ecc8f820040126805754bfb3c52883010081e10a82df045e69b9962b25b8b662",
+    "multivon_projection.py": "13d92a70d455e2d8478dbacc1ae81aeb966a76319b1c8bd13ed059b95a73d52c"
+  }
+}
