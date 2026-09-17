@@ -185,9 +185,24 @@ def usage_summary(rows: list[dict[str, Any]], protocol: dict[str, Any]) -> dict[
                 for row in selected
             ),
         }
+    answer = by_treatment["answer_only"]
+    evidence = by_treatment["evidence_record"]
+    relative_burden = {
+        "estimated_cost_increase": evidence["estimated_usd"] / answer["estimated_usd"] - 1,
+        "input_token_increase": (
+            evidence["usage"]["input_tokens"] / answer["usage"]["input_tokens"] - 1
+        ),
+        "output_token_increase": (
+            evidence["usage"]["output_tokens"] / answer["usage"]["output_tokens"] - 1
+        ),
+        "median_latency_increase": (
+            evidence["latency_seconds"]["median"] / answer["latency_seconds"]["median"] - 1
+        ),
+    }
     return {
         "by_treatment": by_treatment,
         "total_estimated_usd": sum(row["estimated_usd"] for row in by_treatment.values()),
+        "evidence_record_relative_to_answer_only": relative_burden,
         "pricing": pricing,
     }
 
@@ -244,8 +259,10 @@ def main() -> None:
                 }
                 if treatment == "evidence_record" and question_id in predictions[treatment]:
                     response = predictions[treatment][question_id]
+                    predicted_locations = prediction_locations(response)
+                    annotated_locations = annotation_locations(gold_questions[question_id])
                     scores = location_scores(
-                        prediction_locations(response), annotation_locations(gold_questions[question_id])
+                        predicted_locations, annotated_locations
                     )
                     valid = locations_are_valid(response, context)
                     strict_accept = bool(
@@ -254,7 +271,23 @@ def main() -> None:
                         and scores["annotation_location_recall"] == 1
                         and scores["predicted_locations"] > 0
                     )
-                    base.update(**scores, locations_valid=valid, strict_workflow_accept=strict_accept)
+                    kind_counts = {}
+                    for kind in ("table", "paragraph"):
+                        predicted_kind = {location for location in predicted_locations if location[0] == kind}
+                        annotated_kind = {location for location in annotated_locations if location[0] == kind}
+                        kind_counts.update(
+                            {
+                                f"{kind}_predicted_locations": len(predicted_kind),
+                                f"{kind}_annotated_locations": len(annotated_kind),
+                                f"{kind}_overlap": len(predicted_kind & annotated_kind),
+                            }
+                        )
+                    base.update(
+                        **scores,
+                        **kind_counts,
+                        locations_valid=valid,
+                        strict_workflow_accept=strict_accept,
+                    )
                 numeric_rows.append(base)
     evidence_rows = [row for row in numeric_rows if row["treatment"] == "evidence_record"]
     slices = {}
@@ -269,6 +302,40 @@ def main() -> None:
             for answer_type in sorted({row["answer_type"] for row in selected})
             for group in [[row for row in selected if row["answer_type"] == answer_type]]
         }
+    evidence_by_answer_type = {}
+    for answer_type in sorted({row["answer_type"] for row in evidence_rows}):
+        group = [row for row in evidence_rows if row["answer_type"] == answer_type]
+        evidence_by_answer_type[answer_type] = {
+            "questions": len(group),
+            "answer_exact_match": sum(row["em"] for row in group) / len(group),
+            "mean_annotation_location_recall": sum(
+                row.get("annotation_location_recall", 0) for row in group
+            )
+            / len(group),
+            "strict_workflow_acceptance": sum(
+                row.get("strict_workflow_accept", False) for row in group
+            )
+            / len(group),
+        }
+    location_kinds = {}
+    for kind in ("table", "paragraph"):
+        predicted = sum(row.get(f"{kind}_predicted_locations", 0) for row in evidence_rows)
+        annotated = sum(row.get(f"{kind}_annotated_locations", 0) for row in evidence_rows)
+        overlap = sum(row.get(f"{kind}_overlap", 0) for row in evidence_rows)
+        precision = overlap / predicted if predicted else None
+        recall = overlap / annotated if annotated else None
+        location_kinds[kind] = {
+            "predicted_locations": predicted,
+            "annotated_locations": annotated,
+            "overlap": overlap,
+            "micro_precision": precision,
+            "micro_recall": recall,
+            "micro_f1": (
+                2 * precision * recall / (precision + recall)
+                if precision is not None and recall is not None and precision + recall
+                else None
+            ),
+        }
     evidence = {
         "questions": len(evidence_rows),
         "valid_location_rate": sum(row.get("locations_valid", False) for row in evidence_rows) / len(evidence_rows),
@@ -276,6 +343,22 @@ def main() -> None:
         "mean_annotation_location_recall": sum(row.get("annotation_location_recall", 0) for row in evidence_rows) / len(evidence_rows),
         "mean_annotation_location_f1": sum(row.get("annotation_location_f1", 0) for row in evidence_rows) / len(evidence_rows),
         "strict_workflow_acceptance": sum(row.get("strict_workflow_accept", False) for row in evidence_rows) / len(evidence_rows),
+        "answer_exact_questions": sum(row["em"] == 1 for row in evidence_rows),
+        "strictly_accepted_questions": sum(
+            row.get("strict_workflow_accept", False) for row in evidence_rows
+        ),
+        "exact_answer_not_strictly_accepted": sum(
+            row["em"] == 1 and not row.get("strict_workflow_accept", False)
+            for row in evidence_rows
+        ),
+        "questions_with_full_annotation_location_recall": sum(
+            row.get("annotation_location_recall") == 1 for row in evidence_rows
+        ),
+        "questions_without_prediction_due_to_context_error": sum(
+            "annotation_location_recall" not in row for row in evidence_rows
+        ),
+        "by_answer_type": evidence_by_answer_type,
+        "by_location_kind": location_kinds,
         "limitation": "Location agreement is against one released annotation and does not establish semantic support or reject valid alternate evidence",
     }
     source_hashes = {
@@ -288,6 +371,8 @@ def main() -> None:
         "tatqa_eval.py": sha256(args.upstream / "tatqa_eval.py"),
         "tatqa_metric.py": sha256(args.upstream / "tatqa_metric.py"),
         "tatqa_utils.py": sha256(args.upstream / "tatqa_utils.py"),
+        "multivon_scorer.py": sha256(Path(__file__)),
+        "multivon_projection.py": sha256(Path(__file__).with_name("tatqa_financial.py")),
     }
     results = {
         "study": protocol["study"],
