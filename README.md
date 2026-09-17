@@ -245,7 +245,9 @@ Unobserved transports, streaming usage and missing responses stay explicit gaps.
 The [development accounting workflow](docs/guides/provider-accounting.mdx) reuses
 LiteLLM pricing and rejects incomplete provider budget evidence. Recorded judge
 subtotals do not establish a complete run cost.
-Agent judge failures remain missing measurements; opaque callback contracts and
+Target/runner snapshots and `declare_target` expose intended interventions and
+observed changes during execution; regrading preserves original target evidence.
+Agent judge failures remain missing measurements; opaque grader callback contracts and
 observed dependency drift block verified comparisons. These changes are not yet
 published to PyPI and do not establish judge accuracy or complete provider accounting.
 

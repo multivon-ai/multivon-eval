@@ -89,6 +89,8 @@ class ReportDiff:
     baseline_pass_hat_k: "Optional[PassKResult]" = None
     proposal_pass_hat_k: "Optional[PassKResult]" = None
     identity_issues: list[str] = field(default_factory=list)
+    execution_changes: dict = field(default_factory=dict)
+    execution_notes: list[str] = field(default_factory=list)
 
     @property
     def pass_rate_delta(self) -> float:
@@ -143,6 +145,8 @@ class ReportDiff:
             "paired_count": len(self.paired),
             "identity_verified": not self.identity_issues,
             "identity_issues": self.identity_issues,
+            "execution_changes": self.execution_changes,
+            "execution_notes": self.execution_notes,
             "regressions": [
                 {
                     "input": c.case_input,
@@ -174,6 +178,10 @@ class ReportDiff:
         """Render a terse terminal diff. ASCII-only — pipes to logs cleanly."""
         lines: list[str] = []
         lines.extend(f"Identity warning: {issue}" for issue in self.identity_issues)
+        lines.extend(f"Execution note: {note}" for note in self.execution_notes)
+        for kind, paths in self.execution_changes.items():
+            if paths:
+                lines.append(f"Execution changes ({kind}): " + ', '.join(paths))
         lines.append(f"Comparing:")
         lines.append(f"  baseline: {self.baseline_name}")
         lines.append(f"  proposal: {self.proposal_name}")
@@ -250,6 +258,10 @@ class ReportDiff:
         lines.append("## Eval comparison")
         lines.append("")
         lines.extend(f"Identity warning: {issue}\n" for issue in self.identity_issues)
+        lines.extend(f"Execution note: {note}\n" for note in self.execution_notes)
+        for kind, paths in self.execution_changes.items():
+            if paths:
+                lines.append(f"Execution changes ({kind}): " + ', '.join(paths) + '\n')
         lines.append("| Metric | Baseline | Proposal | Δ |")
         lines.append("| --- | ---: | ---: | ---: |")
         lines.append(
@@ -381,6 +393,9 @@ def compare_reports(baseline: EvalReport, proposal: EvalReport, *,
     from .dependencies import comparison_issues
     dependency_issues = comparison_issues(baseline.suite_lock, proposal.suite_lock)
     identity_issues.extend(dependency_issues)
+    from .execution_evidence import compare_execution
+    execution_changes, execution_notes, execution_issues = compare_execution(baseline, proposal)
+    identity_issues.extend(execution_issues)
 
     paired_diffs: list[CaseDiff] = []
     for b_cr, p_cr in paired_pairs:
@@ -441,6 +456,8 @@ def compare_reports(baseline: EvalReport, proposal: EvalReport, *,
         baseline_pass_hat_k=baseline_phk,
         proposal_pass_hat_k=proposal_phk,
         identity_issues=identity_issues,
+        execution_changes=execution_changes,
+        execution_notes=execution_notes,
     )
 
 

@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 from .case import EvalCase
 from .provider_evidence import capture_run, trial_provider_evidence
+from .execution_evidence import trial_execution_snapshot, execution_snapshot, validate_execution
 from .case_manifest import (
     canonical_json,
     case_from_dict,
@@ -46,6 +47,9 @@ class TrialRecord:
         case = case_from_dict(data["case"])
         if case_identity(case) != (data["case_id"], data["case_digest"]):
             raise ValueError("Trial case identity does not match snapshot")
+        validate_execution(data.get('execution'))
+        for parent in data.get('inherited_execution', []):
+            validate_execution(parent.get('execution'))
 
     @classmethod
     def from_dict(cls, data: dict) -> TrialRecord:
@@ -114,6 +118,7 @@ def attach_trial(result: CaseResult, snapshot: CaseSnapshot, *,
             "evaluators": [{"name": r.evaluator, "score": r.score, "passed": r.passed,
                             "reason": r.reason, "metadata": r.metadata} for r in result.results],
             "provider_requests": None,
+            "execution": trial_execution_snapshot(),
             "provider_evidence": provider_evidence if provider_evidence is not None else trial_provider_evidence(),
             "evidence_gaps": ["Provider events cover observed instrumented calls; other calls and billing may be unknown"],
         }
@@ -200,6 +205,10 @@ def regrade(report: EvalReport, suite: EvalSuite) -> EvalReport:
                 child["inherited_provider_evidence"] = inherited
                 child.update(parent_trial=trial.digest, attempt=data["attempt"],
                              run_index=data["run_index"])
+                inherited_execution = list(data.get('inherited_execution', []))
+                if data.get('execution') is not None:
+                    inherited_execution.append({'trial_digest': trial.digest, 'execution': data['execution']})
+                child['inherited_execution'] = inherited_execution
                 if "upstream" in data:
                     child["upstream"] = data["upstream"]
                 child["evidence_gaps"] = sorted(set(child["evidence_gaps"] + data.get("evidence_gaps", [])))
@@ -207,4 +216,4 @@ def regrade(report: EvalReport, suite: EvalSuite) -> EvalReport:
             results.append(graded)
     return EvalReport(suite.name, results, model_id=report.model_id, purpose=report.purpose,
                       evidence_issues=list(report.evidence_issues),
-                      suite_lock=finish_lock(suite, before_lock))
+                      suite_lock=finish_lock(suite, before_lock), execution=execution_snapshot())

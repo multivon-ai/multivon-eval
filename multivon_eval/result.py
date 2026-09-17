@@ -328,6 +328,7 @@ class EvalReport:
     purpose: str = ""
     evidence_issues: list[str] = field(default_factory=list)
     provider_evidence: dict | None = None
+    execution: dict | None = None
 
     @property
     def total(self) -> int:
@@ -864,6 +865,8 @@ class EvalReport:
             case_results.append(cr)
         from .costs import Costs
         from .lockfile import SuiteLock
+        from .execution_evidence import validate_execution
+        validate_execution(data.get('execution'))
         summary = data.get("summary") or {}
         return cls(
             suite_name=data.get("suite", ""),
@@ -875,6 +878,7 @@ class EvalReport:
             suite_lock=SuiteLock.from_dict(data["suite_lock"]) if data.get("suite_lock") else None,
             evidence_issues=list(data.get("evidence_issues", [])),
             provider_evidence=data.get("provider_evidence"),
+            execution=data.get("execution"),
         )
 
     def to_json(self) -> str:
@@ -926,6 +930,7 @@ class EvalReport:
                 "schema": "multivon.report/v2",
                 "evidence_issues": self.evidence_issues,
                 "provider_evidence": self.provider_evidence,
+                "execution": self.execution,
                 "suite": self.suite_name,
                 "model": self.model_id,
                 "suite_lock": self.suite_lock.to_dict() if self.suite_lock is not None else None,

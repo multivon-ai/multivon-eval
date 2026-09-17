@@ -11,7 +11,11 @@ from .provider_evidence import _ACTIVE, _OPERATION
 
 _HEADERS = {'content-type', 'anthropic-version', 'anthropic-beta', 'openai-beta',
             'request-id', 'x-request-id', 'retry-after', 'retry-after-ms', 'x-should-retry'}
-_CREDENTIALS = {'key', 'api_key', 'apikey', 'token', 'access_token', 'auth', 'authorization'}
+_CREDENTIALS = {'key', 'api_key', 'api-key', 'apikey', 'x-api-key', 'x-goog-api-key',
+                'token', 'access_token', 'access-token', 'auth', 'authorization',
+                'password', 'secret', 'client_secret', 'sig', 'signature',
+                'x-amz-credential', 'x-amz-security-token', 'x-amz-signature',
+                'x-goog-credential', 'x-goog-signature'}
 
 
 def _body(raw):
@@ -33,6 +37,8 @@ def _url(url):
         query.append((key, value))
     if '@' in parts.netloc:
         redacted.append('url.userinfo')
+    if parts.fragment:
+        redacted.append('url.fragment')
     return (urlunsplit((parts.scheme, parts.netloc.rsplit('@', 1)[-1], parts.path,
                        urlencode(query), '')), redacted)
 

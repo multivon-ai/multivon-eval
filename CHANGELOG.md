@@ -4,6 +4,21 @@ All notable changes to `multivon-eval`. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+### Target execution evidence (development)
+
+- Retain before/after target configuration and runner policies in reports and
+  individual trials, including sync, parallel, async, retries and saved grading.
+  Durable capture-start events retain settings before dispatch on interruption.
+- Add `declare_target` for caller-declared callback/configuration/dependency
+  contracts and named file hashes. Preserve case-aware and async behavior;
+  unknown state remains explicit rather than inferred from callable names.
+- List intentional target/policy changes separately in comparisons. Detected
+  within-run target drift suppresses controlled inference. Regrading retains
+  original target evidence and does not execute the target.
+- Fix native `with_system_prompt()` copies to send the requested replacement
+  prompt and retain context handling. Custom adapters now reject unsupported
+  prompt wrapping instead of silently ignoring the prompt.
+
 ### Provider accounting and budget integrity (development)
 
 - Reconcile closed native provider journals with `account_provider_events`.

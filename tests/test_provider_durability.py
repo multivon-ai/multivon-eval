@@ -21,7 +21,8 @@ def test_sigkill_keeps_request_committed_before_transport_dispatch(tmp_path):
     script = '''
 import importlib, sys, threading
 import anthropic
-from multivon_eval import ProviderJournal, capture_provider_events, provider_http_hooks
+from multivon_eval import (AnthropicAdapter, EvalCase, EvalSuite, ExactMatch,
+    ProviderJournal, capture_provider_events, provider_http_hooks)
 module = importlib.import_module('anthropic._base_client')
 http = getattr(module, 'httpx2', None) or module.httpx
 def handler(request):
@@ -30,8 +31,9 @@ def handler(request):
 with ProviderJournal(sys.argv[1]) as journal, capture_provider_events(journal=journal):
     with anthropic.Anthropic(api_key='fixture', http_client=anthropic.DefaultHttpxClient(
         transport=http.MockTransport(handler), event_hooks=provider_http_hooks())) as client:
-        client.messages.create(model='fixture', max_tokens=10,
-                               messages=[{'role': 'user', 'content': 'wait'}])
+        suite = EvalSuite('interrupted').add_case(EvalCase('wait', 'Yes')).add_evaluator(ExactMatch())
+        suite.run(AnthropicAdapter('fixture', client=client, system_prompt='frozen prompt',
+                                   temperature=0.4, max_tokens=10), verbose=False)
 '''
     process = subprocess.Popen([sys.executable, '-c', script, str(journal_path)],
                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -48,7 +50,12 @@ with ProviderJournal(sys.argv[1]) as journal, capture_provider_events(journal=jo
             process.communicate(timeout=10)
     with ProviderJournal(journal_path) as recovered:
         events = recovered.events()
-    assert [e['kind'] for e in events] == ['capture_started', 'http_request']
+    assert [e['kind'] for e in events] == ['capture_started', 'capture_started', 'capture_started',
+                                        'operation_started', 'http_request']
+    started = next(e for e in events if e['kind'] == 'capture_started' and e['capture_kind'] == 'trial')
+    configuration = started['execution']['target_before']['configuration']
+    assert configuration['system_prompt'] == 'frozen prompt'
+    assert configuration['temperature'] == 0.4 and configuration['max_tokens'] == 10
     assert events[-1]['request']['body']['value']['messages'][0]['content'] == 'wait'
     assert not any(e['kind'] == 'http_response' for e in events)
 

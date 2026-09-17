@@ -10,6 +10,7 @@ from .case import EvalCase
 from .trials import attach_trial, capture_case
 from .exceptions import JudgeUnavailable
 from .dependencies import finish_lock
+from .execution_evidence import execution_snapshot
 from .provider_evidence import capture_trial, capture_run, capture_provider_events, run_provider_evidence, finish_trial_capture, provider_position
 from .evaluators.agent_judgments import error_evidence
 from .result import (
@@ -523,6 +524,7 @@ class EvalSuite:
             costs=cost_tracker.snapshot(),
             suite_lock=finish_lock(self, before_lock),
             provider_evidence=run_provider_evidence(),
+            execution=execution_snapshot(),
             purpose=self.purpose,
         )
 
@@ -898,6 +900,7 @@ class EvalSuite:
             model_id=self.model_id,
             suite_lock=finish_lock(self, before_lock),
             provider_evidence=run_provider_evidence(),
+            execution=execution_snapshot(),
             purpose=self.purpose,
         )
 
@@ -1659,6 +1662,7 @@ class EvalSuite:
             costs=cost_tracker.snapshot(),
             suite_lock=finish_lock(self, before_lock),
             provider_evidence=run_provider_evidence(),
+            execution=execution_snapshot(),
             purpose=self.purpose,
         )
 

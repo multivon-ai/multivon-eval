@@ -6,7 +6,7 @@ import inspect
 import json
 import threading
 import uuid
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from contextvars import ContextVar
 from datetime import datetime, timezone
 
@@ -78,19 +78,22 @@ def capture_provider_events(*, kind='manual', labels=None, journal=None):
         capture.labels.setdefault('run_index', 1)
     if kind == 'run':
         capture.labels['run_id'] = capture.capture_id
-    capture.emit('capture_started')
-    token = _ACTIVE.set(capture)
-    error = None
-    try:
-        yield capture
-    except BaseException as exc:
-        error = {'type': type(exc).__name__, 'message': str(exc)}
-        raise
-    finally:
+    from .execution_evidence import trial_execution_scope, trial_execution_snapshot, execution_snapshot
+    with trial_execution_scope() if kind == 'trial' else nullcontext():
+        snapshot = trial_execution_snapshot if kind == 'trial' else execution_snapshot
+        capture.emit('capture_started', execution=snapshot())
+        token = _ACTIVE.set(capture)
+        error = None
         try:
-            capture.emit('capture_finished', error=error)
+            yield capture
+        except BaseException as exc:
+            error = {'type': type(exc).__name__, 'message': str(exc)}
+            raise
         finally:
-            _ACTIVE.reset(token)
+            try:
+                capture.emit('capture_finished', error=error, execution=snapshot())
+            finally:
+                _ACTIVE.reset(token)
 
 
 def trial_provider_evidence():
@@ -112,10 +115,11 @@ def capture_trial(function):
 
 
 def capture_run(function):
+    from .execution_evidence import execution_scope
     if inspect.iscoroutinefunction(function):
         @functools.wraps(function)
         async def async_wrapped(*args, **kwargs):
-            with capture_provider_events(kind='run') as capture:
+            with execution_scope(function, args, kwargs), capture_provider_events(kind='run') as capture:
                 result = await function(*args, **kwargs)
             if result.provider_evidence is None:
                 result.provider_evidence = capture.snapshot()
@@ -123,7 +127,7 @@ def capture_run(function):
         return async_wrapped
     @functools.wraps(function)
     def wrapped(*args, **kwargs):
-        with capture_provider_events(kind='run') as capture:
+        with execution_scope(function, args, kwargs), capture_provider_events(kind='run') as capture:
             result = function(*args, **kwargs)
         if result.provider_evidence is None:
             result.provider_evidence = capture.snapshot()

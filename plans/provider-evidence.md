@@ -59,11 +59,39 @@ Verification before the live protocol: 1,927 tests passed, 5 skipped on Python
 18 new provider checks include native SDK retry/serialization, cancellation,
 actual SIGKILL, Google transport coverage, vision requests and report snapshots.
 
-R02 remains open: full target configuration beyond observed serialized requests,
-unobserved transports and bounded retention are not established by this capture.
+R02 remains open: hidden target state beyond caller declarations, unobserved
+transports and bounded retention are not established by this capture.
 The default cost tracker still counts a subset of successful judge responses;
 the reconciliation path below is separate. Real billing cannot be inferred from
 list-price estimates.
+
+## Target and runner configuration
+
+Development reports and each retained trial now bind pre/post target snapshots.
+Native adapters record model, system prompt, sampling/output settings and portable
+extras; selected native client endpoint/retry/timeout settings and environment
+routing are included without constructing a client or invoking custom properties.
+Runner settings include repeat/retry/concurrency/gate policy and tracer class;
+tracer internals and custom transports require caller declarations.
+
+`declare_target` reuses the existing dependency contract and named-file hashing
+while preserving sync/async and case-aware target calls. Missing files or opaque
+settings remain explicit issues. Configuration snapshots are observations and
+caller assertions, not proof of hidden-state completeness or immutable weights.
+Credentials in structured fields and credential-bearing URLs are redacted and
+bound by digest; application prompts remain private artifact content.
+
+An intentional candidate target change is listed separately from case/grader
+compatibility. Observed within-run drift invalidates controlled comparison;
+unknown configuration produces a note rather than invented evidence. Regrading
+inherits original execution snapshots without target calls. Journal capture-start
+events retain target settings before dispatch, verified with actual child SIGKILL.
+Native `with_system_prompt` now applies the prompt and retains case context.
+
+Validation: 1,972 passed / 18 skipped on Python 3.12; 68 focused Python 3.10
+checks and 44 checks with actual LiteLLM passed. All 71 MDX pages parsed. These
+are local serialization, lifecycle, drift and regression checks, not a quality
+benchmark. No new paid requests or PyPI release were made for this checkpoint.
 
 ## Declared provider accounting
 

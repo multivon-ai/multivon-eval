@@ -73,24 +73,21 @@ class ModelAdapter(ABC):
     @abstractmethod
     def __call__(self, input: str) -> str: ...
 
-    def with_system_prompt(self, prompt: str) -> "_WithSystemPrompt":
-        """Return a new adapter that prepends a system prompt to every call."""
-        return _WithSystemPrompt(self, prompt)
+    def with_system_prompt(self, prompt: str) -> "ModelAdapter":
+        """Copy a native adapter with a replacement system prompt.
 
-
-class _WithSystemPrompt(ModelAdapter):
-    """Wraps any ModelAdapter to inject a system prompt."""
-
-    def __init__(self, adapter: ModelAdapter, system_prompt: str) -> None:
-        self._adapter = adapter
-        self._system_prompt = system_prompt
-
-    def __call__(self, input: str) -> str:
-        return self._adapter(input)
-
-    # Override in subclasses that use the system prompt natively.
-    # This wrapper exists so plain subclasses can use with_system_prompt()
-    # without having to implement the plumbing themselves.
+        The client remains shared. Custom adapters must implement their own
+        prompt semantics; silently wrapping them cannot inject a system role.
+        """
+        from copy import copy
+        if not isinstance(prompt, str):
+            raise TypeError('System prompt must be a string')
+        if not isinstance(self, (OpenAIAdapter, AnthropicAdapter, LiteLLMAdapter)):
+            raise NotImplementedError('Custom adapters must implement with_system_prompt')
+        adapter = copy(self)
+        adapter._system_prompt = prompt
+        adapter._extra = dict(self._extra)
+        return adapter
 
 
 class OpenAIAdapter(ModelAdapter):

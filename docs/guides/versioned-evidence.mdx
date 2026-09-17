@@ -159,6 +159,86 @@ provider logs. Declared compatibility is not complete experiment reproducibility
 `cases_hash` retains its legacy input/expected/context subset; strict case pairing
 uses the full execution case digest separately.
 
+## Target and runner configuration (development)
+
+`report.execution` records target settings before and after execution, plus runner
+repeat, retry, concurrency and gate settings. Each retained trial has its own
+`trial.data["execution"]`. With a provider journal, capture-start events persist
+the corresponding execution snapshot before the target runs. Reports saved by
+`save_json` retain the same snapshot as the returned report.
+
+Built-in adapter snapshots include model, system prompt, sampling temperature,
+output limit, portable request extras and selected routing settings. Supplied
+native SDK clients expose selected public endpoint/timeout/retry settings;
+custom client properties are not invoked for inspection. SDK defaults are not
+resolved by constructing another client. Use the native HTTP events for actual
+serialized requests and observed attempts.
+Runner settings record the tracer's class, not its internal configuration; declare
+external tracing dependencies when they affect target behavior.
+
+Declare a custom target's implementation, configuration and external artifacts:
+
+```python
+from pathlib import Path
+from multivon_eval import declare_target
+
+policy_file = Path("target-policy.json")
+policy_file.write_text('{"review_above": 1000}')
+
+class InvoicePolicyTarget:
+    def __call__(self, prompt):
+        raise ValueError("This target requires the complete EvalCase")
+    def _call_with_case(self, case):
+        import json
+        policy = json.loads(policy_file.read_text())
+        return "review" if case.metadata["amount"] > policy["review_above"] else "post"
+
+invoice_target = declare_target(
+    InvoicePolicyTarget(), version="policy-loader/v1", dependencies={},
+    configuration={"currency": "USD"}, files={"policy": policy_file},
+)
+target_suite = EvalSuite("fixed invoice decisions").add_cases([
+    EvalCase("invoice A", "post", metadata={"amount": 200}, case_id="invoice-a"),
+    EvalCase("invoice B", "review", metadata={"amount": 2000}, case_id="invoice-b"),
+]).add_evaluator(ExactMatch())
+target_baseline = target_suite.run(invoice_target, verbose=False)
+
+# An implementation candidate changes behavior; the task references stay fixed.
+policy_file.write_text('{"review_above": 100}')
+target_candidate = target_suite.run(invoice_target, verbose=False)
+target_diff = target_baseline.compare(target_candidate)
+assert not target_diff.identity_issues
+assert "declaration.files.policy" in target_diff.execution_changes["target_paths"]
+assert target_baseline.passed == 2 and target_candidate.passed == 1
+```
+
+This is a two-case local demonstration, not a validated invoice decision policy.
+If the business requirement changes, revise the case definitions instead of
+claiming an improvement on the old task. File paths stay local; named file content
+hashes enter the report. Structured credential fields and credential-bearing URLs
+are redacted/bound by digest. System prompts and other application content remain
+private report data.
+
+`declare_target` returns a wrapper and preserves synchronous/asynchronous and
+case-aware calling conventions. It does not change the callable's behavior or
+discover closure state, runtime model weights, global services or custom client
+hooks. Missing files and unrecordable configuration remain explicit issues. The
+snapshot cannot detect a change that is restored between observations.
+
+Comparison output lists `execution_changes` and `execution_notes`. A different
+target is an expected experimental intervention, so it does not invalidate paired
+case/grader statistics by itself. Unknown target configuration produces a note;
+it is not an invented identity or proof of controlled causality. An observed
+within-run target/file change invalidates a controlled comparison and suppresses
+McNemar inference. Grader/case compatibility retains its separate strict rules.
+Regrading labels the new execution as saved-output grading and preserves original
+target snapshots in `inherited_execution`; it makes no new target calls.
+
+For native adapters, `adapter.with_system_prompt("new prompt")` now returns a
+copy of the same adapter with the replacement prompt and intact context handling.
+The SDK client remains shared. Custom adapters must implement their own prompt
+semantics; the old generic wrapper silently ignored the supplied prompt.
+
 ## Inspect and regrade every attempt
 
 Each new execution stores immutable `TrialRecord` snapshots with case input,
@@ -192,8 +272,10 @@ invent missing trials or individual scores from aggregate means.
 
 ## Current evidence boundaries
 
-- Provider requests, effective settings, SDK retries, and per-trial usage are
-  not yet captured here. `evidence_gaps` records this explicitly.
+- Development provider capture retains observed native requests, retries and
+  usage on supported transports (see below). Unsupported/custom transports and
+  missing responses remain explicit gaps; snapshots alone cannot establish full
+  request or billing coverage.
 - Arbitrary user callbacks can mutate inputs or external state. Snapshots do
   not provide process isolation or undo side effects. Existing case-level
   retries rerun the target; use them only when that is safe.
