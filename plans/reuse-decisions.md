@@ -73,3 +73,37 @@ and line items, with its own loader, layout-cluster analyses and official
 metrics. Obtain data through its access process rather than assuming a mirror's
 license or inventing another invoice corpus. FATURA is another candidate for
 layout diversity; its suitability/terms have not yet been verified for inclusion.
+
+
+## Multimodal evidence and grader audit
+
+The 2026-09-17 audit found empty claim extraction could produce a perfect vision
+score and malformed judge output could become an ordinary quality measurement.
+Correct these before adding modality coverage. The unreleased `vision-qag/v2`
+parser distinguishes valid negative judgments from absent/invalid judgments;
+this is a measurement fix, not an accuracy improvement claim.
+
+Reuse boundaries for R09:
+
+- [Inspect multimodal content](https://inspect.aisi.org.uk/multimodal.html) owns
+  native image/audio/video/PDF transport and log rendering. Do not duplicate its
+  provider support or let runtime/model references silently authorize file reads.
+- [Hugging Face media features](https://huggingface.co/docs/datasets/package_reference/main_classes)
+  own data loading and decoding. Consume bytes or explicitly resolved paths from
+  `decode=False`; do not create a competing media dataset/cache abstraction.
+- [W3C Web Annotation FragmentSelector](https://www.w3.org/TR/annotation-model/#fragment-selector)
+  and [Media Fragments](https://www.w3.org/TR/media-frags/) supply region and time
+  reference semantics. The missing Multivon behavior is binding these references
+  to exact retained content and validating the evidence used by a verdict.
+  These planned bindings are not implemented by the legacy image metadata keys.
+
+Question-based visual scoring already has substantial prior art:
+[TIFA](https://github.com/Yushi-Hu/tifa) provides question generation, filtering,
+VQA scoring and released human annotations;
+[VQAScore](https://github.com/linzhiqiu/t2v_metrics) supplies an established
+text-to-visual alignment metric. Multivon's fraction of generated Yes/No
+verdicts is not either implementation and cannot inherit their reported results.
+For generated-image alignment, evaluate those upstream implementations before
+inventing a new metric. Their original task does not validate invoice totals,
+state changes or industrial release decisions. No upstream code/data was copied
+or a new dataset downloaded for this parser audit.

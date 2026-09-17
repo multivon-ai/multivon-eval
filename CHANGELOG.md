@@ -4,6 +4,22 @@ All notable changes to `multivon-eval`. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+### Vision measurement correctness
+
+- Fix Anthropic SDK 1.x vision calls using its documented `extra_body` migration
+  for sampling parameters; honor its configured request timeout and close clients.
+  Preserve the requested temperature and surface unsupported settings as errors.
+
+- Replace the empty-claim perfect score with an explicit unmeasured result.
+  Missing image prerequisites are skipped; malformed, incomplete, duplicate or
+  ambiguous judge responses and provider failures cannot become quality scores.
+- Validate ordered image metadata and complete claim/verdict schemas; retain raw
+  successful judgments, resolved threshold and the `vision-qag/v2` protocol.
+  Resolve thresholds per measurement without mutating a shared evaluator.
+- Let providers validate unknown/private vision models instead of blocking them
+  with a stale allowlist. Document remaining media identity, provider configuration,
+  usage capture and rubric-validity limits. No new calibration is claimed.
+
 ### Failure investigation
 
 - Expose exact saved trials, errors, evidence references and coverage warnings in

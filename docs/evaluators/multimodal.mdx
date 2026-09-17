@@ -1,139 +1,144 @@
 ---
 title: "Multimodal Evaluators"
-description: "Vision-grounded faithfulness for image- and document-AI outputs."
+description: "Experimental image and document judge heuristics, with explicit limits and missing-evidence handling."
 ---
 
-Multimodal evaluators score LLM outputs that are supposed to describe an image or a multi-page document. Same QAG philosophy as the LLM-judge tier, with one constraint: the judge must be vision-capable.
+`VQAFaithfulness` and `DocumentGrounding` use a vision judge to assess text
+against supplied images. They are experimental heuristics. Their scores do not
+establish task completion, accurate perception, valid page citations or a safe
+release on their own.
 
 <Note>
-**Experimental — first shipped in 0.7.3 (2026-05-16).** These are the seed evaluators for the Document Agent Acceptance Protocol. Calibrated thresholds ship in a follow-up release; until then the standard calibration-fallback policy applies (default `0.7`).
+**Development preview:** the unreleased `vision-qag/v2` protocol below corrects
+measurement handling in PyPI 0.18.0. Missing images and an empty extracted claim
+set are unmeasured; malformed or incomplete judge replies become judge errors.
+The published 0.18.0 implementation can give an empty claim set a perfect score.
+Use the development checkout for the corrected behavior until the next release.
+No new threshold calibration or judge-accuracy claim accompanies this fix.
 </Note>
 
-## Vision-capable judges
+## Supply images
 
-| Provider | Models the evaluator will accept |
-|---|---|
-| `anthropic` | `claude-haiku-4-5`, `claude-sonnet-4-6`, `claude-opus-4-7`, `claude-3-5-sonnet`, `claude-3-5-haiku`, `claude-3-opus` |
-| `openai` | `gpt-4o`, `gpt-4o-mini`, `gpt-4.1`, `gpt-5`, `gpt-5-mini`, `gpt-5.5`, `gpt-5.5-mini` |
-| `google` | `gemini-2.5-pro`, `gemini-2.5-flash`, `gemini-2.5-flash-lite`, `gemini-1.5-pro`, `gemini-1.5-flash` |
+Both evaluators read caller-supplied `case.metadata`:
 
-The default recommended judge is `google:gemini-2.5-flash` for cost reasons. Wire a text-only judge into a vision evaluator and you'll get a `JudgeUnavailable` with a hint to pick a vision model.
+- `image_path`: one local image path.
+- `image_url`: one HTTP(S) URL or base64 data URI.
+- `images`: an ordered list of image paths, URLs or data URIs, for example one
+  rendered image per document page. This key takes precedence when present;
+  an empty list means no media. Do not supply both single-image keys.
 
-<Warning>
-Google Gemini does not fetch remote URLs server-side. For `google` judges, pass image data as a local path or `data:` URI. Anthropic and OpenAI accept HTTP(S) URLs and data URIs.
-</Warning>
+An image list must contain nonempty strings. Dictionaries, sets and unordered
+iterables are rejected. Native PDFs, audio and video are not accepted by these
+two evaluators. Use [Inspect's multimodal input support](https://inspect.aisi.org.uk/multimodal.html)
+for native execution and logs; render PDF pages explicitly when using these
+image-only graders.
 
-## Image input format
+Local paths are read with the caller's filesystem access. HTTP(S) URLs may be
+fetched by the Anthropic/OpenAI provider. This Google adapter accepts local
+paths and data URIs only. These legacy path/URL fields do not hash or freeze media
+contents; retain the original bytes separately for reproducibility. Do not
+populate them from untrusted model output without authorizing the access.
 
-Both evaluators read images from `case.metadata`:
+## Choose a judge and threshold
 
-- `case.metadata["image_url"]` — single HTTP(S) URL or `data:` URI.
-- `case.metadata["image_path"]` — single local filesystem path.
-- `case.metadata["images"]` — list of any of the above (multi-page documents).
+The adapters support the `anthropic`, `openai` and `google` providers. Configure
+a model whose endpoint supports image input. Known text-only model names are
+rejected early; an unknown or private model is passed to its provider for
+validation. This is not a tested model-compatibility matrix.
 
-For `DocumentGrounding`, `case.metadata["images"]` is the expected key (one entry per page).
-
-## VQAFaithfulness
-
-Image-grounded faithfulness. The judge extracts up to 3 factual claims from the response, then verifies each claim against the image. Score is the fraction of claims confirmed.
-
-Use this when an LLM has produced text purporting to describe what's in an image — chart reading, scan interpretation, image captioning, visual QA.
+An explicit threshold is a task decision. Without one, the existing calibration
+fallback policy applies, usually warning and returning `0.7`; that value is not
+evidence of accuracy on your documents. Use development cases and independently
+reviewed held-out sources to validate a threshold. See
+[review calibration](/guides/review-calibration).
 
 ```python
-from multivon_eval import EvalCase, EvalSuite, JudgeConfig, VQAFaithfulness
-
-case = EvalCase(
-    input="What is the patient's diagnosis on this scan?",
-    metadata={"image_path": "scans/chest-xray-001.png"},
+from multivon_eval import (
+    AcceptancePolicy, CheckRequirement, EvalCase, EvalSuite,
+    JudgeConfig, VQAFaithfulness,
 )
 
-evaluator = VQAFaithfulness(judge=JudgeConfig(
-    provider="google", model="gemini-2.5-flash", temperature=0.0,
-))
-result = evaluator.evaluate(case, "The scan shows bilateral infiltrates...")
+case = EvalCase(
+    input="Read the invoice total.",
+    case_id="invoice-001",
+    source_id="invoice-source-001",
+    metadata={"image_path": "invoice-page-1.png"},
+)
+grader = VQAFaithfulness(
+    threshold=1.0,  # Example: require every extracted claim to receive Yes.
+    judge=JudgeConfig(provider="anthropic", model="claude-haiku-4-5-20251001"),
+)
+report = EvalSuite("invoice description").add_case(case).add_evaluator(grader).run(
+    lambda prompt: "The invoice total is 120.00.",  # Replace with your application.
+)
+decision = AcceptancePolicy((CheckRequirement("vqa_faithfulness"),)).evaluate(report)
+print(decision.decision)
 ```
 
-### Signature
+This example checks a supplied answer; it does not run an invoice extraction
+application or validate the amount with an independent oracle. Requiring the
+check in an acceptance policy prevents skipped/error measurements from silently
+satisfying the gate. Add independent task and state checks for real releases.
+
+## VQAFaithfulness
 
 ```text
 VQAFaithfulness(threshold: float | None = None, judge: JudgeConfig | None = None)
 ```
 
-- `threshold` — explicit override. Falls through to the calibration-fallback policy when `None` (default `0.7`).
-- `judge` — vision-capable `JudgeConfig`. Falls through `configure()` → environment if omitted.
+The judge extracts up to three distinct factual claims, then answers Yes or No
+for each. The score is the fraction confirmed. A valid extraction is a complete
+JSON array of nonempty strings; one complete JSON Markdown fence is permitted.
+The evaluator does not search a refusal or arbitrary prose for a plausible array.
+A verdict must be a single Yes/No token, optionally followed by a period or
+exclamation mark. Ambiguous wording is a judge error.
 
-### Result
+Successful results retain the extracted claims, raw responses, threshold and
+protocol version in `EvalResult.metadata`. Reasons retain the complete claims.
+No extracted claims means skipped, including answers that abstain. Judge
+exceptions and invalid responses raise `JudgeUnavailable`; `EvalSuite` records
+them as `judge_error`, outside the measured quality denominator.
 
-`EvalResult.reason` includes a per-claim trace:
-
-```
-2/3 image-grounded claims verified
-✓ "bilateral infiltrates in lower lobes"
-✓ "no pleural effusion visible"
-✗ "tracheal deviation to the right"
-```
-
-The `✗` lines tell you precisely which claims the vision judge found unsupported.
+Claim selection can omit important errors, and the same judge generates and
+checks the claims. This is not independent verification or an answer-completeness
+metric. Prompt wording that treats source text as data does not prove resistance
+to prompt injection.
 
 ## DocumentGrounding
-
-Multi-page document-grounded faithfulness. Score is the fraction of three strict yes/no questions answered positively against the assembled document pages:
-
-- **Q1**: Is every factual claim in the answer supported by content visible in at least one of the document pages?
-- **Q2**: Does the answer avoid inventing any entity (name, date, number, amount, clause) that does not appear in the pages?
-- **Q3**: Does the answer correctly handle the most important exception, caveat, or carve-out visible on the pages?
-
-Use this for contract analysis, invoice processing, scientific PDFs, medical records — anywhere a document-AI agent has produced an answer about a multi-page document.
-
-```python
-from multivon_eval import DocumentGrounding, EvalCase, EvalSuite, JudgeConfig
-
-case = EvalCase(
-    input="Summarise the liability cap and any carve-outs.",
-    metadata={"images": [
-        "contracts/msa-page-1.png",
-        "contracts/msa-page-2.png",
-        "contracts/msa-page-3.png",
-    ]},
-)
-
-evaluator = DocumentGrounding(judge=JudgeConfig(
-    provider="anthropic", model="claude-haiku-4-5",
-))
-
-result = evaluator.evaluate(case, (
-    "Liability is capped at 12 months of fees, with uncapped "
-    "carve-outs for Sections 4.2 (data breach) and 7.1 (IP infringement)."
-))
-```
-
-### Signature
 
 ```text
 DocumentGrounding(threshold: float | None = None, judge: JudgeConfig | None = None)
 ```
 
-### Result
+Supply page images in `metadata={"images": ["page-1.png", "page-2.png"]}`.
+The judge answers three fixed questions about factual support, invented entities
+and handling of an exception/caveat. All three unique `Q1`, `Q2`, `Q3` answers
+must be present and unambiguous before any score is computed. Missing, repeated
+or contradictory lines are judge errors, even with a threshold of zero.
 
-The reason field reports per-question outcomes:
+Valid results retain all three answers and the raw judge response. The score is
+the fraction of Yes answers. A document without an applicable exception exposes
+a limitation of the fixed rubric; Q3 has no task-specific applicability oracle.
+The grader neither checks citations nor identifies the supporting page or region.
+It has no demonstrated diagnostic advantage for legal, medical or financial work.
 
-```
-✓ Q1
-✓ Q2
-✗ Q3
-```
+## Provider and evidence limits
 
-A failure on Q3 is the most diagnostic signal for legal-AI and contract pipelines — it flags answers that miss exception clauses while looking fluent.
+These legacy adapters make direct SDK calls. They do not yet provide complete
+request/usage capture, reliable billing reconciliation, media content identity,
+or the full `JudgeConfig` cache/retry/timeout behavior of other judge paths.
+The Anthropic adapter uses the SDK's
+[documented sampling-parameter migration](https://github.com/anthropics/anthropic-sdk-python/blob/main/MIGRATION.md)
+and honors the configured request timeout. It sends the resolved temperature
+through `extra_body`; models that reject that setting return a judge error.
+Successful parsing is not a measurement of judge correctness. Retain native
+execution logs and validate providers separately before relying on a workflow.
 
-## How the multimodal evaluators relate to pdfhell
+[pdfhell](/pdfhell/quickstart) supplies controlled PDF fixtures and code-derived
+oracles for supported scenarios. Keep those task assertions separate from vision
+judge scores, and distinguish text extraction from pixel perception. The
+[document-to-ledger study](/guides/document-workflows) records that distinction
+and the limits of its task mapping.
 
-`VQAFaithfulness` and `DocumentGrounding` use an **LLM judge** with vision input. [pdfhell](/pdfhell/quickstart) uses **code-derived ground truth** against adversarial PDF structures — no judge in the scoring path.
-
-Use them together:
-
-- pdfhell to stress-test a document-AI pipeline against known failure modes (hidden OCR layers, footnote overrides, page-broken tables).
-- `DocumentGrounding` to grade open-ended summaries / Q&A on real customer documents where the ground truth isn't code-derivable.
-
-<Tip>
-For agents, both evaluators are exposed as MCP tools — see [`eval_vqa_faithfulness`](/mcp/tool-reference#eval_vqa_faithfulness) and [`eval_document_grounding`](/mcp/tool-reference#eval_document_grounding).
-</Tip>
+MCP tools expose these graders too; their behavior follows the installed core
+version. See the [tool reference](/mcp/tool-reference).

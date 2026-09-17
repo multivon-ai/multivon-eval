@@ -4,13 +4,11 @@ These tests exercise the public surface (imports, error paths, image
 metadata parsing) without making real vision-model API calls. The
 provider-specific call paths are mocked because (a) they need API keys
 and (b) we want a deterministic CI signal — the vision providers'
-behavior is exercised separately in `test_integrations_live.py`.
+accuracy and provider compatibility are not established by these tests.
 """
 from __future__ import annotations
 
 import base64
-import io
-import json
 from unittest.mock import patch
 
 import pytest
@@ -26,7 +24,7 @@ from multivon_eval.evaluators.multimodal import (
     _is_vision_capable,
     _parse_yes_no,
 )
-
+from multivon_eval.exceptions import JudgeUnavailable
 
 # --- helpers ---------------------------------------------------------------
 
@@ -95,11 +93,9 @@ def test_image_to_data_uri_missing_file_raises(tmp_path):
 
 @pytest.mark.parametrize("text,expected", [
     ("Yes", True),
-    ("no, that's wrong", False),
+    ("No", False),
     ("YES.", True),
-    ("nope", False),
-    ("", False),
-    ("Maybe yes", True),
+
 ])
 def test_parse_yes_no(text, expected):
     assert _parse_yes_no(text) is expected
@@ -108,12 +104,13 @@ def test_parse_yes_no(text, expected):
 # --- VQAFaithfulness -------------------------------------------------------
 
 def test_vqa_faithfulness_requires_image():
-    """Without an image in metadata, returns 0.0 with explanation."""
+    """Missing media is unmeasured, not a quality failure."""
     e = VQAFaithfulness(judge=JudgeConfig(provider="google", model="gemini-2.5-flash"))
     case = EvalCase(input="what is in the image?")
     res = e.evaluate(case, "A cat sits on a mat.")
     assert res.score == 0.0
     assert "No image provided" in res.reason
+    assert res.metadata["skipped"]
 
 
 def test_vqa_faithfulness_calls_vision_judge_twice(png_path):
@@ -142,8 +139,8 @@ def test_vqa_faithfulness_calls_vision_judge_twice(png_path):
     assert "1/2" in res.reason
 
 
-def test_vqa_faithfulness_no_claims_is_trivially_faithful(png_path):
-    """If the judge extracts no claims, score 1.0 (nothing to be wrong about)."""
+def test_vqa_faithfulness_no_claims_is_unmeasured(png_path):
+    """An empty claim set cannot establish faithfulness or task success."""
     e = VQAFaithfulness(judge=JudgeConfig(provider="google", model="gemini-2.5-flash"))
     case = EvalCase(input="anything", metadata={"image_path": png_path})
     with patch(
@@ -151,7 +148,7 @@ def test_vqa_faithfulness_no_claims_is_trivially_faithful(png_path):
         return_value="[]",
     ):
         res = e.evaluate(case, "I cannot tell from this image.")
-    assert res.score == 1.0
+    assert res.metadata["skipped"] and not res.passed
 
 
 def test_vqa_faithfulness_accepts_images_list(png_path):
@@ -163,7 +160,7 @@ def test_vqa_faithfulness_accepts_images_list(png_path):
         return_value="[]",
     ):
         res = e.evaluate(case, "Nothing")
-    assert res.score == 1.0
+    assert res.metadata["skipped"] and not res.passed
 
 
 # --- DocumentGrounding -----------------------------------------------------
@@ -174,6 +171,7 @@ def test_document_grounding_requires_images():
     res = e.evaluate(case, "The contract says X.")
     assert res.score == 0.0
     assert "No document pages" in res.reason
+    assert res.metadata["skipped"]
 
 
 def test_document_grounding_parses_q1_q2_q3(png_path):
@@ -190,16 +188,14 @@ def test_document_grounding_parses_q1_q2_q3(png_path):
     assert "✗ Q2" in res.reason
 
 
-def test_document_grounding_missing_q_is_failing(png_path):
+def test_document_grounding_missing_q_is_unmeasured(png_path):
     e = DocumentGrounding(judge=JudgeConfig(provider="google", model="gemini-2.5-flash"))
     case = EvalCase(input="anything", metadata={"images": [png_path]})
     with patch(
         "multivon_eval.evaluators.multimodal._call_vision_judge",
         return_value="Q1: Yes",  # missing Q2 and Q3
-    ):
-        res = e.evaluate(case, "Something")
-    # 1/3 yes, the rest fail
-    assert res.score == pytest.approx(1 / 3)
+    ), pytest.raises(JudgeUnavailable, match="omitted required"):
+        e.evaluate(case, "Something")
 
 
 # --- exports ---------------------------------------------------------------

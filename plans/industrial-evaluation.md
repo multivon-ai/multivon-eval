@@ -25,7 +25,7 @@ Gymnasium at their established boundaries.
 | R06 | Trace interoperability | OpenTelemetry ingestion/export, documented schema/version handling, actual round trips with supported companion integrations | Development preview: native SDK/OTLP protobuf, actual Collector JSON and published MCP 0.4.0 round trips verified; convention profile and unsupported projections documented; production capture authenticity remains outside the bridge |
 | R07 | Task/environment/outcome interfaces | Setup/reset/action/observation/cleanup, isolated repeated episodes, real end-state assertions, forbidden side effects, partial failures and recovery cases | Development preview: native Gymnasium lifecycle plus immutable state evidence and outcome checks; 14 actual SQLite environment instances validate separate resources, forbidden history, partial commits and explicit recovery; security isolation and durable execution stay upstream under R03 |
 | R08 | Failure investigation UI | Trial comparison, evidence references, slices, review, case promotion, local security and accessibility; rendered desktop/mobile verification | Development preview: saved trial comparison/filtering, native Inspect references, Label Studio consensus-bound promotion and local request protections validated; six browser scans passed with keyboard/download checks; upstream mobile limitations and missing manual screen-reader validation documented |
-| R09 | Typed multimodal artifacts | Images/pages/audio/video, content identity, timestamps/regions, actual artifact rendering and grounded verdict references, extraction-versus-perception comparisons | Pending |
+| R09 | Typed multimodal artifacts | Images/pages/audio/video, content identity, timestamps/regions, actual artifact rendering and grounded verdict references, extraction-versus-perception comparisons | In progress: legacy vision measurement failures and current Anthropic SDK incompatibility corrected; Inspect/HF/W3C reuse boundaries documented. Typed content bindings, grounded references and rendering validation remain |
 | R10 | Controlled robustness suite | Validated invariant-preserving and semantic-changing transformations; reviewed or code-derived answers; no transformations that silently corrupt the oracle | Pending |
 | R11 | World-model evaluation (experimental) | Real adapter demo; action responsiveness, horizons, state persistence, uncertainty, planning utility; model and simulator errors separated; reproducible measured results | Pending |
 | R12 | FOSS extension/stability contract | Public plugin/environment protocols, versioned report schemas, optional heavy dependencies, contributor fixtures, compatibility matrix and release checks | Pending |
@@ -214,3 +214,18 @@ violations or page overflow; native Inspect sample view still overflows on mobil
 Full Python 3.12 checks: 1,674 passed, 5 skipped, 7 warnings; focused Python 3.10:
 76 passed, 1 directory-only skip. All 67 MDX pages compiled. No model calls or
 new PyPI release. Validation and critique: benchmarks/industrial/INVESTIGATION_VALIDATION.md.
+
+
+2026-09-17 vision measurement checkpoint: corrected empty-claim perfect scores,
+partial/ambiguous/duplicate judge parsing and provider exceptions becoming
+quality outcomes. Missing media/claims remain unmeasured; strict valid negatives
+remain quality failures. Retain protocol/prompt fingerprints and per-call
+thresholds. An actual Anthropic SDK 1.6.0 loopback HTTP check exposed its removed
+temperature keyword; the documented extra_body migration now sends the original
+setting and preserves authentication failures as judge errors. Full Python 3.12:
+1,718 passed, 5 skipped, 7 warnings; focused Python 3.10: 103 passed, 2 warnings;
+all 67 MDX pages compiled. No model inference calls or new PyPI release. This is
+a measurement audit, not vision accuracy or robustness validation. Typed media
+bindings/rendering and full provider evidence remain open. See
+benchmarks/industrial/VISION_MEASUREMENT_AUDIT.md and the Inspect/HF/W3C/TIFA/
+VQAScore reuse assessment.

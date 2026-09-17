@@ -72,7 +72,9 @@ OTLP traces and emits standard evaluation events through your existing SDK.
 and independently observed state to catch missing writes, duplicate writes and
 forbidden changes. The [failure investigation workflow](docs/guides/failure-investigation.mdx)
 connects saved trial comparison to Label Studio review and development regression
-cases. These previews are not included in PyPI 0.18.0.
+cases. The [vision grader audit](docs/evaluators/multimodal.mdx) corrects empty-claim
+perfect scores, invalid-judgment handling and Anthropic SDK 1.x compatibility.
+These previews and fixes are not included in PyPI 0.18.0.
 
 ## A real workflow example
 
