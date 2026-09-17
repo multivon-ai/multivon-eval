@@ -5,6 +5,36 @@ description: Evaluate tool use, planning, and task completion in agentic systems
 
 Agent evaluators work with `agent_trace` — a structured record of what your agent did. They're framework-agnostic: works with LangChain, LlamaIndex, CrewAI, or any custom agent.
 
+## Development protocol: complete judgments
+
+The unreleased `agent-judgments/v2` protocol requires a complete Yes/No verdict
+for every requested criterion. An ambiguous response or provider failure leaves
+the evaluation unmeasured; it cannot shrink the denominator or become a passing
+vote. Unexpected grader exceptions remain evaluator errors. Reports retain the
+attempted prompts, raw replies and verdicts in
+`metadata.evaluation_evidence`, including on failed suite evaluations and saved
+trials. These records can contain the task and tool results: apply your normal
+report access controls. They do not capture provider requests, usage, hidden
+SDK retries or process interruption.
+
+All seven LLM agent evaluators accept `judge=JudgeConfig(...)`. The three
+itemwise graders (`ToolArgumentAccuracy`, `ToolCallNecessity`,
+`StepFaithfulness`) accept `max_items=8`. A longer trace is skipped before
+any judgment call; increase the limit deliberately to grade every item.
+Required-check policies treat missing measurements as indeterminate.
+
+A missing trace (`None`) is not evidence of no tool use. An observed empty
+trace (`[]`) has no argument-quality or necessity denominator, so those checks
+skip. To assert that no tools were called, use `ToolCallAccuracy` with
+`expected_tool_calls=[]` and an observed trace.
+
+These LLM scores are heuristics over supplied evidence. For industrial tool
+workflows, validate tool arguments against the actual schema and verify final
+state using [environment outcome checks](/guides/environment-outcomes).
+`TaskCompletion` alone cannot prove that a payment, database update or other
+external action happened. Tool and memory evidence is passed without silent
+prefix truncation; provider context limits still apply.
+
 ## Setting up an agent trace
 
 ```python
@@ -88,7 +118,7 @@ ToolArgumentAccuracy()
 ToolArgumentAccuracy(threshold=0.8)
 ```
 
-Evaluates up to 8 tool calls. Requires `case.agent_trace`.
+Grades every tool call within `max_items` (default 8); skips longer traces. Requires a nonempty tool-call trace.
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
@@ -130,7 +160,7 @@ Requires `case.agent_trace`.
 
 LLM judge that evaluates whether the agent's final output actually satisfies the original task.
 
-**When to use:** End-to-end success metric — the primary evaluator for whether the agent delivered. Use alongside trajectory evaluators to distinguish "right answer, bad process" from "wrong answer".
+**When to use:** A judge assessment of whether the supplied output addresses the task. Pair it with deterministic outcome checks when success depends on external state.
 
 ```python
 from multivon_eval import EvalCase, AgentStep, ToolCall, TaskCompletion
@@ -171,7 +201,7 @@ StepFaithfulness()
 StepFaithfulness(threshold=0.8)
 ```
 
-Evaluates up to 8 steps. Requires `case.agent_trace`.
+Grades every step within `max_items` (default 8); skips longer traces. Requires `case.agent_trace`.
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
@@ -197,7 +227,7 @@ For each tool call, the judge sees all prior calls and asks: was this strictly n
 score = count(tool calls judged necessary) / count(all tool calls)
 ```
 
-Returns `1.0` if the agent made no tool calls. Capped at 8 tool calls per trace to control cost.
+Skips if the trace is missing or contains no tool calls. Skips the complete measurement when tool-call count exceeds `max_items` (default 8).
 
 Each tool call is evaluated independently with full prior-call context. The judge prompt is:
 
@@ -221,12 +251,12 @@ case = EvalCase(
         AgentStep(output="Python 3.13 was released in October 2024."),
     ],
 )
-# Expected ToolCallNecessity score: 0.5 (1 of 2 calls necessary)
+# If the judge marks only the first call necessary, the score is 0.5.
 ```
 
 ## TrajectoryEfficiency
 
-Evaluates whether the agent took the most efficient path to the answer, and whether it recovered correctly from tool failures.
+Judge heuristic for redundant steps and recovery. It does not measure an optimal path or compare against an optimal controller.
 
 ```python
 from multivon_eval import TrajectoryEfficiency
@@ -246,7 +276,7 @@ TrajectoryEfficiency()
 
 Each question is answered yes/no by an LLM judge. Base score = mean of the three answers (0.0–1.0).
 
-**Step 2 — Error recovery penalty** (runs only when failed tool calls are detected):
+**Step 2 — Error recovery penalty**: runs when a tool result contains the text `error` (case insensitive). This heuristic can mistake a successful result for a failure or miss a failure without that word. An ambiguous recovery verdict invalidates the entire measurement.
 
 > "Did the agent handle tool failures by retrying with different arguments, switching to an alternative approach, or signalling a clear failure — rather than silently continuing as if the call succeeded?"
 
@@ -303,7 +333,7 @@ Assesses:
 |-----------|------|---------|-------------|
 | `threshold` | `float` | `0.7` | Minimum score to pass |
 
-Aligned with [AMA-Bench (2026)](https://arxiv.org/abs/2602.22769), a benchmark for evaluating long-horizon memory in agentic applications.
+This grader is a context-use heuristic. It does not implement or reproduce a published memory benchmark.
 
 ## Full agent eval example
 

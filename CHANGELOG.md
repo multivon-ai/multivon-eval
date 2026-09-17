@@ -4,6 +4,20 @@ All notable changes to `multivon-eval`. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+### Agent-grader measurement integrity
+
+- Version agent judgments as `agent-judgments/v2`. Require complete Yes/No
+  replies for every criterion; ambiguous replies and errors cannot become quality
+  votes or disappear from the denominator, including recovery judgments.
+- Retain attempted grader prompts, replies and verdicts in successful and failed
+  suite trials across sync, async, parallel, retry and saved-output paths.
+  Provider requests, usage and interruption capture remain separate gaps.
+- Add per-evaluator judge configuration and explicit `max_items` to itemwise
+  agent checks. Over-limit traces skip without grading a prefix. Missing/empty
+  tool traces no longer receive perfect necessity or argument scores.
+- Preserve full tool results and memory references in prompts; necessity sees
+  prior tool results. Document heuristic limits and deterministic outcome checks.
+
 ### Experimental vector dynamics
 
 - Bind vector-state forecasts to native Gymnasium episode evidence with explicit

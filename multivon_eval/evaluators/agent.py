@@ -2,18 +2,37 @@
 Agent evaluators — evaluate multi-step AI agent execution traces.
 
 These evaluators operate on AgentStep traces attached to EvalCase,
-not just the final output string. This is the key differentiator:
-framework-agnostic evaluation of tool use, planning, and task completion.
+alongside the final output string. They assess supplied trace evidence;
+external task outcomes require separate measurements.
 """
 from __future__ import annotations
+
 import json
 
-from .base import Evaluator
-from .llm_judge import _judge_call, _call as _judge_call_with, _parse_yes_no, _qag_eval
-from ..case import EvalCase, AgentStep
-from ..exceptions import JudgeUnavailable
+from ..case import AgentStep, EvalCase
 from ..judge import JudgeConfig, resolve_judge
 from ..result import EvalResult
+from .agent_judgments import PROTOCOL, capture_judgments, judge_binary, strict_qag
+from .base import Evaluator
+from .llm_judge import _call as _judge_call_with
+
+
+def _judge_call(prompt, max_tokens=100, judge=None):
+    return _judge_call_with(prompt, resolve_judge(judge), max_tokens=max_tokens)
+
+
+def _qag_eval(questions, context, judge):
+    return strict_qag(questions, context,
+                      lambda prompt: _judge_call_with(prompt, judge, max_tokens=100))
+
+
+def _check_limit(evaluator, count):
+    if count > evaluator.max_items:
+        result = evaluator._skipped(
+            f"Trace has {count} items, exceeding max_items={evaluator.max_items}; no prefix was graded.")
+        result.metadata.update(requested_items=count, measured_items=0, max_items=evaluator.max_items)
+        return result
+    return None
 
 
 def _trace_str(trace: list[AgentStep]) -> str:
@@ -24,8 +43,8 @@ def _trace_str(trace: list[AgentStep]) -> str:
         if step.thought:
             lines.append(f"  Thought: {step.thought}")
         for tc in step.tool_calls:
-            args = json.dumps(tc.arguments, indent=2) if tc.arguments else "{}"
-            result_str = str(tc.result)[:200] if tc.result is not None else "(no result)"
+            args = json.dumps(tc.arguments, indent=2, allow_nan=False) if tc.arguments else "{}"
+            result_str = json.dumps(tc.result, ensure_ascii=False, allow_nan=False) if tc.result is not None else "(no result)"
             lines.append(f"  Tool call: {tc.name}({args})")
             lines.append(f"  Result: {result_str}")
         if step.output:
@@ -157,9 +176,15 @@ class ToolArgumentAccuracy(Evaluator):
     name = "tool_argument_accuracy"
     uses_llm_judge = True
 
-    def __init__(self, threshold: float = 0.7):
+    def __init__(self, threshold: float = 0.7, judge: JudgeConfig | None = None, *, max_items: int = 8):
         super().__init__(threshold)
+        if type(max_items) is not int or max_items < 1:
+            raise ValueError("max_items must be a positive integer")
+        self.max_items = max_items
+        self._judge_cfg = judge
+        self.protocol = PROTOCOL
 
+    @capture_judgments
     def evaluate(self, case: EvalCase, output: str) -> EvalResult:
         if not case.agent_trace:
             return self._skipped(
@@ -168,11 +193,14 @@ class ToolArgumentAccuracy(Evaluator):
 
         all_tool_calls = [tc for step in case.agent_trace for tc in step.tool_calls]
         if not all_tool_calls:
-            return self._result(1.0, "No tool calls in trace")
+            return self._skipped("No tool calls in trace; argument quality is undefined.")
 
         results, reasons = [], []
-        for tc in all_tool_calls[:8]:
-            args_str = json.dumps(tc.arguments, indent=2) if tc.arguments else "{}"
+        limited = _check_limit(self, len(all_tool_calls))
+        if limited is not None:
+            return limited
+        for tc in all_tool_calls:
+            args_str = json.dumps(tc.arguments, indent=2, allow_nan=False) if tc.arguments else "{}"
             prompt = (
                 f"Task: {case.input}\n\n"
                 f"Tool called: {tc.name}\n"
@@ -180,22 +208,10 @@ class ToolArgumentAccuracy(Evaluator):
                 f"Are these arguments appropriate and well-formed for the tool '{tc.name}' given the task?"
                 f"\nAnswer \"Yes\" or \"No\"."
             )
-            try:
-                answer = _judge_call(prompt, max_tokens=10)
-                good = _parse_yes_no(answer)
-                if good is None:
-                    reasons.append(f"? {tc.name}({args_str[:60]}) (unparseable judge reply — excluded from score)")
-                else:
-                    results.append(good)
-                    reasons.append(f"{'✓' if good else '✗'} {tc.name}({args_str[:60]})")
-            except JudgeUnavailable:
-                raise
-            except Exception as e:
-                results.append(False)
-                reasons.append(f"✗ {tc.name} (error: {e})")
+            good = judge_binary(prompt, lambda p: _judge_call(p, max_tokens=100, judge=self._judge_cfg))
+            results.append(good)
+            reasons.append(f"{'✓' if good else '✗'} {tc.name}({args_str[:60]})")
 
-        if not results:
-            raise JudgeUnavailable("judge returned no parseable Yes/No verdict for any tool call")
         score = sum(results) / len(results)
         return self._result(score, "\n".join(reasons))
 
@@ -212,7 +228,9 @@ class PlanQuality(Evaluator):
     def __init__(self, threshold: float = 0.7, judge: JudgeConfig | None = None):
         super().__init__(threshold)
         self._judge_cfg = judge
+        self.protocol = PROTOCOL
 
+    @capture_judgments
     def evaluate(self, case: EvalCase, output: str) -> EvalResult:
         if not case.agent_trace:
             return self._skipped("Requires case.agent_trace — no execution trace to score.")
@@ -242,7 +260,9 @@ class TaskCompletion(Evaluator):
     def __init__(self, threshold: float = 0.7, judge: JudgeConfig | None = None):
         super().__init__(threshold)
         self._judge_cfg = judge
+        self.protocol = PROTOCOL
 
+    @capture_judgments
     def evaluate(self, case: EvalCase, output: str) -> EvalResult:
         trace_str = ""
         if case.agent_trace:
@@ -271,31 +291,32 @@ class ToolCallNecessity(Evaluator):
     name = "tool_call_necessity"
     uses_llm_judge = True
 
-    def __init__(self, threshold: float = 0.7):
+    def __init__(self, threshold: float = 0.7, judge: JudgeConfig | None = None, *, max_items: int = 8):
         super().__init__(threshold)
+        if type(max_items) is not int or max_items < 1:
+            raise ValueError("max_items must be a positive integer")
+        self.max_items = max_items
+        self._judge_cfg = judge
+        self.protocol = PROTOCOL
 
+    @capture_judgments
     def evaluate(self, case: EvalCase, output: str) -> EvalResult:
-        if not case.agent_trace:
-            # No trace + no claimed tool calls = "agent didn't call any tools",
-            # which is the correct, non-redundant outcome for many cases
-            # (e.g. trivial questions). Treat as PASS, not as a missing-data
-            # failure. Distinguishes from "user didn't supply trace at all" by
-            # the absence of expected_tool_calls — covered by accuracy evaluator.
-            return self._result(1.0, "No agent trace and no tool calls — nothing to flag as redundant.")
+        if case.agent_trace is None:
+            return self._skipped("Requires a measured agent_trace; use [] for an observed empty trace.")
 
         all_tool_calls = [tc for step in case.agent_trace for tc in step.tool_calls]
         if not all_tool_calls:
-            return self._result(1.0, "No tool calls — nothing to evaluate")
+            return self._skipped("No tool calls in the observed trace; necessity is undefined.")
 
         results, reasons = [], []
         prior_calls = []
 
-        for tc in all_tool_calls[:8]:
-            args_str = json.dumps(tc.arguments, indent=2) if tc.arguments else "{}"
-            prior_str = "\n".join(
-                f"- {p.name}({json.dumps(p.arguments) if p.arguments else '{}'})"
-                for p in prior_calls
-            ) or "(none yet)"
+        limited = _check_limit(self, len(all_tool_calls))
+        if limited is not None:
+            return limited
+        for tc in all_tool_calls:
+            args_str = json.dumps(tc.arguments, indent=2, allow_nan=False) if tc.arguments else "{}"
+            prior_str = _trace_str([AgentStep(tool_calls=prior_calls)]) if prior_calls else "(none yet)"
             prompt = (
                 f"Task: {case.input}\n\n"
                 f"Prior tool calls already made:\n{prior_str}\n\n"
@@ -304,34 +325,19 @@ class ToolCallNecessity(Evaluator):
                 f"or is it redundant/unnecessary given what was already done?"
                 f"\nAnswer \"Yes\" (necessary) or \"No\" (redundant/unnecessary)."
             )
-            try:
-                answer = _judge_call(prompt, max_tokens=10)
-                needed = _parse_yes_no(answer)
-                if needed is None:
-                    reasons.append(f"? {tc.name}({args_str[:50]}) (unparseable judge reply — excluded from score)")
-                else:
-                    results.append(needed)
-                    reasons.append(f"{'✓' if needed else '✗ redundant'} {tc.name}({args_str[:50]})")
-            except JudgeUnavailable:
-                raise
-            except Exception as e:
-                results.append(True)
-                reasons.append(f"? {tc.name} (error: {e})")
+            needed = judge_binary(prompt, lambda p: _judge_call(p, max_tokens=100, judge=self._judge_cfg))
+            results.append(needed)
+            reasons.append(f"{'✓' if needed else '✗'} {tc.name}({args_str[:50]})")
             prior_calls.append(tc)
 
-        if not results:
-            raise JudgeUnavailable("judge returned no parseable Yes/No verdict for any tool call")
         score = sum(results) / len(results)
         return self._result(score, "\n".join(reasons))
 
 
 class TrajectoryEfficiency(Evaluator):
     """
-    Evaluates how efficiently the agent completed the task — did it take the
-    optimal number of steps, or did it meander, repeat, or over-engineer?
-
-    Compares actual step count against an LLM-estimated optimal.
-    Also scores error recovery: if a tool failed, did the agent respond correctly?
+    Judge heuristic for redundant steps and recovery; does not measure an optimum.
+    Recovery screening looks for "error" in tool results, which can misidentify failures.
     Requires case.agent_trace.
     """
     name = "trajectory_efficiency"
@@ -340,7 +346,9 @@ class TrajectoryEfficiency(Evaluator):
     def __init__(self, threshold: float = 0.7, judge: JudgeConfig | None = None):
         super().__init__(threshold)
         self._judge_cfg = judge
+        self.protocol = PROTOCOL
 
+    @capture_judgments
     def evaluate(self, case: EvalCase, output: str) -> EvalResult:
         if not case.agent_trace:
             return self._skipped(
@@ -369,34 +377,22 @@ class TrajectoryEfficiency(Evaluator):
         judge = resolve_judge(self._judge_cfg)
         score, reasons = _qag_eval(questions, ctx, judge)
 
-        # Bonus: error recovery — if there were failed tool calls, did the agent handle them?
+        # This text heuristic is not a structured tool-error observation.
         if failed_tools:
             recovery_prompt = (
                 f"Task: {case.input}\n\nTrace:\n{trace}\n\n"
-                f"{len(failed_tools)} tool call(s) returned errors. "
+                f"{len(failed_tools)} tool result(s) contain the word error; these are suspected failures. "
                 f"Did the agent appropriately detect and recover from these failures "
                 f"(e.g., retried, used an alternative, or reported the failure clearly)?"
                 f"\nAnswer \"Yes\" or \"No\"."
             )
-            try:
-                # Use the same resolved judge as the QAG above so a caller's
-                # `judge=` is honored consistently across both scoring paths.
-                answer = _judge_call_with(recovery_prompt, judge, max_tokens=10)
-                recovered = _parse_yes_no(answer)
-                if recovered is None:
-                    reasons.append(
-                        f"? Unparseable recovery verdict for {len(failed_tools)} "
-                        f"tool failure(s) — no score adjustment"
-                    )
-                elif not recovered:
-                    score = max(0.0, score - 0.2)
-                    reasons.append(f"✗ Did not recover well from {len(failed_tools)} tool failure(s)")
-                else:
-                    reasons.append(f"✓ Recovered from {len(failed_tools)} tool failure(s)")
-            except JudgeUnavailable:
-                raise
-            except Exception:
-                pass
+            recovered = judge_binary(
+                recovery_prompt, lambda p: _judge_call_with(p, judge, max_tokens=100))
+            if not recovered:
+                score = max(0.0, score - 0.2)
+                reasons.append(f"✗ Did not recover well from {len(failed_tools)} suspected tool failure(s)")
+            else:
+                reasons.append(f"✓ Recovered from {len(failed_tools)} suspected tool failure(s)")
 
         return self._result(score, "\n".join(reasons))
 
@@ -409,8 +405,7 @@ class AgentMemoryEval(Evaluator):
     (provided via case.context) — including accurate retrieval, avoiding
     stale information, and not hallucinating non-existent prior context.
 
-    Aligned with AMA-Bench (2025): tests retrieval accuracy, test-time learning,
-    long-range understanding, and selective forgetting.
+    A context-use heuristic, not an implementation of a memory benchmark.
 
     Requires:
       - case.context: summary or log of prior session(s)
@@ -423,13 +418,15 @@ class AgentMemoryEval(Evaluator):
     def __init__(self, threshold: float = 0.7, judge: JudgeConfig | None = None):
         super().__init__(threshold)
         self._judge_cfg = judge
+        self.protocol = PROTOCOL
 
+    @capture_judgments
     def evaluate(self, case: EvalCase, output: str) -> EvalResult:
         if not case.context:
             return self._skipped("Requires case.context — supply prior session context to enable AgentMemoryEval.")
 
         ctx = (
-            f"Prior session context:\n{case.context}\n\n"
+            f"Prior session context:\n{case.context_str}\n\n"
             f"Current query: {case.input}\n\n"
             f"Agent response: {output}"
         )
@@ -440,7 +437,7 @@ class AgentMemoryEval(Evaluator):
         ]
         if case.expected_output:
             questions.append(
-                (f"Does the response include: \"{case.expected_output[:200]}\"?", True)
+                (f"Does the response include: \"{case.expected_output}\"?", True)
             )
 
         judge = resolve_judge(self._judge_cfg)
@@ -457,15 +454,24 @@ class StepFaithfulness(Evaluator):
     name = "step_faithfulness"
     uses_llm_judge = True
 
-    def __init__(self, threshold: float = 0.7):
+    def __init__(self, threshold: float = 0.7, judge: JudgeConfig | None = None, *, max_items: int = 8):
         super().__init__(threshold)
+        if type(max_items) is not int or max_items < 1:
+            raise ValueError("max_items must be a positive integer")
+        self.max_items = max_items
+        self._judge_cfg = judge
+        self.protocol = PROTOCOL
 
+    @capture_judgments
     def evaluate(self, case: EvalCase, output: str) -> EvalResult:
         if not case.agent_trace:
             return self._skipped("Requires case.agent_trace — no execution trace to score.")
 
         results, reasons = [], []
-        for i, step in enumerate(case.agent_trace[:8], 1):
+        limited = _check_limit(self, len(case.agent_trace))
+        if limited is not None:
+            return limited
+        for i, step in enumerate(case.agent_trace, 1):
             prior = _trace_str(case.agent_trace[:i-1]) if i > 1 else "(no prior steps)"
             step_str = _trace_str([step])
             prompt = (
@@ -476,22 +482,9 @@ class StepFaithfulness(Evaluator):
                 f"without introducing contradictions or hallucinated information?"
                 f"\nAnswer \"Yes\" or \"No\"."
             )
-            try:
-                answer = _judge_call(prompt, max_tokens=10)
-                faithful = _parse_yes_no(answer)
-                thought_preview = step.thought[:60] if step.thought else "(no thought)"
-                if faithful is None:
-                    reasons.append(f"? Step {i}: {thought_preview} (unparseable judge reply — excluded from score)")
-                else:
-                    results.append(faithful)
-                    reasons.append(f"{'✓' if faithful else '✗'} Step {i}: {thought_preview}")
-            except JudgeUnavailable:
-                raise
-            except Exception as e:
-                results.append(False)
-                reasons.append(f"✗ Step {i} (error: {e})")
+            faithful = judge_binary(prompt, lambda p: _judge_call(p, max_tokens=100, judge=self._judge_cfg))
+            results.append(faithful)
+            reasons.append(f"{'✓' if faithful else '✗'} Step {i}")
 
-        if not results:
-            raise JudgeUnavailable("judge returned no parseable Yes/No verdict for any step")
         score = sum(results) / len(results)
         return self._result(score, f"{sum(results)}/{len(results)} steps faithful\n" + "\n".join(reasons))

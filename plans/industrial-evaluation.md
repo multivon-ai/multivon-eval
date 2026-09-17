@@ -18,7 +18,7 @@ Gymnasium at their established boundaries.
 | ID | Deliverable | Evidence needed | Status |
 |---|---|---|---|
 | R01 | Versioned cases/datasets: stable IDs, content revisions, source groups, split provenance | Reordering, duplicate inputs, changed contexts/labels, JSON round trips, split leakage and comparison compatibility tested; migration demonstrated | In progress: case/dataset identities, group splits, strict comparison pairing implemented; recorded grader/engine/calibration and repeat-count drift checked; opaque dependency compatibility remains |
-| R02 | Complete immutable trial evidence and regrading | All outputs, traces, grader results, retries/errors, effective requests, usage retained across sync/async/parallel paths; saved output regrading makes no target calls | In progress: per-run/retry snapshots and regrading implemented; provider requests, usage, interrupted attempts and execution configuration remain |
+| R02 | Complete immutable trial evidence and regrading | All outputs, traces, grader results, retries/errors, effective requests, usage retained across sync/async/parallel paths; saved output regrading makes no target calls | In progress: per-run/retry snapshots, regrading and strict agent-grader judgment evidence implemented; provider requests, usage, interrupted attempts and execution configuration remain |
 | R03 | Resumable execution and resource controls | Kill/restart experiment preserves completed work; checkpoint compatibility, cancellation, bounded concurrency, deadlines and budget accounting; explicit policy for ambiguous side effects | In progress: Inspect SIGKILL/recovery experiment preserves completed work and rejects duplicate-write control; full compatibility, cancellation/deadline/budget validation remains |
 | R04 | Acceptance policies | Required-check coverage, critical invariants, per-slice thresholds, sample requirements, quality/error/indeterminate distinctions and machine-readable decisions verified | Delivered in 0.18.0: policy/CLI, failure-path tests and frozen document-workflow policy; task/domain validity tracked separately |
 | R05 | Review and calibration | Label import/export, review disagreements, development-only fitting, held-out evaluation, uncertainty/false-accept reporting and no leakage verified | Development preview: native Label Studio server/browser round trip and saved-score development/held-out source analysis validated with synthetic fixtures; mobile/accessibility limits documented; independent task-label validity remains under R17 |
@@ -287,3 +287,22 @@ distribution metadata is disclosed; exact execution is identified by the clean
 Git revision and source snapshot. No API calls or new PyPI release. This completes
 the bounded R11 development demonstration, not industrial/robotic validation or
 the remaining execution, extension, release and contribution requirements.
+
+
+### Agent-grader integrity follow-up (2026-09-17)
+
+The agent audit reproduced false quality votes after exceptions, unknown-verdict
+exclusion, perfect scores with missing tool traces and silent eight-item/200-character
+prefix grading. `agent-judgments/v2` requires complete criteria and retains raw
+judgments, including failed attempts, in suite trial snapshots. Configurable item
+limits now skip the whole measurement before calls; empty tool denominators skip.
+ToolCallAccuracy can still assert an observed no-tool outcome. Per-grader judge
+configuration, full tool results/prior results and memory references are preserved.
+
+Validation: full tracked Python 3.12 suite 1,878 passed, 5 skipped, 7 warnings;
+three additional regression tests subsequently passed with the focused tests.
+Python 3.10 execution/concurrency/round-trip subset and all 70 MDX pages checked.
+These are offline regression fixtures, not evidence of judge accuracy. No API
+requests or PyPI release. Provider usage/request capture and interrupted attempts
+remain open; Inspect's native exception logging does not promise these attached
+judgment records. Grader dependency contracts remain the next R01 gap.

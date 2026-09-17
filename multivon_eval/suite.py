@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any, Callable, Awaitable
 from .case import EvalCase
 from .trials import attach_trial, capture_case
 from .exceptions import JudgeUnavailable
+from .evaluators.agent_judgments import error_evidence
 from .result import (
     CalibrationResult, CaseResult, EvalGateFailure, EvalReport, EvalResult, EvalStatus, ERROR_STATUSES, EVALUATION_STATUSES,
 )
@@ -259,7 +260,7 @@ class EvalSuite:
                 result = EvalResult(
                     evaluator=ev_name, score=0.0, passed=False,
                     reason=f"[judge unavailable: {ju}]",
-                    metadata={"error_kind": "judge_error", "error_detail": str(ju)},
+                    metadata={"error_kind": "judge_error", "error_detail": str(ju), **error_evidence(ju)},
                 )
             except Exception as ex:
                 # An evaluator itself crashed — distinct from a judge outage.
@@ -270,7 +271,7 @@ class EvalSuite:
                     evaluator=ev_name, score=0.0, passed=False,
                     reason=f"[evaluator error: {type(ex).__name__}: {ex}]",
                     metadata={"error_kind": "evaluator_error",
-                              "error_detail": f"{type(ex).__name__}: {ex}"},
+                              "error_detail": f"{type(ex).__name__}: {ex}", **error_evidence(ex)},
                 )
             results.append(result)
 
@@ -856,7 +857,7 @@ class EvalSuite:
                     result = EvalResult(
                         evaluator=ev_name, score=0.0, passed=False,
                         reason=f"[judge unavailable: {ju}]",
-                        metadata={"error_kind": "judge_error", "error_detail": str(ju)},
+                        metadata={"error_kind": "judge_error", "error_detail": str(ju), **error_evidence(ju)},
                     )
                 except Exception as ex:
                     if evaluator_err is None:
@@ -864,7 +865,7 @@ class EvalSuite:
                     result = EvalResult(
                         evaluator=ev_name, score=0.0, passed=False,
                         reason=f"[evaluator error: {type(ex).__name__}: {ex}]",
-                        metadata={"error_kind": "evaluator_error", "error_detail": str(ex)},
+                        metadata={"error_kind": "evaluator_error", "error_detail": str(ex), **error_evidence(ex)},
                     )
                 results.append(result)
             case_results.append(attach_trial(CaseResult(
@@ -1503,14 +1504,14 @@ class EvalSuite:
                 return EvalResult(
                     evaluator=ev_name, score=0.0, passed=False,
                     reason=f"[judge unavailable: {ju}]",
-                    metadata={"error_kind": "judge_error", "error_detail": str(ju)},
+                    metadata={"error_kind": "judge_error", "error_detail": str(ju), **error_evidence(ju)},
                 )
             except Exception as ex:
                 return EvalResult(
                     evaluator=ev_name, score=0.0, passed=False,
                     reason=f"[evaluator error: {type(ex).__name__}: {ex}]",
                     metadata={"error_kind": "evaluator_error",
-                              "error_detail": f"{type(ex).__name__}: {ex}"},
+                              "error_detail": f"{type(ex).__name__}: {ex}", **error_evidence(ex)},
                 )
 
         async def _gated_eval(ev, case, output, latency_ms, model_error):

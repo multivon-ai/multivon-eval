@@ -162,10 +162,9 @@ class TestToolArgumentAccuracy:
         assert result.reason.startswith("[skipped]")
 
 
-    def test_no_tool_calls_passes(self):
+    def test_no_tool_calls_skips(self):
         result = ToolArgumentAccuracy().evaluate(make_case(steps=[AgentStep(thought="No tools needed")]), "done")
-        assert result.passed
-        assert result.score == 1.0
+        assert not result.passed and result.metadata["skipped"]
         assert "No tool calls in trace" in result.reason
 
 
@@ -260,13 +259,12 @@ class TestToolCallNecessity:
 
     def test_empty_steps_fail(self):
         result = ToolCallNecessity().evaluate(make_case(steps=[]), "done")
-        assert result.passed
+        assert not result.passed and result.metadata["skipped"]
 
 
-    def test_no_tool_calls_passes(self):
+    def test_no_tool_calls_skips(self):
         result = ToolCallNecessity().evaluate(make_case(steps=[AgentStep(thought="No tools needed")]), "done")
-        assert result.passed
-        assert result.score == 1.0
+        assert not result.passed and result.metadata["skipped"]
 
 
 class TestTrajectoryEfficiency:

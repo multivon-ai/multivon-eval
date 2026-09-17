@@ -9,6 +9,7 @@ from numbers import Real
 
 from .case import EvalCase
 from .case_manifest import canonical_json
+from .evaluators.agent_judgments import error_evidence
 from .evaluators.base import Evaluator
 from .judge import JudgeConfig
 
@@ -143,7 +144,8 @@ def validate_adversarial_cases(
                 failures += not result.passed
                 shot['status'] = 'passed' if result.passed else 'failed_quality'
             except Exception as exc:  # noqa: BLE001 — retain failures from caller-supplied code
-                shot.update(status='evaluator_error', reason=str(exc), error_type=type(exc).__name__)
+                shot.update(status='evaluator_error', reason=str(exc), error_type=type(exc).__name__,
+                            **error_evidence(exc))
 
         if report.measured_shots == n_shots:
             report.failure_rate = failures / n_shots
