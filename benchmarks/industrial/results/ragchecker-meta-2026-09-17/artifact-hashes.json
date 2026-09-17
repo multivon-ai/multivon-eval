@@ -1,0 +1,38 @@
+{
+  "audit.json": {
+    "sha256": "e6aa752b331ce7e95530e3c6fcc47ec7209ae56e0bee6e5435a4d37dfb2c4418",
+    "bytes": 3047
+  },
+  "execution.json": {
+    "sha256": "1e3f6691f455051e8adb15d961e4bf3c7a17e83dd88b2afdd13315cc288250bb",
+    "bytes": 22
+  },
+  "human_completeness.png": {
+    "sha256": "c02e94dad034c3e1183e3a84e9dfe42f598ee19dc1bddb6352578c9b80ab689f",
+    "bytes": 436568
+  },
+  "human_correctness.png": {
+    "sha256": "0a3271b65136d61f4c53ba8175a7711080b6c1b5a4b79e33514b8d16807fd59f",
+    "bytes": 470758
+  },
+  "human_overall.png": {
+    "sha256": "03c197adfee46a3bc97f1d4f9ca03e2928bf3d3acb0aeb30c55b4f9d25336779",
+    "bytes": 438374
+  },
+  "manifest.json": {
+    "sha256": "06265b25c01d4f1e91dc765ca3f8d76e8da0c4cd019a80b44fca5c5acc1dd47e",
+    "bytes": 1992
+  },
+  "meta_eval_results.json": {
+    "sha256": "81d62108d7efdb89a6dd29bdc8862d9293e1347560e3c961a4190edb1840719d",
+    "bytes": 3390
+  },
+  "native-scorer.log": {
+    "sha256": "6cd0a6821bbaf3127233ec921d79b126fce47d0997d7007ccb7da0aaf5e11fb2",
+    "bytes": 127
+  },
+  "requirements-freeze.txt": {
+    "sha256": "6330f1437f9364eeaeda42ce1cb14b34204dd09480d04b289155dacfa8aaeac2",
+    "bytes": 235
+  }
+}

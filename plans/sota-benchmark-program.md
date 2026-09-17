@@ -59,6 +59,13 @@ outputs. Reproduce their official scoring before adding Multivon. Historical
 baseline files are valuable reproducibility checks, but a current SoTA comparison
 also needs current strong baselines under a matching protocol.
 
+The [first native reproduction](../benchmarks/industrial/results/ragchecker-meta-2026-09-17/README.md)
+now matches the published RAGChecker Table 5 correlations on all 280 cases,
+using unchanged upstream scoring and released predictions. The bundle records
+data alignment, missing-score imputation, dependencies and artifact hashes.
+This establishes a historical reference, not a Multivon result or fresh baseline
+model execution.
+
 ## Technical hypothesis to test
 
 Use a modular verification pipeline: identify checkable claims, bind them to the

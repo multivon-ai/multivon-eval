@@ -279,5 +279,7 @@ dependency combinations. Apache 2.0 — [Multivon](https://multivon.ai).
 
 Research direction: [regulated enterprise workflows and moat](plans/regulated-enterprise-study.md),
 with [public benchmarks for verifier quality](plans/sota-benchmark-program.md).
-These are research plans; Multivon does not yet have a SoTA result
-on those evaluator benchmarks.
+The [first RAGChecker baseline reproduction](benchmarks/industrial/results/ragchecker-meta-2026-09-17/README.md)
+matches published correlations on 280 cases using released predictions and the
+unchanged upstream scorer. Multivon does not yet have its own accuracy result or
+a SoTA claim on those evaluator benchmarks.

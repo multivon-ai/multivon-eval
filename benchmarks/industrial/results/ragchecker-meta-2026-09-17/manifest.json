@@ -1,0 +1,52 @@
+{
+  "repository": "https://github.com/amazon-science/RAGChecker",
+  "revision": "6091f08c00e676e87a970f2aeb4a23a484746348",
+  "runner_sha256": "51779f980d3a8023034ddd50b777f942bf29de5d238ba223c28194be7dd4f4bc",
+  "sources": {
+    "meta_eval.py": {
+      "sha256": "062a24b51271c501d0c022aabf9694e99aedc48fc49c176b317039f3c8128061",
+      "bytes": 6438
+    },
+    "human_labeled_data.json": {
+      "sha256": "42651629afc007396a709c89e89ada3b587e0bcc26246c951225866715e265ce",
+      "bytes": 2347698
+    },
+    "baseline_trulens_llama3.json": {
+      "sha256": "4a1a830c780b301e1fa634c0cfb37743111743df51d26ea58ff8421885b1c57a",
+      "bytes": 10481466
+    },
+    "baseline_ares_llama3.json": {
+      "sha256": "ce5b8d8aa060f4fc54e136017f9692bb6bdc6cf72b1829fc6fc0795f1d4f2aea",
+      "bytes": 10488594
+    },
+    "baseline_ragas_llama3.json": {
+      "sha256": "a883d45db10da59d0ad1ad7da1adcbe8f94fa5c110edc5306170496052411f91",
+      "bytes": 10543166
+    },
+    "baseline_crud_llama3.json": {
+      "sha256": "9f65dd37cee1568db61aabda3b10bef4087ded00bc3c631ef98c21b4461525e8",
+      "bytes": 10641514
+    },
+    "baseline_ragchecker.json": {
+      "sha256": "1fce14cc54bf276c3ed2bb48976ba42e85159651b64c181bc19795152db6e3d6",
+      "bytes": 1238661
+    }
+  },
+  "python": "3.12.13",
+  "platform": "macOS-26.5.2-arm64-arm-64bit",
+  "packages": {
+    "numpy": "2.2.6",
+    "scipy": "1.18.1",
+    "pandas": "3.0.5",
+    "plotly": "7.1.0",
+    "kaleido": "1.4.0"
+  },
+  "protocol": {
+    "scorer": "Unchanged upstream meta_eval.py; default use_llama3=True",
+    "missing_values": "Official per-metric median imputation before normalization",
+    "correlation_scale": "Pearson and Spearman multiplied by 100, rounded to 2 decimals",
+    "population": "280 cases; each prediction duplicated for two human annotations",
+    "inference": "None: released predictions rescored; not fresh baseline model execution",
+    "network": "No model clients used; browser renderer not network-sandboxed"
+  }
+}

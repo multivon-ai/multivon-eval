@@ -1,0 +1,128 @@
+{
+  "cases": 280,
+  "annotation_records": 560,
+  "unique_question_keys": 280,
+  "cases_by_domain": {
+    "kiwi": 28,
+    "clapnq": 28,
+    "robustqa/fiqa": 28,
+    "robustqa/lifestyle": 28,
+    "robustqa/recreation": 28,
+    "robustqa/bioasq": 28,
+    "robustqa/science": 28,
+    "robustqa/technology": 28,
+    "robustqa/writing": 28,
+    "novelqa": 28
+  },
+  "baseline_input_alignment_conflicts": 0,
+  "missing_delta_audit": {
+    "trulens": {
+      "groundedness": {
+        "case_count": 280,
+        "nan_deltas": 14,
+        "imputation_median": 0.0
+      },
+      "answer_relevance": {
+        "case_count": 280,
+        "nan_deltas": 0,
+        "imputation_median": 0.0
+      }
+    },
+    "ares": {
+      "Answer Relevance Scores": {
+        "case_count": 280,
+        "nan_deltas": 0,
+        "imputation_median": 0.0
+      },
+      "Answer Faithfulness Scores": {
+        "case_count": 280,
+        "nan_deltas": 0,
+        "imputation_median": 0.0
+      }
+    },
+    "ragas": {
+      "faithfulness": {
+        "case_count": 280,
+        "nan_deltas": 27,
+        "imputation_median": 0.0
+      },
+      "answer_correctness": {
+        "case_count": 280,
+        "nan_deltas": 17,
+        "imputation_median": 0.0
+      },
+      "answer_similarity": {
+        "case_count": 280,
+        "nan_deltas": 0,
+        "imputation_median": 0.0
+      },
+      "answer_relevancy": {
+        "case_count": 280,
+        "nan_deltas": 0,
+        "imputation_median": 0.0
+      }
+    },
+    "crud": {
+      "bleu-avg": {
+        "case_count": 280,
+        "nan_deltas": 0,
+        "imputation_median": -0.008804738265719647
+      },
+      "rouge-L": {
+        "case_count": 280,
+        "nan_deltas": 0,
+        "imputation_median": -0.0034202027566139215
+      },
+      "bertScore": {
+        "case_count": 280,
+        "nan_deltas": 0,
+        "imputation_median": -0.00017455220222473145
+      },
+      "QA_avg_F1": {
+        "case_count": 280,
+        "nan_deltas": 0,
+        "imputation_median": 0.0
+      },
+      "QA_recall": {
+        "case_count": 280,
+        "nan_deltas": 0,
+        "imputation_median": 0.0
+      }
+    },
+    "ragchecker": {
+      "correctness_label": {
+        "case_count": 280,
+        "nan_deltas": 0,
+        "imputation_median": 0.0
+      },
+      "completeness_label": {
+        "case_count": 280,
+        "nan_deltas": 0,
+        "imputation_median": 0.0
+      },
+      "overall_label": {
+        "case_count": 280,
+        "nan_deltas": 0,
+        "imputation_median": 0.0
+      }
+    }
+  },
+  "human_agreement": {
+    "correctness_label": {
+      "case_count": 280,
+      "exact_agreements": 140,
+      "within_one_agreements": 254
+    },
+    "completeness_label": {
+      "case_count": 280,
+      "exact_agreements": 168,
+      "within_one_agreements": 257
+    },
+    "overall_label": {
+      "case_count": 280,
+      "exact_agreements": 155,
+      "within_one_agreements": 253
+    }
+  },
+  "interpretation": "Two annotations per case are not independent cases. Source-document independence is unverified."
+}

@@ -1,0 +1,224 @@
+{
+  "correlation with correctness_label": {
+    "trulens": {
+      "groundedness": [
+        21.11,
+        18.21
+      ],
+      "answer_relevance": [
+        35.01,
+        27.37
+      ]
+    },
+    "ares": {
+      "Answer Relevance Scores": [
+        18.63,
+        16.84
+      ],
+      "Answer Faithfulness Scores": [
+        9.46,
+        7.6
+      ]
+    },
+    "ragas": {
+      "faithfulness": [
+        8.22,
+        7.53
+      ],
+      "answer_correctness": [
+        39.11,
+        36.3
+      ],
+      "answer_similarity": [
+        41.07,
+        43.21
+      ],
+      "answer_relevancy": [
+        11.59,
+        8.19
+      ]
+    },
+    "crud": {
+      "bleu-avg": [
+        38.89,
+        35.32
+      ],
+      "rouge-L": [
+        31.75,
+        31.72
+      ],
+      "bertScore": [
+        30.34,
+        27.05
+      ],
+      "QA_avg_F1": [
+        20.73,
+        15.67
+      ],
+      "QA_recall": [
+        30.93,
+        27.13
+      ]
+    },
+    "ragchecker": {
+      "correctness_label": [
+        49.66,
+        46.95
+      ]
+    },
+    "human": {
+      "sanity check": [
+        63.67,
+        59.19
+      ]
+    }
+  },
+  "correlation with completeness_label": {
+    "trulens": {
+      "groundedness": [
+        14.01,
+        6.02
+      ],
+      "answer_relevance": [
+        37.24,
+        37.91
+      ]
+    },
+    "ares": {
+      "Answer Relevance Scores": [
+        20.13,
+        18.13
+      ],
+      "Answer Faithfulness Scores": [
+        10.25,
+        8.99
+      ]
+    },
+    "ragas": {
+      "faithfulness": [
+        4.9,
+        1.19
+      ],
+      "answer_correctness": [
+        36.42,
+        36.04
+      ],
+      "answer_similarity": [
+        53.16,
+        61.35
+      ],
+      "answer_relevancy": [
+        9.39,
+        13.57
+      ]
+    },
+    "crud": {
+      "bleu-avg": [
+        32.13,
+        21.85
+      ],
+      "rouge-L": [
+        47.88,
+        45.67
+      ],
+      "bertScore": [
+        37.93,
+        40.05
+      ],
+      "QA_avg_F1": [
+        25.58,
+        20.33
+      ],
+      "QA_recall": [
+        45.11,
+        43.76
+      ]
+    },
+    "ragchecker": {
+      "completeness_label": [
+        60.67,
+        58.11
+      ]
+    },
+    "human": {
+      "sanity check": [
+        71.91,
+        68.36
+      ]
+    }
+  },
+  "correlation with overall_label": {
+    "trulens": {
+      "groundedness": [
+        19.45,
+        14.42
+      ],
+      "answer_relevance": [
+        35.15,
+        33.59
+      ]
+    },
+    "ares": {
+      "Answer Relevance Scores": [
+        17.81,
+        16.26
+      ],
+      "Answer Faithfulness Scores": [
+        8.8,
+        7.58
+      ]
+    },
+    "ragas": {
+      "faithfulness": [
+        7.83,
+        5.55
+      ],
+      "answer_correctness": [
+        38.01,
+        37.14
+      ],
+      "answer_similarity": [
+        48.31,
+        57.23
+      ],
+      "answer_relevancy": [
+        10.27,
+        11.83
+      ]
+    },
+    "crud": {
+      "bleu-avg": [
+        35.14,
+        29.42
+      ],
+      "rouge-L": [
+        43.1,
+        43.21
+      ],
+      "bertScore": [
+        33.51,
+        35.57
+      ],
+      "QA_avg_F1": [
+        25.59,
+        19.63
+      ],
+      "QA_recall": [
+        41.25,
+        39.71
+      ]
+    },
+    "ragchecker": {
+      "overall_label": [
+        61.93,
+        60.9
+      ]
+    },
+    "human": {
+      "sanity check": [
+        70.09,
+        68.89
+      ]
+    }
+  }
+}

@@ -12,6 +12,7 @@ accuracy benchmarks. Development features may not be in the latest PyPI release.
 
 | Question | Evidence and reused infrastructure |
 |---|---|
+| What is an established evaluator-accuracy baseline? | [RAGChecker reproduction](industrial/results/ragchecker-meta-2026-09-17/README.md): unchanged upstream scorer matches published correlations on 280 cases; released predictions, not a Multivon score. |
 | Did the agent complete the business task? | [Document-to-ledger study](industrial/DOCUMENT_RESULTS.md): CORD, pdfhell, Inspect and independently queried SQLite outcomes. |
 | Do limits and cancellation preserve honest outcomes? | [Execution controls](industrial/EXECUTION_CONTROLS_VALIDATION.md): actual Inspect limits, cancellation and concurrency, with complete/incomplete ledger controls. |
 | Are resumed scores still compatible with the task? | [Retry contracts](industrial/RETRY_CONTRACT_VALIDATION.md): native sample preservation, a changed business rule, and fresh grading that exposes stale passing scores. |
