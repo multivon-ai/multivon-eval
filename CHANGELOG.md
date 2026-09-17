@@ -4,6 +4,21 @@ All notable changes to `multivon-eval`. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+### Declared grader dependencies
+
+- Add `declare_dependencies` for explicit custom-grader/code/model/data contracts
+  and named file hashes. Preserve opaque fields as compatibility issues instead
+  of silently omitting them; bind private configuration by digest and preserve
+  tuple/regex type distinctions. Hash common credential-like fields.
+- Record inherited judge settings, local engine source bytes, Python/platform and
+  installed distribution metadata. These are snapshots and caller declarations,
+  not automatic discovery of hidden state or guarantees about remote models.
+- Capture suite locks before execution and detect observed changes afterward,
+  including saved-output grading and regrading. Comparison gates and lock
+  verification reject unknown dependencies, missing snapshots and digest drift.
+- Legacy reports remain inspectable. Migrate comparison baselines by rerunning
+  both sides; the legacy identity override cannot bypass recorded lock drift.
+
 ### Agent-grader measurement integrity
 
 - Version agent judgments as `agent-judgments/v2`. Require complete Yes/No

@@ -17,9 +17,11 @@ import pytest
 
 from multivon_eval import (
     CaseDiff, EvalCase, EvalReport, EvalResult, EvalStatus, ReportDiff, compare_reports,
+    EvalSuite, declare_dependencies,
 )
 from multivon_eval.compare import _cli, _pair_by_input
 from multivon_eval.result import CaseResult
+from multivon_eval.evaluators.base import Evaluator
 from multivon_eval.trials import attach_trial, capture_case
 
 
@@ -34,7 +36,7 @@ def _case(
     case_id, case_digest = EvalCase(inp).identity()
     result = CaseResult(
         case_input=inp,
-        actual_output="ok",
+        actual_output=json.dumps({"score": score, "passed": passed}),
         results=[EvalResult("e", score, passed)],
         judge_error=judge_error,
         runs=runs,
@@ -47,8 +49,17 @@ def _case(
     return result
 
 
+class FixtureGrader(Evaluator):
+    name = "e"
+    def evaluate(self, case, output):
+        value = json.loads(output)
+        return EvalResult(self.name, value["score"], value["passed"])
+
+
 def _report(name: str, cases: list[CaseResult]) -> EvalReport:
-    return EvalReport(suite_name=name, case_results=cases)
+    grader = declare_dependencies(FixtureGrader(), version="pregraded-fixture/v1", dependencies={})
+    lock = EvalSuite(name).add_evaluator(grader).lock()
+    return EvalReport(suite_name=name, case_results=cases, suite_lock=lock)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -8,9 +8,9 @@ update.
 
 Solution: fingerprint the suite. Every component contributes a
 deterministic hash; the suite's lock is the SHA-256 of the merged
-manifest. A lock written today can be compared against a lock written
-six months from now, and if any meaningful field has changed, the
-comparison fails loudly with a structured diff.
+manifest. Recorded settings and dependency declarations can be compared across runs.
+Opaque graders without declarations remain unverifiable. This does not discover
+arbitrary globals, mutable remote models or undeclared external state.
 
 What's fingerprinted:
 
@@ -46,6 +46,7 @@ from typing import TYPE_CHECKING, Any
 
 from . import __version__
 from .exceptions import MultivonError
+from .dependencies import engine_dependencies, evaluator_dependencies, lock_issues, seal_lock
 
 if TYPE_CHECKING:
     from .case import EvalCase
@@ -178,6 +179,11 @@ class SuiteLock:
                         f"evaluator {k[1]}.config.{cfg_key}: "
                         f"{cur_cfg.get(cfg_key)!r} vs {saved_cfg.get(cfg_key)!r}"
                     )
+            for extra_key in ("dependencies", "config_types"):
+                if cur.extra.get(extra_key) != saved.extra.get(extra_key):
+                    diffs.append(f"evaluator {k[1]}.{extra_key} changed")
+        if self.extra.get("engine") != other.extra.get("engine"):
+            diffs.append("Engine source or environment changed")
         return diffs
 
 
@@ -186,7 +192,8 @@ class SuiteLock:
 
 def _canonical_json(obj: Any) -> bytes:
     """Deterministic JSON for hashing."""
-    return json.dumps(obj, separators=(",", ":"), sort_keys=True, default=str).encode("utf-8")
+    from .case_manifest import canonical_json
+    return canonical_json(obj).encode("utf-8")
 
 
 def _sha256(blob: bytes) -> str:
@@ -227,13 +234,10 @@ def _resolved_judge(evaluator: "Evaluator") -> Any | None:
         or getattr(evaluator, "judge", None)
         or getattr(evaluator, "_judge", None)
     )
-    if raw is None:
+    if raw is None and not getattr(evaluator, "uses_llm_judge", False):
         return None
-    try:
-        from .judge import resolve_judge
-        return resolve_judge(raw)
-    except Exception:
-        return raw
+    from .judge import resolve_judge
+    return resolve_judge(raw)
 
 
 def _evaluator_judge_fingerprint(evaluator: "Evaluator") -> dict[str, Any] | None:
@@ -247,6 +251,11 @@ def _evaluator_judge_fingerprint(evaluator: "Evaluator") -> dict[str, Any] | Non
         "base_url": getattr(judge, "base_url", ""),
         "temperature": getattr(judge, "temperature", 0.0),
         "max_tokens": getattr(judge, "max_tokens", 0),
+        "timeout": judge.timeout,
+        "cache": judge.cache,
+        "reliability_check": judge.reliability_check,
+        "reliability_sample": judge.reliability_sample,
+        "extra_digest": _sha256(_canonical_json(judge.extra)),
     }
 
 
@@ -279,44 +288,8 @@ def _evaluator_calibration_fingerprint(evaluator: "Evaluator") -> dict[str, Any]
 
 
 def _evaluator_config_fingerprint(evaluator: "Evaluator") -> dict[str, Any]:
-    """Capture JSON-safe public configuration knobs an evaluator was built with.
-
-    Critical for reproducibility: ``Contains.substrings``, ``WordCount.min_words``,
-    ``RegexMatch.pattern``, ``BLEU.n``, ``BERTScore.model`` — anything that
-    changes a decision — must be in the fingerprint. Otherwise two suites
-    with different config but the same name + threshold + judge would share
-    a ``suite_hash`` and an audit replay would diverge silently.
-
-    Conservative rules:
-      - Public attributes only (no leading underscore).
-      - Skip attributes already captured by other fingerprint fields
-        (name, threshold, judge — those have dedicated slots).
-      - Skip non-serializable values (callables, classes, complex objects)
-        rather than failing — we err on the side of keeping the lock
-        builder non-fatal.
-      - Compiled regex patterns are rendered as their source pattern so
-        the fingerprint stays stable across runs.
-    """
-    import re
-
-    _SKIP_FIELDS = {"name", "threshold", "judge"}
-    out: dict[str, Any] = {}
-    for attr_name in sorted(vars(evaluator)):
-        if attr_name.startswith("_") or attr_name in _SKIP_FIELDS:
-            continue
-        value = getattr(evaluator, attr_name)
-        # Render regex objects as their source so the fingerprint is portable.
-        if isinstance(value, re.Pattern):
-            out[attr_name] = {"_kind": "regex", "pattern": value.pattern, "flags": value.flags}
-            continue
-        # Probe JSON-serializability — anything we can't round-trip is
-        # silently skipped (better to miss a field than to crash the lock).
-        try:
-            json.dumps(value)
-        except (TypeError, ValueError):
-            continue
-        out[attr_name] = value
-    return out
+    """Portable public and private settings; opaque values are reported separately."""
+    return evaluator_dependencies(evaluator)["config"]
 
 
 def fingerprint_evaluator(evaluator: "Evaluator") -> EvaluatorFingerprint:
@@ -327,8 +300,8 @@ def fingerprint_evaluator(evaluator: "Evaluator") -> EvaluatorFingerprint:
         prompt_hash=_evaluator_prompt_hash(evaluator),
         judge=_evaluator_judge_fingerprint(evaluator),
         calibration=_evaluator_calibration_fingerprint(evaluator),
-        version="2",  # bumped from 1 — config dict is now in `extra`
-        extra={"config": _evaluator_config_fingerprint(evaluator)},
+        version="3",
+        extra=evaluator_dependencies(evaluator),
     )
 
 
@@ -365,30 +338,29 @@ def build_suite_lock(suite: "EvalSuite") -> SuiteLock:
         raise
     except Exception:
         active_calibration_version = None
-    manifest = {
-        "library_version": __version__,
-        "suite_name": suite.name,
-        "evaluators": [asdict(e) for e in eval_fps],
-        "case_count": len(suite._cases),
-        "cases_hash": cases_hash,
-        "calibration_version": active_calibration_version,
-    }
-    return SuiteLock(
+    try:
+        extra = {"engine": engine_dependencies(), "issues": []}
+    except OSError as exc:
+        extra = {"engine": {}, "issues": [f"Engine snapshot unavailable ({type(exc).__name__})"]}
+    return seal_lock(SuiteLock(
         library_version=__version__,
         suite_name=suite.name,
-        suite_hash=_sha256(_canonical_json(manifest)),
+        suite_hash="",
         evaluators=eval_fps,
         case_count=len(suite._cases),
         cases_hash=cases_hash,
         run_config=None,
         calibration_version=active_calibration_version,
-        extra={},
-    )
+        extra=extra,
+    ))
 
 
 def verify_suite_against_lock(suite: "EvalSuite", saved: SuiteLock) -> None:
     """Raise :class:`LockMismatch` if ``suite`` drifted from ``saved``."""
     current = build_suite_lock(suite)
+    issues = lock_issues(current) + lock_issues(saved)
+    if issues:
+        raise LockMismatch(issues)
     diffs = current.diff(saved)
     if diffs:
         raise LockMismatch(diffs)

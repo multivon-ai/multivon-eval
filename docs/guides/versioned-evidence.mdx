@@ -3,7 +3,7 @@ title: Versioned cases and trial evidence
 description: Compare the same tasks, retain every attempt, and regrade saved outputs.
 ---
 
-**Available in multivon-eval 0.18.0.** These interfaces retain evidence for workflow-specific validation. See the [implementation program](https://github.com/multivon-ai/multivon-eval/blob/main/plans/industrial-evaluation.md)
+**Case/trial interfaces are available in multivon-eval 0.18.0.** The dependency-contract section describes unreleased development changes. These interfaces retain evidence for workflow-specific validation. See the [implementation program](https://github.com/multivon-ai/multivon-eval/blob/main/plans/industrial-evaluation.md)
 for unfinished work.
 
 ## Preserve the task definition
@@ -100,10 +100,64 @@ If you have independently verified their case definitions, use
 remains in the comparison artifact. Prefer rerunning both versions on a frozen
 dataset.
 
-Case identity alone does **not** establish that grader configurations, provider
-settings, application revisions, or dependencies match. This compatibility
-work remains part of the implementation program. Do not describe an identity
-check as complete experiment reproducibility.
+## Grader dependency contracts (development)
+
+The unreleased dependency protocol extends suite locks beyond case identity.
+It records portable public settings and digests of private grader settings, inherited judge settings,
+the local Python source digest, Python/platform details and installed distribution
+names/versions using Python's standard library. Judge `extra` settings are hashed
+rather than copied verbatim; common credential-like configuration names are also hashed.
+Tuple/regex type markers prevent lossy JSON coercion from hiding configuration changes.
+Reports still contain task data and public configuration. This is deliberately conservative: even an unrelated
+package version change makes the environment differ.
+
+Custom graders and opaque fields such as callbacks or Pydantic validator classes
+need an explicit declaration before comparisons can be verified:
+
+```python
+from multivon_eval import declare_dependencies
+from multivon_eval.evaluators.base import Evaluator
+
+class HoldDecision(Evaluator):
+    name = "hold_decision"
+    def evaluate(self, case, output):
+        return self._result(float(output.strip() == "hold"), "Requires a hold decision")
+
+# This self-contained grader has no external dependencies.
+# The version identifies its complete implementation.
+grader = declare_dependencies(HoldDecision(), version="hold-decision/v1", dependencies={})
+contract_suite = EvalSuite("declared grader").add_evaluator(grader)
+contract_suite.verify_lock(contract_suite.lock())
+```
+
+Use immutable artifact revisions/digests where available, and update the contract
+when hidden behavior changes. An empty `dependencies={}` explicitly declares none.
+Pass `files={"schema": "schemas/invoice.json"}` to bind an existing local artifact.
+Named files are rehashed from their bytes for each snapshot; local file paths do
+not enter the report. Missing files remain explicit issues. A declaration is your
+assertion of completeness, not automatic discovery or validation of its contents.
+For external model artifacts, declare the actual model revision as well as its
+loader package. Pydantic JSON Schema alone does not capture custom validators.
+
+Synchronous, parallel, asynchronous, imported-output and regrading runs retain a
+pre-run lock and check it again afterward. Live runners prepare graders first.
+For imported-output grading and regrading, explicitly call any required
+`grader.prepare()` before the run to freeze generated criteria. These paths do
+not add preparation calls, including when saved model-error trials need no grading.
+Observed drift blocks verified comparisons and retains the post-run lock for inspection. Unknown dependencies, missing locks, legacy locks
+without this protocol or a digest mismatch also make comparison gates
+indeterminate. The legacy identity override applies only to reports with no
+retained identity/trials **and no lock**; it cannot bypass recorded dependency drift.
+Re-run both sides with the new protocol when migrating old locks.
+
+These snapshots cannot observe changes restored between snapshots. Source hashes
+cover on-disk Multivon Python files, not loaded bytecode or all third-party/native
+files. Installed package metadata is not a verified build manifest. Remote model
+aliases can change without their names changing, and callbacks can read undeclared
+globals or services. Run from an immutable checkout/environment and retain native
+provider logs. Declared compatibility is not complete experiment reproducibility.
+`cases_hash` retains its legacy input/expected/context subset; strict case pairing
+uses the full execution case digest separately.
 
 ## Inspect and regrade every attempt
 

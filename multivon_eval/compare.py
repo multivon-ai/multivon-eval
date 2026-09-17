@@ -378,19 +378,9 @@ def compare_reports(baseline: EvalReport, proposal: EvalReport, *,
     identity_issues.extend(baseline.evidence_issues + proposal.evidence_issues)
     if baseline.runs_per_case != proposal.runs_per_case:
         identity_issues.append("Runs per case changed; repeated-run decisions are not comparable")
-    if baseline.suite_lock is not None and proposal.suite_lock is not None:
-        from dataclasses import asdict
-        from .case_manifest import canonical_json
-        b_lock, p_lock = baseline.suite_lock, proposal.suite_lock
-        b_checks = sorted(canonical_json(asdict(e)) for e in b_lock.evaluators)
-        p_checks = sorted(canonical_json(asdict(e)) for e in p_lock.evaluators)
-        if b_checks != p_checks:
-            identity_issues.append("Recorded evaluator configuration changed between runs")
-        if b_lock.library_version != p_lock.library_version:
-            identity_issues.append("Evaluation engine version changed between runs")
-        if b_lock.calibration_version != p_lock.calibration_version:
-            identity_issues.append("Calibration version changed between runs")
-
+    from .dependencies import comparison_issues
+    dependency_issues = comparison_issues(baseline.suite_lock, proposal.suite_lock)
+    identity_issues.extend(dependency_issues)
 
     paired_diffs: list[CaseDiff] = []
     for b_cr, p_cr in paired_pairs:
@@ -413,7 +403,8 @@ def compare_reports(baseline: EvalReport, proposal: EvalReport, *,
         and d.proposal_status in EVALUATION_STATUSES
     ]
     legacy_override = (allow_legacy_identity and not baseline.evidence_issues
-                       and not proposal.evidence_issues) and all(
+                       and not proposal.evidence_issues
+                       and baseline.suite_lock is None and proposal.suite_lock is None) and all(
         not c.case_id and not c.case_digest and not c.evidence_error and not c.trials
         for c in baseline.case_results + proposal.case_results)
     if mcnemar_pairs and (not identity_issues or legacy_override):

@@ -168,6 +168,9 @@ def regrade(report: EvalReport, suite: EvalSuite) -> EvalReport:
     from .result import CaseResult, EvalReport
     if any(not result.trials or result.evidence_error for result in report.case_results):
         raise ValueError("Regrading requires complete saved trials for every case")
+    from .dependencies import finish_lock
+    from .suite import _safe_lock
+    before_lock = _safe_lock(suite)
     results = []
     for result in report.case_results:
         for trial in result.trials:
@@ -195,4 +198,5 @@ def regrade(report: EvalReport, suite: EvalSuite) -> EvalReport:
                 graded.trials = (TrialRecord.from_dict({**child, "digest": digest(child)}),)
             results.append(graded)
     return EvalReport(suite.name, results, model_id=report.model_id, purpose=report.purpose,
-                      evidence_issues=list(report.evidence_issues))
+                      evidence_issues=list(report.evidence_issues),
+                      suite_lock=finish_lock(suite, before_lock))

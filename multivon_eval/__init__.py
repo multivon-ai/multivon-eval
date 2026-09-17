@@ -59,6 +59,7 @@ from .exceptions import (
     MultivonError, JudgeUnavailable, CalibrationMissing,
     EvaluatorPrereqMissing, CacheError, SecretsError, ComplianceError,
 )
+from .dependencies import declare_dependencies
 from .lockfile import (
     SuiteLock, EvaluatorFingerprint, LockMismatch,
     build_suite_lock, fingerprint_evaluator, verify_suite_against_lock,
@@ -235,7 +236,7 @@ __all__ = [
     # Cost tracking
     "Costs", "CostTracker", "ProviderUsage", "ModelPricing", "register_pricing",
     # Suite locking / fingerprinting
-    "SuiteLock", "EvaluatorFingerprint", "LockMismatch",
+    "SuiteLock", "EvaluatorFingerprint", "LockMismatch", "declare_dependencies",
     "build_suite_lock", "fingerprint_evaluator", "verify_suite_against_lock",
     # Audit packaging
     "build_audit_package",

@@ -237,6 +237,12 @@ See [migration notes](docs/guides/migration-0-18.mdx), the [worked document stud
 and the [changelog](CHANGELOG.md). This release does not complete provider accounting,
 opaque callback compatibility, customer validation or the remaining industrial program.
 
+Development work after 0.18.0 adds [strict agent judgment evidence](docs/evaluators/agent.mdx)
+and [declared grader dependencies](docs/guides/versioned-evidence.mdx).
+Agent judge failures remain missing measurements; opaque callback contracts and
+observed dependency drift block verified comparisons. These changes are not yet
+published to PyPI and do not establish judge accuracy or complete provider accounting.
+
 ## Related tools and contributing
 
 Use [pdfhell](https://github.com/multivon-ai/pdfhell) for adversarial document

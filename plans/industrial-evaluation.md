@@ -17,8 +17,8 @@ Gymnasium at their established boundaries.
 
 | ID | Deliverable | Evidence needed | Status |
 |---|---|---|---|
-| R01 | Versioned cases/datasets: stable IDs, content revisions, source groups, split provenance | Reordering, duplicate inputs, changed contexts/labels, JSON round trips, split leakage and comparison compatibility tested; migration demonstrated | In progress: case/dataset identities, group splits, strict comparison pairing implemented; recorded grader/engine/calibration and repeat-count drift checked; opaque dependency compatibility remains |
-| R02 | Complete immutable trial evidence and regrading | All outputs, traces, grader results, retries/errors, effective requests, usage retained across sync/async/parallel paths; saved output regrading makes no target calls | In progress: per-run/retry snapshots, regrading and strict agent-grader judgment evidence implemented; provider requests, usage, interrupted attempts and execution configuration remain |
+| R01 | Versioned cases/datasets: stable IDs, content revisions, source groups, split provenance | Reordering, duplicate inputs, changed contexts/labels, JSON round trips, split leakage and comparison compatibility tested; migration demonstrated | Development implemented: case/dataset identities, group splits, strict pairing, grader/engine/calibration/repeat drift, declared opaque dependencies and missing-snapshot rejection; compatibility is bounded by recorded state and caller declarations |
+| R02 | Complete immutable trial evidence and regrading | All outputs, traces, grader results, retries/errors, effective requests, usage retained across sync/async/parallel paths; saved output regrading makes no target calls | In progress: per-run/retry snapshots, regrading and strict agent-grader judgment evidence implemented; effective provider requests, usage, interrupted attempts and target execution configuration remain |
 | R03 | Resumable execution and resource controls | Kill/restart experiment preserves completed work; checkpoint compatibility, cancellation, bounded concurrency, deadlines and budget accounting; explicit policy for ambiguous side effects | In progress: Inspect SIGKILL/recovery experiment preserves completed work and rejects duplicate-write control; full compatibility, cancellation/deadline/budget validation remains |
 | R04 | Acceptance policies | Required-check coverage, critical invariants, per-slice thresholds, sample requirements, quality/error/indeterminate distinctions and machine-readable decisions verified | Delivered in 0.18.0: policy/CLI, failure-path tests and frozen document-workflow policy; task/domain validity tracked separately |
 | R05 | Review and calibration | Label import/export, review disagreements, development-only fitting, held-out evaluation, uncertainty/false-accept reporting and no leakage verified | Development preview: native Label Studio server/browser round trip and saved-score development/held-out source analysis validated with synthetic fixtures; mobile/accessibility limits documented; independent task-label validity remains under R17 |
@@ -306,3 +306,38 @@ These are offline regression fixtures, not evidence of judge accuracy. No API
 requests or PyPI release. Provider usage/request capture and interrupted attempts
 remain open; Inspect's native exception logging does not promise these attached
 judgment records. Grader dependency contracts remain the next R01 gap.
+
+
+### R01 dependency-contract follow-up (2026-09-17)
+
+New suite locks bind inherited judge settings, portable configuration, digests of
+private settings, type distinctions, local engine Python bytes and native installed
+distribution metadata. Reuse `importlib.metadata`, `hashlib` and the existing
+`jsonschema` dependency; no package resolver or dataset infrastructure is added.
+Custom/opaque graders require `declare_dependencies`, including a caller-managed
+contract revision and optional named artifact files rehashed before/after execution.
+Private/common credential-like fields are hashed rather than copied verbatim.
+
+Sync, parallel, async, imported-output and regrading paths retain pre-run locks;
+observed drift retains the post-run lock and makes comparisons indeterminate.
+Malformed/missing dependency records, missing locks and modified lock digests are
+explicit unknown evidence. Old snapshots need both comparison sides rerun; the
+legacy identity override cannot bypass recorded dependencies. Grading remains
+usable without a verifiable contract, but comparison gates cannot silently accept it.
+
+Limits: caller declarations do not prove completeness; local source bytes are not
+loaded bytecode, package metadata is not a verified build, and mutable remote model
+aliases/undeclared state or transient changes restored between snapshots remain
+outside this protocol. All installed distributions are captured conservatively;
+unrelated upgrades also invalidate compatibility. Native Inspect logs without this
+suite snapshot remain diagnostic for cross-run comparisons. Provider-request and
+usage accounting is still R02 work, and this does not complete R03/R12/R16/R17.
+
+Validation for this dependency checkpoint: full tracked Python 3.12 suite
+1,909 passed, 5 skipped, 7 warnings; Python 3.10 focused checks 123 passed.
+All 70 MDX pages compile. Versioned-evidence/Hugging Face workflows and the custom
+class/dependency declaration examples executed locally. Fixtures cover actual file
+rehashing, configuration mutation across all runner paths, private-value hashing,
+malformed/rehashed records, legacy migration, and schema/callback/judge drift.
+The concurrency check measures simultaneous grader execution rather than including
+snapshot setup in a wall-clock threshold. No API calls or PyPI release were made.

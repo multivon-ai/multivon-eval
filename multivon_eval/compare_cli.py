@@ -60,7 +60,8 @@ def _cli(argv: list[str]) -> int:
 
     if args.fail_on_regression:
         legacy_override = (args.allow_legacy_identity and not baseline.evidence_issues
-                           and not proposal.evidence_issues) and all(
+                           and not proposal.evidence_issues
+                           and baseline.suite_lock is None and proposal.suite_lock is None) and all(
             not c.case_id and not c.case_digest and not c.evidence_error and not c.trials
             for c in baseline.case_results + proposal.case_results)
         if (diff.identity_issues and not legacy_override

@@ -44,6 +44,28 @@ class SentenceCount(Evaluator):
         )
 ```
 
+## Declare custom grader dependencies (development)
+
+Unreleased comparison gates require a contract for custom graders, including
+simple classes defined outside Multivon. This makes unrecorded callbacks and
+hidden configuration visible instead of treating equal class names as proof of
+compatibility. For the self-contained example above:
+
+```python
+from multivon_eval import declare_dependencies
+
+graded_sentences = declare_dependencies(
+    SentenceCount(), version="sentence-count/v1", dependencies={},
+)
+```
+
+The version identifies your complete implementation. Update it when behavior
+changes; list model/data/helper revisions and named files when applicable.
+Portable instance configuration is also captured. See
+[dependency contracts](/guides/versioned-evidence#grader-dependency-contracts-development)
+for file hashes, snapshot timing and limits. Grading remains usable without a
+contract, but an unknown contract cannot pass a verified comparison gate.
+
 ## Example: LLM-based custom check
 
 For a custom LLM criterion, reuse `CheckEvaluator` so your check participates

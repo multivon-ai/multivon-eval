@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+import threading
 
 import pytest
 
@@ -72,46 +73,26 @@ class TestSuiteRunAsync:
         assert report.pass_rate == 1.0
 
     @pytest.mark.asyncio
-    async def test_run_async_concurrency_overlaps_evaluators(self):
-        """Three slow evaluators on one case should not take 3 × sleep — they
-        should overlap because aevaluate runs each in a thread."""
-        async def model(prompt: str) -> str:
+    @pytest.mark.parametrize("concurrency,expected_peak", [(None, 3), (1, 1)])
+    async def test_evaluator_concurrency(self, concurrency, expected_peak):
+        # Measure actual overlap, excluding pre/post-run dependency inventory.
+        stats, mutex = {"active": 0, "peak": 0}, threading.Lock()
+        class CountOverlap(Evaluator):
+            def evaluate(self, case, output):
+                with mutex:
+                    stats["active"] += 1
+                    stats["peak"] = max(stats["peak"], stats["active"])
+                time.sleep(0.1)
+                with mutex:
+                    stats["active"] -= 1
+                return self._result(1.0)
+        async def model(prompt):
             return "hi"
-
-        suite = EvalSuite("async concurrency")
-        suite.add_cases([EvalCase(input="x")])
-        suite.add_evaluators(
-            _SyncEvaluator(sleep_seconds=0.1),
-            _SyncEvaluator(sleep_seconds=0.1),
-            _SyncEvaluator(sleep_seconds=0.1),
-        )
-
-        t0 = time.time()
-        report = await suite.run_async(model, verbose=False)
-        elapsed = time.time() - t0
-        # Sequential would be ~0.3s. With overlap, well under 0.25s on any
-        # machine that isn't pathologically slow.
-        assert elapsed < 0.25, f"evaluators did not overlap (elapsed={elapsed:.3f}s)"
+        suite = EvalSuite("concurrency").add_case(EvalCase("x"))
+        suite.add_evaluators(*[CountOverlap() for _ in range(3)])
+        report = await suite.run_async(model, verbose=False, evaluator_concurrency=concurrency)
+        assert stats["peak"] == expected_peak and stats["active"] == 0
         assert report.pass_rate == 1.0
-
-    @pytest.mark.asyncio
-    async def test_evaluator_concurrency_limit_serializes(self):
-        async def model(prompt: str) -> str:
-            return "hi"
-
-        suite = EvalSuite("serialized")
-        suite.add_cases([EvalCase(input="x")])
-        suite.add_evaluators(
-            _SyncEvaluator(sleep_seconds=0.05),
-            _SyncEvaluator(sleep_seconds=0.05),
-            _SyncEvaluator(sleep_seconds=0.05),
-        )
-
-        t0 = time.time()
-        await suite.run_async(model, verbose=False, evaluator_concurrency=1)
-        elapsed = time.time() - t0
-        # 3 × 0.05 = 0.15 floor when strictly serialized.
-        assert elapsed >= 0.13, f"evaluator_concurrency=1 should serialise (elapsed={elapsed:.3f}s)"
 
     @pytest.mark.asyncio
     async def test_run_async_passes_latency_to_max_latency(self):

@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any, Callable, Awaitable
 from .case import EvalCase
 from .trials import attach_trial, capture_case
 from .exceptions import JudgeUnavailable
+from .dependencies import finish_lock
 from .evaluators.agent_judgments import error_evidence
 from .result import (
     CalibrationResult, CaseResult, EvalGateFailure, EvalReport, EvalResult, EvalStatus, ERROR_STATUSES, EVALUATION_STATUSES,
@@ -473,6 +474,7 @@ class EvalSuite:
         for ev in self._evaluators:
             if hasattr(ev, "prepare"):
                 ev.prepare()
+        before_lock = _safe_lock(self)
 
         if tracer is not None:
             instrumented_fn = tracer.instrument(model_fn)
@@ -514,7 +516,7 @@ class EvalSuite:
             model_id=self.model_id,
             judge_reliability=judge_reliability,
             costs=cost_tracker.snapshot(),
-            suite_lock=_safe_lock(self),
+            suite_lock=finish_lock(self, before_lock),
             purpose=self.purpose,
         )
 
@@ -830,6 +832,7 @@ class EvalSuite:
             for value in latencies_ms
         ):
             raise ValueError("latencies_ms must contain finite nonnegative values or None")
+        before_lock = _safe_lock(self)
         case_results = []
         for index, (case, output) in enumerate(traced_outputs):
             snapshot = capture_case(case)
@@ -883,7 +886,7 @@ class EvalSuite:
             suite_name=self.name,
             case_results=case_results,
             model_id=self.model_id,
-            suite_lock=_safe_lock(self),
+            suite_lock=finish_lock(self, before_lock),
             purpose=self.purpose,
         )
 
@@ -1478,6 +1481,7 @@ class EvalSuite:
         for ev in self._evaluators:
             if hasattr(ev, "prepare"):
                 ev.prepare()
+        before_lock = _safe_lock(self)
 
         sem = asyncio.Semaphore(concurrency)
         ev_sem = asyncio.Semaphore(evaluator_concurrency) if evaluator_concurrency else None
@@ -1636,7 +1640,7 @@ class EvalSuite:
             model_id=self.model_id,
             judge_reliability=judge_reliability,
             costs=cost_tracker.snapshot(),
-            suite_lock=_safe_lock(self),
+            suite_lock=finish_lock(self, before_lock),
             purpose=self.purpose,
         )
 
