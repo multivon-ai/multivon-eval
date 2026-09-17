@@ -238,7 +238,10 @@ and the [changelog](CHANGELOG.md). This release does not complete provider accou
 opaque callback compatibility, customer validation or the remaining industrial program.
 
 Development work after 0.18.0 adds [strict agent judgment evidence](docs/evaluators/agent.mdx)
-and [declared grader dependencies](docs/guides/versioned-evidence.mdx).
+and [declared grader dependencies and native provider evidence](docs/guides/versioned-evidence.mdx).
+Instrumented SDK calls retain request attempts and complete native usage fields;
+an optional SQLite journal preserves dispatched attempts after process death.
+Unobserved transports, streaming usage and missing responses stay explicit gaps.
 Agent judge failures remain missing measurements; opaque callback contracts and
 observed dependency drift block verified comparisons. These changes are not yet
 published to PyPI and do not establish judge accuracy or complete provider accounting.

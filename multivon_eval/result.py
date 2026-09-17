@@ -327,6 +327,7 @@ class EvalReport:
     # gets a graduation nudge; a regression suite inverts the warning.
     purpose: str = ""
     evidence_issues: list[str] = field(default_factory=list)
+    provider_evidence: dict | None = None
 
     @property
     def total(self) -> int:
@@ -854,6 +855,7 @@ class EvalReport:
             costs=Costs.from_dict(summary["costs"]) if summary.get("costs") is not None else None,
             suite_lock=SuiteLock.from_dict(data["suite_lock"]) if data.get("suite_lock") else None,
             evidence_issues=list(data.get("evidence_issues", [])),
+            provider_evidence=data.get("provider_evidence"),
         )
 
     def to_json(self) -> str:
@@ -904,6 +906,7 @@ class EvalReport:
             {
                 "schema": "multivon.report/v2",
                 "evidence_issues": self.evidence_issues,
+                "provider_evidence": self.provider_evidence,
                 "suite": self.suite_name,
                 "model": self.model_id,
                 "suite_lock": self.suite_lock.to_dict() if self.suite_lock is not None else None,

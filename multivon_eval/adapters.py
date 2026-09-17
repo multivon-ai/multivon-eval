@@ -21,6 +21,9 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any
 
+from .provider_evidence import observe_provider
+from .provider_http import sdk_http_client
+
 if TYPE_CHECKING:
     from .case import EvalCase
 
@@ -138,7 +141,7 @@ class OpenAIAdapter(ModelAdapter):
             raise ImportError(
                 "openai package is required for OpenAIAdapter: pip install openai"
             )
-        return openai.OpenAI()
+        return openai.OpenAI(http_client=sdk_http_client(openai))
 
     def _build_messages(self, input: str) -> list[dict[str, str]]:
         messages = []
@@ -147,6 +150,7 @@ class OpenAIAdapter(ModelAdapter):
         messages.append({"role": "user", "content": input})
         return messages
 
+    @observe_provider("openai", "target")
     def __call__(self, input: str) -> str:
         client = self._get_client()
         response = client.chat.completions.create(
@@ -158,6 +162,7 @@ class OpenAIAdapter(ModelAdapter):
         )
         return response.choices[0].message.content or ""
 
+    @observe_provider("openai", "target")
     def _call_with_case(self, case: "EvalCase") -> str:
         """Context-aware entry point used by ``suite.run()`` when available.
 
@@ -254,6 +259,7 @@ class LiteLLMAdapter(ModelAdapter):
         messages.append({"role": "user", "content": input})
         return messages
 
+    @observe_provider("litellm", "target")
     def __call__(self, input: str) -> str:
         try:
             import litellm
@@ -271,6 +277,7 @@ class LiteLLMAdapter(ModelAdapter):
         )
         return response.choices[0].message.content or ""
 
+    @observe_provider("litellm", "target")
     def _call_with_case(self, case: "EvalCase") -> str:
         """Context-aware entry point — auto-injects ``case.context`` for RAG."""
         try:
@@ -352,7 +359,7 @@ class AnthropicAdapter(ModelAdapter):
             raise ImportError(
                 "anthropic package is required for AnthropicAdapter: pip install anthropic"
             )
-        return anthropic.Anthropic()
+        return anthropic.Anthropic(http_client=sdk_http_client(anthropic))
 
     def _supports_temperature(self) -> bool:
         """Whether this model accepts the ``temperature`` parameter.
@@ -360,7 +367,7 @@ class AnthropicAdapter(ModelAdapter):
         Anthropic's reasoning-tier models (claude-opus-4-7 and the
         claude-opus-5+ family) reject ``temperature`` with a 400. We omit
         the field for those models and let the SDK use the model's default
-        (effectively deterministic for the reasoning tier). Older models
+        (no determinism guarantee). Older models
         (claude-3, claude-3-5, claude-haiku-4, claude-sonnet-4, claude-opus-3)
         still accept and honour temperature, so we keep it for them.
 
@@ -387,17 +394,19 @@ class AnthropicAdapter(ModelAdapter):
             **self._extra,
         )
         if self._supports_temperature():
-            kwargs["temperature"] = self._temperature
+            kwargs["extra_body"] = {**kwargs.get("extra_body", {}), "temperature": self._temperature}
         if system:
             kwargs["system"] = system
         return kwargs
 
+    @observe_provider("anthropic", "target")
     def __call__(self, input: str) -> str:
         client = self._get_client()
         kwargs = self._build_kwargs(self._build_messages(input), self._system_prompt)
         response = client.messages.create(**kwargs)
         return response.content[0].text
 
+    @observe_provider("anthropic", "target")
     def _call_with_case(self, case: "EvalCase") -> str:
         """Context-aware entry point used by ``suite.run()`` when available.
 

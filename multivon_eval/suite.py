@@ -10,6 +10,7 @@ from .case import EvalCase
 from .trials import attach_trial, capture_case
 from .exceptions import JudgeUnavailable
 from .dependencies import finish_lock
+from .provider_evidence import capture_trial, capture_run, capture_provider_events, run_provider_evidence, finish_trial_capture, provider_position
 from .evaluators.agent_judgments import error_evidence
 from .result import (
     CalibrationResult, CaseResult, EvalGateFailure, EvalReport, EvalResult, EvalStatus, ERROR_STATUSES, EVALUATION_STATUSES,
@@ -199,6 +200,7 @@ class EvalSuite:
         ))
         return self
 
+    @capture_trial
     def _run_case_once(
         self,
         case: EvalCase,
@@ -306,9 +308,10 @@ class EvalSuite:
 
             single_runs: list[CaseResult] = []
             for i in range(runs):
-                single_runs.append(
-                    self._run_case_once(case, model_fn, tracer=tracer)
-                )
+                with provider_position(run_index=i + 1):
+                    single_runs.append(
+                        self._run_case_once(case, model_fn, tracer=tracer)
+                    )
                 if early_stop and i >= 1 and _sprt_stop(single_runs):
                     break
 
@@ -349,7 +352,8 @@ class EvalSuite:
             # immediately. This keeps the no-retry happy path zero-cost.
             if attempt > 1:
                 sleep_for_attempt(judge_retry, attempt)
-            cr = self._run_case(case, model_fn, runs, tracer=tracer, early_stop=early_stop)
+            with provider_position(attempt=attempt):
+                cr = self._run_case(case, model_fn, runs, tracer=tracer, early_stop=early_stop)
             trial_history.extend(t.with_position(attempt=attempt, run_index=i + 1)
                                  for i, t in enumerate(cr.trials))
             if cr.evidence_error:
@@ -382,6 +386,7 @@ class EvalSuite:
             )
         return cr
 
+    @capture_run
     def run(
         self,
         model_fn: Callable[[str], str],
@@ -517,6 +522,7 @@ class EvalSuite:
             judge_reliability=judge_reliability,
             costs=cost_tracker.snapshot(),
             suite_lock=finish_lock(self, before_lock),
+            provider_evidence=run_provider_evidence(),
             purpose=self.purpose,
         )
 
@@ -797,6 +803,7 @@ class EvalSuite:
 
         return report
 
+    @capture_run
     def run_on_cases(
         self,
         traced_outputs: list[tuple[EvalCase, str]],
@@ -835,58 +842,62 @@ class EvalSuite:
         before_lock = _safe_lock(self)
         case_results = []
         for index, (case, output) in enumerate(traced_outputs):
-            snapshot = capture_case(case)
-            latency = latencies_ms[index] if latencies_ms is not None else None
-            results = []
-            # Apply the same per-evaluator isolation as the live run path —
-            # an imported trace shouldn't crash the whole suite if one
-            # evaluator's judge is unavailable.
-            judge_err: str | None = None
-            evaluator_err: str | None = None
-            for ev in self._evaluators:
-                ev_name = getattr(ev, "name", type(ev).__name__)
-                try:
-                    if isinstance(ev, (Latency, MaxLatency)):
-                        if latency is None:
-                            result = EvalResult(ev_name, 0.0, False, "Target latency was not recorded",
-                                                {"skipped": True})
+            with capture_provider_events(kind='trial', labels={'case_id': capture_case(case).case_id,
+                                                              'case_digest': capture_case(case).case_digest}) as capture:
+                snapshot = capture_case(case)
+                latency = latencies_ms[index] if latencies_ms is not None else None
+                results = []
+                # Apply the same per-evaluator isolation as the live run path —
+                # an imported trace shouldn't crash the whole suite if one
+                # evaluator's judge is unavailable.
+                judge_err: str | None = None
+                evaluator_err: str | None = None
+                for ev in self._evaluators:
+                    ev_name = getattr(ev, "name", type(ev).__name__)
+                    try:
+                        if isinstance(ev, (Latency, MaxLatency)):
+                            if latency is None:
+                                result = EvalResult(ev_name, 0.0, False, "Target latency was not recorded",
+                                                    {"skipped": True})
+                            else:
+                                result = ev.evaluate(case, output, latency_ms=latency)
                         else:
-                            result = ev.evaluate(case, output, latency_ms=latency)
-                    else:
-                        result = ev.evaluate(case, output)
-                except JudgeUnavailable as ju:
-                    if judge_err is None:
-                        judge_err = str(ju)
-                    result = EvalResult(
-                        evaluator=ev_name, score=0.0, passed=False,
-                        reason=f"[judge unavailable: {ju}]",
-                        metadata={"error_kind": "judge_error", "error_detail": str(ju), **error_evidence(ju)},
-                    )
-                except Exception as ex:
-                    if evaluator_err is None:
-                        evaluator_err = f"{type(ex).__name__}: {ex}"
-                    result = EvalResult(
-                        evaluator=ev_name, score=0.0, passed=False,
-                        reason=f"[evaluator error: {type(ex).__name__}: {ex}]",
-                        metadata={"error_kind": "evaluator_error", "error_detail": str(ex), **error_evidence(ex)},
-                    )
-                results.append(result)
-            case_results.append(attach_trial(CaseResult(
-                case_input=case.input,
-                actual_output=output,
-                results=results,
-                latency_ms=latency if latency is not None else 0.0,
-                tags=case.tags,
-                judge_error=judge_err,
-                evaluator_error=evaluator_err,
-                agent_trace=case.agent_trace,
-            ), snapshot, origin="import", latency_known=latency is not None))
+                            result = ev.evaluate(case, output)
+                    except JudgeUnavailable as ju:
+                        if judge_err is None:
+                            judge_err = str(ju)
+                        result = EvalResult(
+                            evaluator=ev_name, score=0.0, passed=False,
+                            reason=f"[judge unavailable: {ju}]",
+                            metadata={"error_kind": "judge_error", "error_detail": str(ju), **error_evidence(ju)},
+                        )
+                    except Exception as ex:
+                        if evaluator_err is None:
+                            evaluator_err = f"{type(ex).__name__}: {ex}"
+                        result = EvalResult(
+                            evaluator=ev_name, score=0.0, passed=False,
+                            reason=f"[evaluator error: {type(ex).__name__}: {ex}]",
+                            metadata={"error_kind": "evaluator_error", "error_detail": str(ex), **error_evidence(ex)},
+                        )
+                    results.append(result)
+                case_results.append(attach_trial(CaseResult(
+                    case_input=case.input,
+                    actual_output=output,
+                    results=results,
+                    latency_ms=latency if latency is not None else 0.0,
+                    tags=case.tags,
+                    judge_error=judge_err,
+                    evaluator_error=evaluator_err,
+                    agent_trace=case.agent_trace,
+                ), snapshot, origin="import", latency_known=latency is not None))
+            finish_trial_capture(case_results[-1], capture)
 
         report = EvalReport(
             suite_name=self.name,
             case_results=case_results,
             model_id=self.model_id,
             suite_lock=finish_lock(self, before_lock),
+            provider_evidence=run_provider_evidence(),
             purpose=self.purpose,
         )
 
@@ -1447,6 +1458,7 @@ class EvalSuite:
             )
         )
 
+    @capture_run
     async def run_async(
         self,
         model_fn: Callable[[str], Awaitable[str]],
@@ -1527,53 +1539,57 @@ class EvalSuite:
         async def _run_one_async(case: EvalCase) -> CaseResult:
             async with sem:
                 single_runs = []
-                for _ in range(runs):
-                    snapshot = capture_case(case)
-                    t0 = time.time()
-                    async_model_error: str | None = None
-                    try:
-                        # Same context-aware-adapter hook as the sync path
-                        # (suite._run_case_once). Async adapters can expose
-                        # `_acall_with_case` to receive the EvalCase.
-                        acall_with_case = getattr(model_fn, "_acall_with_case", None)
-                        if callable(acall_with_case):
-                            output = await acall_with_case(case)
-                        else:
-                            output = await model_fn(case.input)
-                    except Exception as e:
-                        async_model_error = str(e)
-                        output = f"[MODEL ERROR: {e}]"
-                    latency_ms = (time.time() - t0) * 1000
-                    evaluation_snapshot = capture_case(case)
+                for run_index in range(runs):
+                    with capture_provider_events(kind='trial', labels={
+                            'case_id': capture_case(case).case_id, 'case_digest': capture_case(case).case_digest,
+                            'run_index': run_index + 1}) as capture:
+                        snapshot = capture_case(case)
+                        t0 = time.time()
+                        async_model_error: str | None = None
+                        try:
+                            # Same context-aware-adapter hook as the sync path
+                            # (suite._run_case_once). Async adapters can expose
+                            # `_acall_with_case` to receive the EvalCase.
+                            acall_with_case = getattr(model_fn, "_acall_with_case", None)
+                            if callable(acall_with_case):
+                                output = await acall_with_case(case)
+                            else:
+                                output = await model_fn(case.input)
+                        except Exception as e:
+                            async_model_error = str(e)
+                            output = f"[MODEL ERROR: {e}]"
+                        latency_ms = (time.time() - t0) * 1000
+                        evaluation_snapshot = capture_case(case)
 
-                    ev_results = await asyncio.gather(*[
-                        _gated_eval(ev, case, output, latency_ms, async_model_error)
-                        for ev in self._evaluators
-                    ])
+                        ev_results = await asyncio.gather(*[
+                            _gated_eval(ev, case, output, latency_ms, async_model_error)
+                            for ev in self._evaluators
+                        ])
 
-                    # Surface judge/evaluator errors via the metadata sentinel
-                    # set by _eval_one. Avoids brittle string parsing of
-                    # human-readable reason strings.
-                    async_judge_error: str | None = None
-                    async_evaluator_error: str | None = None
-                    for r in ev_results:
-                        kind = r.metadata.get("error_kind") if r.metadata else None
-                        if async_judge_error is None and kind == "judge_error":
-                            async_judge_error = r.metadata.get("error_detail", r.reason)
-                        elif async_evaluator_error is None and kind == "evaluator_error":
-                            async_evaluator_error = r.metadata.get("error_detail", r.reason)
+                        # Surface judge/evaluator errors via the metadata sentinel
+                        # set by _eval_one. Avoids brittle string parsing of
+                        # human-readable reason strings.
+                        async_judge_error: str | None = None
+                        async_evaluator_error: str | None = None
+                        for r in ev_results:
+                            kind = r.metadata.get("error_kind") if r.metadata else None
+                            if async_judge_error is None and kind == "judge_error":
+                                async_judge_error = r.metadata.get("error_detail", r.reason)
+                            elif async_evaluator_error is None and kind == "evaluator_error":
+                                async_evaluator_error = r.metadata.get("error_detail", r.reason)
 
-                    single_runs.append(attach_trial(CaseResult(
-                        case_input=case.input,
-                        actual_output=output,
-                        model_error=async_model_error,
-                        judge_error=async_judge_error,
-                        evaluator_error=async_evaluator_error,
-                        results=list(ev_results),
-                        latency_ms=latency_ms,
-                        tags=case.tags,
-                        agent_trace=case.agent_trace,
-                    ), snapshot, evaluation_snapshot=evaluation_snapshot))
+                        single_runs.append(attach_trial(CaseResult(
+                            case_input=case.input,
+                            actual_output=output,
+                            model_error=async_model_error,
+                            judge_error=async_judge_error,
+                            evaluator_error=async_evaluator_error,
+                            results=list(ev_results),
+                            latency_ms=latency_ms,
+                            tags=case.tags,
+                            agent_trace=case.agent_trace,
+                        ), snapshot, evaluation_snapshot=evaluation_snapshot))
+                    finish_trial_capture(single_runs[-1], capture)
 
                 if runs == 1:
                     return single_runs[0]
@@ -1593,7 +1609,8 @@ class EvalSuite:
             for attempt in range(1, judge_retry.max_attempts + 1):
                 if attempt > 1:
                     await async_sleep_for_attempt(judge_retry, attempt)
-                cr = await _run_one_async(case)
+                with provider_position(attempt=attempt):
+                    cr = await _run_one_async(case)
                 trial_history.extend(t.with_position(attempt=attempt, run_index=i + 1)
                                      for i, t in enumerate(cr.trials))
                 if cr.evidence_error:
@@ -1641,6 +1658,7 @@ class EvalSuite:
             judge_reliability=judge_reliability,
             costs=cost_tracker.snapshot(),
             suite_lock=finish_lock(self, before_lock),
+            provider_evidence=run_provider_evidence(),
             purpose=self.purpose,
         )
 

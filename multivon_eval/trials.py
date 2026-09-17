@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from .case import EvalCase
+from .provider_evidence import capture_run, trial_provider_evidence
 from .case_manifest import (
     canonical_json,
     case_from_dict,
@@ -86,7 +87,7 @@ def capture_case(case: EvalCase) -> CaseSnapshot:
 
 def attach_trial(result: CaseResult, snapshot: CaseSnapshot, *,
                  origin: str = "execution", evaluation_snapshot: CaseSnapshot | None = None,
-                 latency_known: bool = True) -> CaseResult:
+                 latency_known: bool = True, provider_evidence: dict | None = None) -> CaseResult:
     result.case_id = snapshot.case_id
     result.case_digest = snapshot.case_digest
     result.evidence_error = snapshot.error
@@ -113,7 +114,8 @@ def attach_trial(result: CaseResult, snapshot: CaseSnapshot, *,
             "evaluators": [{"name": r.evaluator, "score": r.score, "passed": r.passed,
                             "reason": r.reason, "metadata": r.metadata} for r in result.results],
             "provider_requests": None,
-            "evidence_gaps": ["Provider requests and per-trial usage are not captured"],
+            "provider_evidence": provider_evidence if provider_evidence is not None else trial_provider_evidence(),
+            "evidence_gaps": ["Provider events cover observed instrumented calls; other calls and billing may be unknown"],
         }
         result.trials = (TrialRecord.from_dict({**data, "digest": digest(data)}),)
     except (TypeError, ValueError, AttributeError) as exc:
@@ -158,6 +160,7 @@ def trial_integrity_issues(result: CaseResult) -> list[str]:
     return issues
 
 
+@capture_run
 def regrade(report: EvalReport, suite: EvalSuite) -> EvalReport:
     """Grade every saved trial, including failed retry attempts, without a target.
 
@@ -185,11 +188,16 @@ def regrade(report: EvalReport, suite: EvalSuite) -> EvalReport:
             else:
                 graded = suite.run_on_cases([(case, data["output"])], verbose=False,
                                             latencies_ms=[data["latency_ms"]]).case_results[0]
-            attach_trial(graded, snapshot, origin="regrade", evaluation_snapshot=evaluation_snapshot,
+            provider_evidence = graded.trials[0].data.get("provider_evidence") if graded.trials else None
+            attach_trial(graded, snapshot, origin="regrade", provider_evidence=provider_evidence, evaluation_snapshot=evaluation_snapshot,
                          latency_known=data["latency_ms"] is not None)
             if graded.trials:
                 child = graded.trials[0].data
                 child.pop("digest")
+                inherited = list(data.get("inherited_provider_evidence", []))
+                if data.get("provider_evidence") is not None:
+                    inherited.append({"trial_digest": trial.digest, "evidence": data["provider_evidence"]})
+                child["inherited_provider_evidence"] = inherited
                 child.update(parent_trial=trial.digest, attempt=data["attempt"],
                              run_index=data["run_index"])
                 if "upstream" in data:

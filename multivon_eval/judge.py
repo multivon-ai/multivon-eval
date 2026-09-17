@@ -35,6 +35,8 @@ import os
 from dataclasses import dataclass, field
 
 from .exceptions import JudgeUnavailable
+from .provider_evidence import observe_provider, cache_observation
+from .provider_http import sdk_http_client, google_http_options
 
 __all__ = ["JudgeConfig", "configure", "get_global_judge"]
 
@@ -272,12 +274,14 @@ def _wrap_provider_error(provider: str, model: str, exc: Exception) -> JudgeUnav
     return err
 
 
+@observe_provider("anthropic", "judge")
 def _sync_anthropic_call(prompt: str, config: JudgeConfig) -> str:
     import anthropic
-    client = anthropic.Anthropic(timeout=config.timeout)
+    client = anthropic.Anthropic(timeout=config.timeout, http_client=sdk_http_client(anthropic))
     response = client.messages.create(
         model=config.model,
         max_tokens=config.max_tokens,
+        extra_body={"temperature": config.temperature},
         messages=[{"role": "user", "content": prompt}],
     )
     _record_usage(
@@ -306,12 +310,14 @@ def _openai_client_kwargs(config: JudgeConfig) -> dict:
     return client_kwargs
 
 
+@observe_provider("openai", "judge")
 def _sync_openai_call(prompt: str, config: JudgeConfig) -> str:
     import openai
-    client = openai.OpenAI(**_openai_client_kwargs(config))
+    client = openai.OpenAI(**_openai_client_kwargs(config), http_client=sdk_http_client(openai))
     response = client.chat.completions.create(
         model=config.model,
         max_completion_tokens=config.max_tokens,
+        temperature=config.temperature,
         messages=[{"role": "user", "content": prompt}],
     )
     usage = getattr(response, "usage", None)
@@ -324,6 +330,7 @@ def _sync_openai_call(prompt: str, config: JudgeConfig) -> str:
     return response.choices[0].message.content or ""
 
 
+@observe_provider("google", "judge")
 def _sync_google_call(prompt: str, config: JudgeConfig) -> str:
     """Gemini judge call via the official google-genai SDK.
 
@@ -340,7 +347,7 @@ def _sync_google_call(prompt: str, config: JudgeConfig) -> str:
             provider="google",
             model=config.model,
         ) from exc
-    client = genai.Client(http_options={"timeout": int(config.timeout * 1000)})
+    client = genai.Client(http_options=google_http_options(config.timeout))
     response = client.models.generate_content(
         model=config.model,
         contents=prompt,
@@ -397,6 +404,7 @@ def _ollama_as_openai(config: JudgeConfig) -> JudgeConfig:
     return _replace(config, provider="openai", model=model, base_url=base)
 
 
+@observe_provider("litellm", "judge")
 def _sync_litellm_call(prompt: str, config: JudgeConfig) -> str:
     try:
         import litellm
@@ -483,6 +491,7 @@ def make_judge_call(prompt: str, config: JudgeConfig) -> str:
 
     cache, cached = _cache_get_safe(prompt, config)
     if cached is not None:
+        cache_observation(prompt, config, cached)
         return cached
 
     result = _make_judge_call_uncached(prompt, config)
@@ -536,12 +545,14 @@ def _warn_cache_degraded(direction: str, exc: BaseException) -> None:
 # ── Async siblings ──────────────────────────────────────────────────────────
 
 
+@observe_provider("anthropic", "judge")
 async def _async_anthropic_call(prompt: str, config: JudgeConfig) -> str:
     import anthropic
-    client = anthropic.AsyncAnthropic(timeout=config.timeout)
+    client = anthropic.AsyncAnthropic(timeout=config.timeout, http_client=sdk_http_client(anthropic, asynchronous=True))
     response = await client.messages.create(
         model=config.model,
         max_tokens=config.max_tokens,
+        extra_body={"temperature": config.temperature},
         messages=[{"role": "user", "content": prompt}],
     )
     _record_usage(
@@ -553,12 +564,14 @@ async def _async_anthropic_call(prompt: str, config: JudgeConfig) -> str:
     return response.content[0].text
 
 
+@observe_provider("openai", "judge")
 async def _async_openai_call(prompt: str, config: JudgeConfig) -> str:
     import openai
-    client = openai.AsyncOpenAI(**_openai_client_kwargs(config))
+    client = openai.AsyncOpenAI(**_openai_client_kwargs(config), http_client=sdk_http_client(openai, asynchronous=True))
     response = await client.chat.completions.create(
         model=config.model,
         max_completion_tokens=config.max_tokens,
+        temperature=config.temperature,
         messages=[{"role": "user", "content": prompt}],
     )
     usage = getattr(response, "usage", None)
@@ -571,6 +584,7 @@ async def _async_openai_call(prompt: str, config: JudgeConfig) -> str:
     return response.choices[0].message.content or ""
 
 
+@observe_provider("google", "judge")
 async def _async_google_call(prompt: str, config: JudgeConfig) -> str:
     """Gemini async call. The google-genai SDK exposes async via client.aio.
 
@@ -585,7 +599,7 @@ async def _async_google_call(prompt: str, config: JudgeConfig) -> str:
             provider="google",
             model=config.model,
         ) from exc
-    client = genai.Client(http_options={"timeout": int(config.timeout * 1000)})
+    client = genai.Client(http_options=google_http_options(config.timeout))
     aio = getattr(client, "aio", None)
     if aio is None:
         # SDK without async support — degrade to threaded sync call so the
@@ -615,6 +629,7 @@ async def _async_google_call(prompt: str, config: JudgeConfig) -> str:
     return text or ""
 
 
+@observe_provider("litellm", "judge")
 async def _async_litellm_call(prompt: str, config: JudgeConfig) -> str:
     try:
         import litellm
@@ -714,6 +729,7 @@ async def make_judge_call_async(prompt: str, config: JudgeConfig) -> str:
 
     cache, cached = _cache_get_safe(prompt, config)
     if cached is not None:
+        cache_observation(prompt, config, cached)
         return cached
 
     result = await _make_judge_call_async_uncached(prompt, config)

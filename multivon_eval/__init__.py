@@ -60,6 +60,9 @@ from .exceptions import (
     EvaluatorPrereqMissing, CacheError, SecretsError, ComplianceError,
 )
 from .dependencies import declare_dependencies
+from .provider_evidence import capture_provider_events
+from .provider_http import provider_http_hooks
+from .provider_journal import ProviderJournal
 from .lockfile import (
     SuiteLock, EvaluatorFingerprint, LockMismatch,
     build_suite_lock, fingerprint_evaluator, verify_suite_against_lock,
@@ -237,6 +240,7 @@ __all__ = [
     "Costs", "CostTracker", "ProviderUsage", "ModelPricing", "register_pricing",
     # Suite locking / fingerprinting
     "SuiteLock", "EvaluatorFingerprint", "LockMismatch", "declare_dependencies",
+    "capture_provider_events", "provider_http_hooks", "ProviderJournal",
     "build_suite_lock", "fingerprint_evaluator", "verify_suite_against_lock",
     # Audit packaging
     "build_audit_package",

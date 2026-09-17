@@ -3,7 +3,7 @@ title: Versioned cases and trial evidence
 description: Compare the same tasks, retain every attempt, and regrade saved outputs.
 ---
 
-**Case/trial interfaces are available in multivon-eval 0.18.0.** The dependency-contract section describes unreleased development changes. These interfaces retain evidence for workflow-specific validation. See the [implementation program](https://github.com/multivon-ai/multivon-eval/blob/main/plans/industrial-evaluation.md)
+**Case/trial interfaces are available in multivon-eval 0.18.0.** Dependency contracts and provider capture below describe unreleased development changes. These interfaces retain evidence for workflow-specific validation. See the [implementation program](https://github.com/multivon-ai/multivon-eval/blob/main/plans/industrial-evaluation.md)
 for unfinished work.
 
 ## Preserve the task definition
@@ -206,3 +206,65 @@ invent missing trials or individual scores from aggregate means.
 
 Agent environments, multimodal artifact identity, durable execution, and
 world-model experiments build on these interfaces and remain separate work.
+
+## Retain provider attempts (development)
+
+Built-in OpenAI and Anthropic clients use their SDK's HTTP client factories and
+native retries. HTTPX hooks retain each serialized request, response body and
+unmodified native usage object. Trial evidence includes case identity, attempt,
+repeat position and target/judge role; preparation and reliability calls outside
+trials belong to the run capture. An arbitrary custom callback's role may remain
+unknown. Evidence hashes detect edits; they are not third-party attestations.
+
+```python
+from multivon_eval import (
+    EvalCase, EvalSuite, ExactMatch, ProviderJournal, capture_provider_events,
+)
+
+capture_suite = EvalSuite("capture example").add_case(EvalCase("status", "ready"))
+capture_suite.add_evaluator(ExactMatch())
+
+# Replace the local target with your SDK adapter. This example makes no API calls.
+# The journal records observed attempts before transport dispatch.
+with ProviderJournal("private-provider-events.sqlite") as journal:
+    with capture_provider_events(journal=journal):
+        captured_report = capture_suite.run(lambda prompt: "ready", verbose=False)
+    events = journal.events()
+
+captured_report.save_json("private-results.json")
+```
+
+Every retained trial has a `provider_evidence` snapshot. Report-level evidence is
+snapshotted before reporting and gates, so its `state` remains `open`; the journal
+records the later run closure or exception. The saved and returned report use the
+same snapshot. Regrading preserves parent evidence separately from new requests.
+
+| Path | Automatic serialized HTTP evidence |
+| --- | --- |
+| Built-in Anthropic/OpenAI target and text/vision judge clients | HTTPX requests and nonstreaming responses |
+| Google synchronous judge | HTTPX requests and nonstreaming responses |
+| Google asynchronous judge, LiteLLM, supplied/custom clients | Not automatic; unobserved operations disclose a coverage gap |
+| Streaming responses | Request and response headers; body and usage remain uncaptured |
+
+For a supplied SDK HTTPX client, attach `provider_http_hooks()` (or
+`provider_http_hooks(asynchronous=True)`) as its `event_hooks`. Keep SDK factory
+defaults and your existing TLS/authentication settings. Google supports an
+explicit `httpx_async_client` in native `HttpOptions`; the library leaves its
+default async transport selection unchanged. Do not treat an empty capture as
+proof that a custom callback made no API calls.
+
+Missing responses or usage remain unknown, including retries that returned an
+HTTP error without usage. The existing `report.costs` tracker is still a partial
+successful-text-judge estimate; it does not reconcile these events or establish
+the full run's bill. Cache/reasoning/tool fields are retained for later accounting.
+
+The SQLite journal reuses native transactions with WAL and full synchronous
+writes. One actual child-process SIGKILL test retained the pre-dispatch request
+after reopening the journal. This does not test machine power loss, prove remote
+execution or authorize automatic replay of side effects. Continue to use an
+established runner such as Inspect for recovery scheduling.
+
+Authentication headers and credential URL values are excluded, but prompts,
+outputs, inline media and provider error content may contain sensitive data.
+Treat reports and journals as private evaluation artifacts. Capture is currently
+in memory unless a journal is supplied; it has no retention or size quota.

@@ -4,6 +4,23 @@ All notable changes to `multivon-eval`. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+### Native provider evidence (development)
+
+- Retain serialized HTTP attempts and native response/usage bodies using SDK
+  HTTPX hooks. Bind target/judge operations to trial, run and retry positions;
+  preserve parent evidence during regrading without counting it as new requests.
+- Add optional `ProviderJournal` SQLite durability and public
+  `capture_provider_events` / `provider_http_hooks` for custom clients. Requests
+  without complete responses remain unresolved after cancellation or process
+  death. Streaming bodies are not consumed by capture.
+- Exclude authentication headers and redact credential URL fields. Captured
+  prompts, responses and media still contain application data; keep them private.
+- Report unobserved operation transports and stream gaps explicitly. Built-in
+  Google async and LiteLLM do not yet have automatic wire capture. Native usage
+  evidence does not make the existing partial judge-cost tracker a run bill.
+- Send configured judge temperatures in OpenAI/Anthropic text requests and use
+  Anthropic's `extra_body` for target temperature compatibility with its newer SDK.
+
 ### Declared grader dependencies
 
 - Add `declare_dependencies` for explicit custom-grader/code/model/data contracts

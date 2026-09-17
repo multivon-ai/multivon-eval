@@ -78,7 +78,7 @@ def test_build_kwargs_includes_temperature_for_haiku():
     a = _make("claude-haiku-4-5")
     a._temperature = 0.5
     kwargs = a._build_kwargs(messages=[{"role": "user", "content": "x"}])
-    assert kwargs["temperature"] == 0.5
+    assert kwargs["extra_body"]["temperature"] == 0.5
 
 
 def test_build_kwargs_includes_max_tokens_always():
@@ -137,4 +137,4 @@ def test_call_sends_temperature_for_haiku():
 
     assert out == "ok"
     call_kwargs = client.messages.create.call_args.kwargs
-    assert call_kwargs.get("temperature") == 0.3
+    assert call_kwargs["extra_body"]["temperature"] == 0.3

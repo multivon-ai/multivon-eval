@@ -170,6 +170,13 @@ def test_every_run_and_retry_survives_json_and_regrade(mode):
     result = report.case_results[0]
     assert len(result.trials) == 4 and result.retry_attempts == 1
     assert [(t.data["attempt"], t.data["run_index"]) for t in result.trials] == [(1, 1), (1, 2), (2, 1), (2, 2)]
+    for trial in result.trials:
+        evidence = trial.data["provider_evidence"]
+        assert evidence["state"] == "closed"
+        for event in evidence["events"]:
+            assert event["labels"]["attempt"] == trial.data["attempt"]
+            assert event["labels"]["run_index"] == trial.data["run_index"]
+            assert event["labels"]["case_id"] == result.case_id
     assert result.trials[0].data["status"] == "judge_error"
     assert result.trials[1].data["evaluators"][1]["reason"] == "saw attempt-2"
     copy = EvalReport.from_dict(json.loads(report.to_json()))

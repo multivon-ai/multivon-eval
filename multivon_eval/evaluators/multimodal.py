@@ -6,6 +6,8 @@ Model support is checked by the provider; no independent accuracy or calibration
 claim is made. Native multimodal execution and retained media belong in Inspect.
 """
 from __future__ import annotations
+from ..provider_evidence import observe_provider
+from ..provider_http import sdk_http_client, google_http_options
 
 import base64
 import json
@@ -72,8 +74,8 @@ def _call_vision_judge(
     - ``google``: generateContent with inline image parts.
 
     Raises :class:`JudgeUnavailable` if the SDK isn't installed or no API
-    key is set. Provider SDKs own transport retries. Complete request and
-    usage accounting are not supplied by this legacy path.
+    key is set. Provider SDKs own transport retries. Instrumented HTTPX calls
+    retain native request/usage evidence; legacy cost totals exclude this path.
     """
     if not _is_vision_capable(judge):
         raise JudgeUnavailable(
@@ -93,6 +95,7 @@ def _call_vision_judge(
     )
 
 
+@observe_provider("anthropic", "judge")
 def _anthropic_vision_call(
     prompt: str, images: list[str], judge: JudgeConfig, max_tokens: int
 ) -> str:
@@ -114,7 +117,7 @@ def _anthropic_vision_call(
     # SDK 1.x removed the temperature keyword. Keep the requested value on
     # the wire via its documented migration path; the endpoint may reject
     # unsupported sampling settings rather than silently changing the request.
-    with anthropic.Anthropic(timeout=judge.timeout) as client:
+    with anthropic.Anthropic(timeout=judge.timeout, http_client=sdk_http_client(anthropic)) as client:
         msg = client.messages.create(
             model=judge.model,
             max_tokens=max_tokens,
@@ -124,6 +127,7 @@ def _anthropic_vision_call(
     return "".join(b.text for b in msg.content if getattr(b, "type", "") == "text")
 
 
+@observe_provider("openai", "judge")
 def _openai_vision_call(
     prompt: str, images: list[str], judge: JudgeConfig, max_tokens: int
 ) -> str:
@@ -136,6 +140,7 @@ def _openai_vision_call(
         data_uri, _, _ = _image_to_data_uri(img)
         parts.append({"type": "image_url", "image_url": {"url": data_uri}})
     client = openai.OpenAI(
+        http_client=sdk_http_client(openai), timeout=judge.timeout,
         api_key=judge.api_key if getattr(judge, "api_key", None) else None,
         base_url=judge.base_url if judge.base_url else None,
     )
@@ -148,6 +153,7 @@ def _openai_vision_call(
     return resp.choices[0].message.content or ""
 
 
+@observe_provider("google", "judge")
 def _google_vision_call(
     prompt: str, images: list[str], judge: JudgeConfig, max_tokens: int
 ) -> str:
@@ -172,7 +178,8 @@ def _google_vision_call(
                 f"got remote URL: {img}"
             )
     contents.append(prompt)
-    client = genai.Client(api_key=judge.api_key) if getattr(judge, "api_key", None) else genai.Client()
+    client = genai.Client(http_options=google_http_options(judge.timeout),
+                          **({"api_key": judge.api_key} if getattr(judge, "api_key", None) else {}))
     resp = client.models.generate_content(
         model=judge.model,
         contents=contents,
