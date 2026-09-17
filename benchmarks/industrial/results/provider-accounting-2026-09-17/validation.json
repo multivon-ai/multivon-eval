@@ -1,0 +1,27 @@
+{
+  "files": [
+    {
+      "path": "accounting.json",
+      "bytes": 13413,
+      "sha256": "d17e66990098abe71429097bcb9919ce1c78c7cb32e13c00c2b937e365e6ec20"
+    },
+    {
+      "path": "environment.json",
+      "bytes": 2100,
+      "sha256": "e910f237e2fda1eeddffd9a5a089e8564652d10f8ac2132ed7c8b625095badb1"
+    },
+    {
+      "path": "summary.json",
+      "bytes": 488,
+      "sha256": "971a423c4afff4de4689bcd2ef37ebe68f22deb6c18d0baf549141b588af695c"
+    }
+  ],
+  "roundtrip": true,
+  "distinct_physical_requests": 4,
+  "input_tokens": 48,
+  "output_tokens": 20,
+  "declared_complete": true,
+  "list_price_estimate_usd": 0.00014800000000000002,
+  "catalog_digest": "386574df9d610aff7819b47c00a1511c2954658d9a97db85ab2a98deb3fb8e25",
+  "not_an_invoice": true
+}

@@ -118,3 +118,10 @@ native usage; regrading made zero requests. Both strict target checks failed on
 terminal punctuation, and remain failed in saved evidence. See the
 [validation and evidence archive](../benchmarks/industrial/PROVIDER_EVIDENCE_VALIDATION.md).
 This does not close the coverage/accounting gaps above.
+
+The frozen offline reconciliation at `f987489` repriced all four captured calls
+with LiteLLM 1.101.0: 48 input / 20 output tokens, $0.000148 list-price estimate,
+zero attempted network connections. The
+[accounting validation](../benchmarks/industrial/PROVIDER_ACCOUNTING_VALIDATION.md)
+retains the pricing assumptions and distinguishes the two standalone judge calls
+from the target suite. This is not historical invoice reconciliation.

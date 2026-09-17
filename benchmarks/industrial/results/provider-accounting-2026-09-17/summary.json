@@ -1,0 +1,11 @@
+{
+  "source_archive_sha256": "67adbd7274e91a6e41476acd141a174f29caced93308670771335b6e332eaefd",
+  "reconciliation_commit": "f98748921e1291b83775a240b5a43e2aca4272e1",
+  "litellm_version": "1.101.0",
+  "calls": 4,
+  "input_tokens": 48,
+  "output_tokens": 20,
+  "estimate_usd": 0.00014800000000000002,
+  "network_access": "Blocked before LiteLLM import; zero attempted connections",
+  "limits": "Current upstream list-price estimate for archived responses, not historical billed amount"
+}
