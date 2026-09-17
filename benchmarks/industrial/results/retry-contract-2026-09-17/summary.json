@@ -1,0 +1,58 @@
+{
+  "cases": 3,
+  "initial_policy": {
+    "a": 100,
+    "b": 200,
+    "c": 300
+  },
+  "changed_policy": {
+    "a": 999,
+    "b": 200,
+    "c": 300
+  },
+  "blocked_retry": {
+    "type": "ValueError",
+    "message": "Inspect retry contract is incompatible: task contract changed"
+  },
+  "blocked_target_calls": 0,
+  "preserved_completed_ids": [
+    "a",
+    "b"
+  ],
+  "compatible_all_attempts": "indeterminate",
+  "compatible_final_attempt": "accept",
+  "mixed_native_passed": 3,
+  "mixed_import_decision": "indeterminate",
+  "mixed_issues": [
+    "Inspect log mixes different grader configurations",
+    "Sample a: grader ledger_requirement differs from the declared task",
+    "Sample a: task or dataset contract differs from this log",
+    "Sample b: grader ledger_requirement differs from the declared task",
+    "Sample b: task or dataset contract differs from this log"
+  ],
+  "fresh_changed_policy": "reject",
+  "fresh_passed": 2,
+  "persisted_rows": {
+    "a": 100,
+    "b": 200,
+    "c": 300
+  },
+  "all_target_invocations": [
+    "a",
+    "b",
+    "c",
+    "c",
+    "c",
+    "a",
+    "b",
+    "c"
+  ],
+  "logs": {
+    "original": "original/2026-09-17T04-50-52-00-00_contract-probe_d2kCKBfs2gtwCeusGNMP4D.eval",
+    "compatible": "compatible/2026-09-17T04-50-53-00-00_contract-probe_d2kCKBfs2gtwCeusGNMP4D.eval",
+    "mixed": "unguarded/2026-09-17T04-50-53-00-00_contract-probe_d2kCKBfs2gtwCeusGNMP4D.eval",
+    "fresh": "fresh/2026-09-17T04-50-53-00-00_contract-probe_7MutBpjGFdNhVS7zRBHtqg.eval"
+  },
+  "limits": "Three synthetic local cases; declaration/file/metadata checks, not remote state or checkpoint authenticity",
+  "attempted_network_connections": 0
+}

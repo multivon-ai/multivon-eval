@@ -49,9 +49,10 @@ This fixture covers cooperative async work, local SQLite and the actual Inspect
 runtime. It does not validate arbitrary blocking code, remote side-effect rollback,
 provider-side cancellation, hard spend reservations, distributed worker failures,
 or checkpoint compatibility after task/solver/grader/environment changes.
-Native retry history currently checks task/model/case and preserved sample bytes;
-that alone is insufficient to establish full checkpoint compatibility. Keep R03
-open until those required boundaries have corresponding implementation/evidence.
+Declared native retry history now checks task/grader/dependency bindings as
+described below, while arbitrary restored checkpoint state remains outside the
+verified profile. Keep R03 open until its remaining boundaries have corresponding
+implementation/evidence.
 
 ## Regression verification before freezing
 
@@ -104,3 +105,13 @@ This covers the declared static-task/native-log profile. It is not arbitrary
 hidden-state discovery, checkpoint signature/authenticity verification, restored
 sandbox-state validation or hard resource reservation. Callers must bind source,
 image, client and service revisions and provide the complete native log chain.
+
+Executed from frozen `e62dc7c`: four native logs, three imported reports, eight
+target invocations and zero attempted network connections. A changed-policy
+preflight added zero calls; compatible retry preserved two completed UUIDs and
+reran only `c`. The unguarded mixed log's 3/3 native passes became indeterminate,
+while fresh changed-policy grading passed 2/3 and rejected the critical invariant.
+The [study and 20-file archive](../benchmarks/industrial/RETRY_CONTRACT_VALIDATION.md)
+retain those outcomes and the declared boundaries. Final Python 3.12 verification
+passed 2,062 tests / 18 skips / 7 warnings; Python 3.10 passed 144 broader checks
+and 43 final focused checks. All 71 MDX pages parsed. No PyPI release was made.

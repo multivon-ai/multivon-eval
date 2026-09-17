@@ -14,6 +14,7 @@ accuracy benchmarks. Development features may not be in the latest PyPI release.
 |---|---|
 | Did the agent complete the business task? | [Document-to-ledger study](industrial/DOCUMENT_RESULTS.md): CORD, pdfhell, Inspect and independently queried SQLite outcomes. |
 | Do limits and cancellation preserve honest outcomes? | [Execution controls](industrial/EXECUTION_CONTROLS_VALIDATION.md): actual Inspect limits, cancellation and concurrency, with complete/incomplete ledger controls. |
+| Are resumed scores still compatible with the task? | [Retry contracts](industrial/RETRY_CONTRACT_VALIDATION.md): native sample preservation, a changed business rule, and fresh grading that exposes stale passing scores. |
 | Which calls and costs are actually accounted for? | [Native request evidence](industrial/PROVIDER_EVIDENCE_VALIDATION.md) and [offline accounting](industrial/PROVIDER_ACCOUNTING_VALIDATION.md): SDK hooks and upstream LiteLLM prices, with explicit coverage limits. |
 | Can state forecasts support better decisions? | [World-model experiment](industrial/WORLD_MODEL_RESULTS.md): Gymnasium CartPole, scikit-learn dynamics and SciPy planning. |
 | Is a robustness transformation's answer still valid? | [Controlled robustness](industrial/ROBUSTNESS_VALIDATION.md): code-derived oracles and Hypothesis checks, including invalid and unknown candidates. |

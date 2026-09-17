@@ -116,6 +116,9 @@ for `eval_retry`. The [complete registered fixture and driver](https://github.co
 demonstrate that wiring, native sample preservation, a rejected preflight and an
 unguarded negative control. Binding only the first in-memory Task cannot guard
 a later factory reconstruction.
+The [frozen study and raw evidence](https://github.com/multivon-ai/multivon-eval/blob/main/benchmarks/industrial/RETRY_CONTRACT_VALIDATION.md)
+record all three cases: native mixed scores pass 3/3 while fresh changed-rule
+grading passes 2/3; the guarded retry adds zero target calls.
 
 The function updates the Task and sample metadata in place. It reuses existing
 grader/dependency fingerprints, engine inventory and named-file hashes; it does

@@ -1,0 +1,16 @@
+{
+  "schema": "multivon.inspect-retry-contract/v1",
+  "commit": "e62dc7cedf4a4367f38a865b34b08483895ec724",
+  "python": "3.12.13 (main, Jul 18 2026, 16:55:18) [Clang 22.1.3 ]",
+  "inspect": "0.3.263",
+  "core_module": "0.18.0",
+  "core_distribution": "0.17.0",
+  "scenarios": [
+    "original interruption",
+    "changed guard rejection",
+    "compatible retry",
+    "unguarded mixed retry",
+    "fresh changed-policy run"
+  ],
+  "api_requests": 0
+}

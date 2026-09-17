@@ -358,3 +358,22 @@ Full tracked Python 3.12 verification: 2,041 passed / 18 skipped / 7 warnings.
 See [execution protocol](execution-controls.md) and its linked result bundle.
 Checkpoint compatibility, remote side effects, distributed failure and hard
 resource guarantees remain open; no paid requests or PyPI release were made.
+
+### R03 declared retry compatibility (2026-09-17)
+
+Frozen `e62dc7c` binds native Inspect tasks and samples to recorded settings,
+existing grader/engine snapshots and caller-declared dependency/file revisions.
+It checks compatibility before solver execution and detects mixed imported
+evidence after an unguarded retry. The three-case SQLite experiment preserves two
+completed UUIDs on compatible retry and makes zero new target calls on rejected
+preflight. A changed-rule negative control has 3/3 stale native passes versus
+2/3 under fresh grading; the mixed report is indeterminate and the fresh report
+rejects. All four native logs and the ledger are retained in a 20-file checksummed
+bundle, with zero attempted network connections.
+
+Final regression verification: Python 3.12 2,062 passed / 18 skipped / 7 warnings;
+Python 3.10 144 broader checks and 43 final focused checks passed. The guide's
+examples execute; all 71 MDX pages parse. See
+[retry compatibility study](../benchmarks/industrial/RETRY_CONTRACT_VALIDATION.md).
+Caller declarations and observed snapshots do not prove arbitrary restored
+agent/sandbox state safe; R03's remaining boundaries are explicit.
