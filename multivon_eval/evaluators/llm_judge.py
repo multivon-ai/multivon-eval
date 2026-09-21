@@ -40,10 +40,31 @@ from ..calibration import calibrated_threshold as _calibrated_threshold
 # (only reasoning tokens are consumed; the verdict itself stays tiny).
 _REASONING_MAX_TOKENS_FLOOR = 2048
 
-# Same prefix signal the rest of the SDK uses (vision.py, discover.py, auto.py)
-# to distinguish reasoning-tier OpenAI models — a shared convention, not a new
-# brittle regex.
-_REASONING_MODEL_PREFIXES = ("gpt-5", "o1", "o3", "o4")
+# A flat floor is not enough on its own. The yes/no call needs room to reason
+# and then emit one token; the claim-extraction call needs room to reason and
+# then emit a whole JSON array, and 2048 truncated gemma-4 mid-deliberation on
+# a HaluEval Summarization item — 7,772 characters of working with no array at
+# the end. Scaling the floor with the call's own budget gives the larger call
+# proportionally more headroom: extraction (512) clears at 4096, where that
+# same item returns a clean three-claim array. The yes/no call (100) stays at
+# the flat floor, so that path is unchanged.
+_REASONING_BUDGET_MULTIPLIER = 8
+
+# Judges that emit working before the verdict. This is a budget question about
+# model behavior, and is deliberately NOT the same list as the OpenAI API-shape
+# check in vision.py/auto.py/discover.py (which selects max_completion_tokens
+# and drops temperature). Those must stay OpenAI-only; this one grows as other
+# families ship reasoning behavior.
+#
+# gemma-4 was measured here: at a 100-token cap it returns its working, truncated
+# mid-sentence and unparseable; at 2048 it returns "Yes". The rest are families
+# whose vendors document reasoning-before-answer behavior, not measurements.
+# A name list always lags, so an all-unknown verdict now names this cause.
+_REASONING_MODEL_PREFIXES = (
+    "gpt-5", "o1", "o3", "o4",
+    "gemma-3", "gemma-4",
+    "qwen3", "qwq", "deepseek-r1", "magistral", "phi-4-reasoning",
+)
 
 
 def _is_reasoning_model(model: str) -> bool:
@@ -68,6 +89,11 @@ def _with_max_tokens(judge: JudgeConfig, max_tokens: int | None) -> JudgeConfig:
     effective = max_tokens if max_tokens is not None else judge.max_tokens
     if _is_reasoning_model(judge.model):
         floor = _REASONING_MAX_TOKENS_FLOOR
+        if max_tokens is not None and max_tokens < _REASONING_MAX_TOKENS_FLOOR:
+            # Only the small internal caps are scaled. A caller already asking
+            # for at least the floor has made its own decision, and an
+            # inherited config default is that caller's ceiling.
+            floor = max(floor, max_tokens * _REASONING_BUDGET_MULTIPLIER)
         # Respect an even higher explicit request; only ever raise, never lower.
         effective = floor if effective is None else max(effective, floor)
     return JudgeConfig(
@@ -210,7 +236,11 @@ def _qag_eval(
     if not results:
         raise JudgeUnavailable(
             f"judge returned no parseable Yes/No verdict for any of "
-            f"{len(questions)} question(s)",
+            f"{len(questions)} question(s). A judge that reasons before "
+            f"answering is truncated by this call's token cap and returns its "
+            f"working instead of a verdict; if {judge.model!r} does that, add "
+            f"its prefix to _REASONING_MODEL_PREFIXES so the cap is floored at "
+            f"{_REASONING_MAX_TOKENS_FLOOR}",
             provider=judge.provider, model=judge.model,
         )
     # Minimum-verdict-coverage rule: a score built from a small parseable

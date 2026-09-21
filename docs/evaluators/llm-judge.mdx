@@ -56,10 +56,29 @@ export JUDGE_MODEL=claude-haiku-4-5
   its output budget thinking *before* it answers, so those caps cut it off
   mid-thought and it returned an empty verdict. We measured a 47% error rate
   running gpt-5.5 as the judge. The per-call ceiling is now floored at 2048
-  tokens when the judge model is reasoning-tier (`gpt-5`/`o1`/`o3`/`o4`
-  prefixes). Every other judge is unaffected — its cap passes through
-  untouched. Evaluator-specific per-call caps take precedence over the global
-  `JudgeConfig.max_tokens`; the reasoning-model floor applies to that per-call cap.
+  tokens when the judge model is reasoning-tier. Every other judge is
+  unaffected — its cap passes through untouched. Evaluator-specific per-call
+  caps take precedence over the global `JudgeConfig.max_tokens`; the
+  reasoning-model floor applies to that per-call cap.
+</Note>
+
+<Note>
+  **Unreleased — open-weights reasoning judges.** The 0.16.1 fix
+  recognised only OpenAI names, so every open-weights reasoning model still hit
+  the original bug: `gemma-4-31b-it` at a 100-token cap returns its working,
+  truncated mid-sentence, and scores nothing. The prefix list now also covers
+  `gemma-3`/`gemma-4`, `qwen3`, `qwq`, `deepseek-r1`, `magistral` and
+  `phi-4-reasoning`.
+
+  The floor also scales with each call's own budget rather than being flat. A
+  yes/no call reasons and then emits one token, so it stays at 2048; claim
+  extraction reasons and then emits a whole JSON array, and a flat 2048
+  truncated Gemma mid-deliberation, so it now clears at 4096. An explicit
+  request at or above the floor is never raised further.
+
+  A name list always lags. If an unlisted judge returns no parseable verdict,
+  the raised error now names the token cap as the likely cause; add the model's
+  prefix to `_REASONING_MODEL_PREFIXES`.
 </Note>
 
 The model under test and the judge model can be different providers.
