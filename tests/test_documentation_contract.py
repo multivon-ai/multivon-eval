@@ -45,7 +45,7 @@ def test_readme_leads_with_current_release_and_public_surfaces() -> None:
     readme = _read("README.md")
     assert f"Current release: {multivon_eval.__version__}" in readme
     assert f"Current release — {multivon_eval.__version__}" in readme
-    assert "September 17, 2026" in readme
+    assert "September 21, 2026" in readme
     assert "eval-framework-benchmark" not in readme
     assert len(readme.splitlines()) < 350
     assert readme.index("## Start in 30 seconds") < readme.index("## Why use it")

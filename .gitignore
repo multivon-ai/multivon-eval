@@ -45,3 +45,4 @@ ruvector.db
 .swarm/
 .mcp.json
 .claude/
+dist_release/

@@ -16,7 +16,7 @@ No hosted account is required.
 [Documentation](https://docs.multivon.ai/) · [Examples](examples/README.md) ·
 [Benchmarks](benchmarks/README.md) · [Changelog](CHANGELOG.md)
 
-**Current release: 0.19.0 — September 17, 2026.** Python 3.10+, Apache 2.0.
+**Current release: 0.20.0 — September 21, 2026.** Python 3.10+, Apache 2.0.
 [Migration notes](docs/guides/migration-0-19.mdx).
 
 [Case manifests and trial evidence](docs/guides/versioned-evidence.mdx)
@@ -251,16 +251,16 @@ multivon-eval doctor --no-ping --json          # check configuration offline
 `doctor` exits 0 when clean, 2 when it finds warnings, and 1 when it finds an error.
 Use `multivon-eval --help` for all commands.
 
-## Current release — 0.19.0
+## Current release — 0.20.0
 
-- Retain provider attempts and native usage in a durable journal; reconcile costs only when coverage is complete.
-- Bind target, grader and Inspect retry compatibility to recorded settings and declared dependencies.
-- Reuse Label Studio, OpenTelemetry, Gymnasium, Hugging Face and Inspect through explicit adapters.
-- Retain content-bound media, environment outcomes and controlled-robustness evidence.
-- Block incomplete claim extraction, capped prefixes and missing claim verdicts from passing `Faithfulness`.
-- Validate report envelopes with a packaged JSON Schema and preserve historical report loading.
+- Grade content-bound media in the vision evaluators: bytes are verified against the case's descriptor before a judge sees them, and a missing resolver or changed bytes fail instead of scoring.
+- Make open-weights reasoning judges usable. Their verdicts were truncated into unparseable working, because the reasoning token floor recognised only OpenAI names and was too low for claim extraction.
+- Publish the first calibration rows for a judge that is neither Anthropic's nor OpenAI's, and the first open-weights external-judge measurement.
+- Share one provider dispatch between `vision.py` and the multimodal evaluators, which gains them local VLMs without losing native provider evidence.
+- Cover the self-hosted judge routes — ollama, an OpenAI-compatible `base_url`, and litellm — with tests.
 
-See [migration notes](docs/guides/migration-0-19.mdx), the [worked document study](benchmarks/industrial/DOCUMENT_RESULTS.md),
+See the [changelog](CHANGELOG.md) for the measured failures behind each of these.
+Earlier [migration notes](docs/guides/migration-0-19.mdx), the [worked document study](benchmarks/industrial/DOCUMENT_RESULTS.md),
 and the [changelog](CHANGELOG.md). This release does not establish complete
 provider capture, opaque callback compatibility, customer validation or SoTA accuracy.
 

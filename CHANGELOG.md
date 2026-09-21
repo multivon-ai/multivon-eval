@@ -4,6 +4,8 @@ All notable changes to `multivon-eval`. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+## [0.20.0] — 2026-09-21
+
 ### Open-weights judges were unusable; they are not any more
 
 - A judge that reasons before answering was truncated by the QAG per-call token
