@@ -1,0 +1,768 @@
+{
+  "judges": {
+    "google/gemma-4-31b-it": {
+      "hallucination": {
+        "optimal": {
+          "threshold": 0.35,
+          "f1": 0.9011,
+          "precision": 1.0,
+          "recall": 0.82
+        },
+        "sweep": [
+          {
+            "threshold": 0.3,
+            "precision": 1.0,
+            "recall": 0.8,
+            "f1": 0.8889
+          },
+          {
+            "threshold": 0.35,
+            "precision": 1.0,
+            "recall": 0.82,
+            "f1": 0.9011
+          },
+          {
+            "threshold": 0.4,
+            "precision": 1.0,
+            "recall": 0.82,
+            "f1": 0.9011
+          },
+          {
+            "threshold": 0.45,
+            "precision": 1.0,
+            "recall": 0.82,
+            "f1": 0.9011
+          },
+          {
+            "threshold": 0.5,
+            "precision": 1.0,
+            "recall": 0.82,
+            "f1": 0.9011
+          },
+          {
+            "threshold": 0.55,
+            "precision": 0.913,
+            "recall": 0.84,
+            "f1": 0.875
+          },
+          {
+            "threshold": 0.6,
+            "precision": 0.913,
+            "recall": 0.84,
+            "f1": 0.875
+          },
+          {
+            "threshold": 0.65,
+            "precision": 0.913,
+            "recall": 0.84,
+            "f1": 0.875
+          },
+          {
+            "threshold": 0.7,
+            "precision": 0.913,
+            "recall": 0.84,
+            "f1": 0.875
+          },
+          {
+            "threshold": 0.75,
+            "precision": 0.913,
+            "recall": 0.84,
+            "f1": 0.875
+          },
+          {
+            "threshold": 0.8,
+            "precision": 0.8936,
+            "recall": 0.84,
+            "f1": 0.866
+          },
+          {
+            "threshold": 0.85,
+            "precision": 0.8936,
+            "recall": 0.84,
+            "f1": 0.866
+          },
+          {
+            "threshold": 0.9,
+            "precision": 0.8936,
+            "recall": 0.84,
+            "f1": 0.866
+          }
+        ],
+        "n": 100,
+        "scope": "development fit; no held-out estimate",
+        "raw": [
+          [
+            1.0,
+            0
+          ],
+          [
+            0.25,
+            1
+          ],
+          [
+            1.0,
+            0
+          ],
+          [
+            0.0,
+            1
+          ],
+          [
+            1.0,
+            0
+          ],
+          [
+            0.25,
+            1
+          ],
+          [
+            1.0,
+            0
+          ],
+          [
+            0.0,
+            1
+          ],
+          [
+            0.5,
+            0
+          ],
+          [
+            0.5,
+            1
+          ],
+          [
+            1.0,
+            0
+          ],
+          [
+            0.3333333333333333,
+            1
+          ],
+          [
+            1.0,
+            0
+          ],
+          [
+            1.0,
+            1
+          ],
+          [
+            1.0,
+            0
+          ],
+          [
+            1.0,
+            1
+          ],
+          [
+            1.0,
+            0
+          ],
+          [
+            0.25,
+            1
+          ],
+          [
+            1.0,
+            0
+          ],
+          [
+            0.0,
+            1
+          ],
+          [
+            1.0,
+            0
+          ],
+          [
+            0.25,
+            1
+          ],
+          [
+            1.0,
+            0
+          ],
+          [
+            0.0,
+            1
+          ],
+          [
+            1.0,
+            0
+          ],
+          [
+            0.25,
+            1
+          ],
+          [
+            1.0,
+            0
+          ],
+          [
+            0.25,
+            1
+          ],
+          [
+            1.0,
+            0
+          ],
+          [
+            0.0,
+            1
+          ],
+          [
+            1.0,
+            0
+          ],
+          [
+            0.25,
+            1
+          ],
+          [
+            1.0,
+            0
+          ],
+          [
+            0.0,
+            1
+          ],
+          [
+            1.0,
+            0
+          ],
+          [
+            0.0,
+            1
+          ],
+          [
+            1.0,
+            0
+          ],
+          [
+            0.0,
+            1
+          ],
+          [
+            1.0,
+            0
+          ],
+          [
+            0.0,
+            1
+          ],
+          [
+            1.0,
+            0
+          ],
+          [
+            0.0,
+            1
+          ],
+          [
+            1.0,
+            0
+          ],
+          [
+            1.0,
+            1
+          ],
+          [
+            1.0,
+            0
+          ],
+          [
+            0.25,
+            1
+          ],
+          [
+            1.0,
+            0
+          ],
+          [
+            0.0,
+            1
+          ],
+          [
+            1.0,
+            0
+          ],
+          [
+            1.0,
+            1
+          ],
+          [
+            1.0,
+            0
+          ],
+          [
+            0.0,
+            1
+          ],
+          [
+            1.0,
+            0
+          ],
+          [
+            0.25,
+            1
+          ],
+          [
+            0.5,
+            0
+          ],
+          [
+            0.0,
+            1
+          ],
+          [
+            0.5,
+            0
+          ],
+          [
+            0.25,
+            1
+          ],
+          [
+            1.0,
+            0
+          ],
+          [
+            0.0,
+            1
+          ],
+          [
+            1.0,
+            0
+          ],
+          [
+            1.0,
+            1
+          ],
+          [
+            1.0,
+            0
+          ],
+          [
+            0.25,
+            1
+          ],
+          [
+            0.75,
+            0
+          ],
+          [
+            0.25,
+            1
+          ],
+          [
+            1.0,
+            0
+          ],
+          [
+            1.0,
+            1
+          ],
+          [
+            1.0,
+            0
+          ],
+          [
+            0.0,
+            1
+          ],
+          [
+            1.0,
+            0
+          ],
+          [
+            1.0,
+            1
+          ],
+          [
+            1.0,
+            0
+          ],
+          [
+            0.25,
+            1
+          ],
+          [
+            1.0,
+            0
+          ],
+          [
+            0.0,
+            1
+          ],
+          [
+            1.0,
+            0
+          ],
+          [
+            0.0,
+            1
+          ],
+          [
+            1.0,
+            0
+          ],
+          [
+            0.25,
+            1
+          ],
+          [
+            1.0,
+            0
+          ],
+          [
+            0.0,
+            1
+          ],
+          [
+            1.0,
+            0
+          ],
+          [
+            0.0,
+            1
+          ],
+          [
+            1.0,
+            0
+          ],
+          [
+            0.0,
+            1
+          ],
+          [
+            1.0,
+            0
+          ],
+          [
+            0.0,
+            1
+          ],
+          [
+            1.0,
+            0
+          ],
+          [
+            1.0,
+            1
+          ],
+          [
+            1.0,
+            0
+          ],
+          [
+            0.0,
+            1
+          ],
+          [
+            1.0,
+            0
+          ],
+          [
+            0.25,
+            1
+          ],
+          [
+            1.0,
+            0
+          ],
+          [
+            0.25,
+            1
+          ],
+          [
+            1.0,
+            0
+          ],
+          [
+            0.0,
+            1
+          ],
+          [
+            0.5,
+            0
+          ],
+          [
+            0.0,
+            1
+          ]
+        ]
+      },
+      "relevance": {
+        "optimal": {
+          "threshold": 0.3,
+          "f1": 1.0,
+          "precision": 1.0,
+          "recall": 1.0
+        },
+        "sweep": [
+          {
+            "threshold": 0.3,
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0
+          },
+          {
+            "threshold": 0.35,
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0
+          },
+          {
+            "threshold": 0.4,
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0
+          },
+          {
+            "threshold": 0.45,
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0
+          },
+          {
+            "threshold": 0.5,
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0
+          },
+          {
+            "threshold": 0.55,
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0
+          },
+          {
+            "threshold": 0.6,
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0
+          },
+          {
+            "threshold": 0.65,
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0
+          },
+          {
+            "threshold": 0.7,
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0
+          },
+          {
+            "threshold": 0.75,
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0
+          },
+          {
+            "threshold": 0.8,
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0
+          },
+          {
+            "threshold": 0.85,
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0
+          },
+          {
+            "threshold": 0.9,
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0
+          }
+        ],
+        "n": 40,
+        "scope": "development fit; no held-out estimate",
+        "raw": [
+          [
+            1.0,
+            0
+          ],
+          [
+            1.0,
+            0
+          ],
+          [
+            1.0,
+            0
+          ],
+          [
+            1.0,
+            0
+          ],
+          [
+            1.0,
+            0
+          ],
+          [
+            1.0,
+            0
+          ],
+          [
+            1.0,
+            0
+          ],
+          [
+            1.0,
+            0
+          ],
+          [
+            1.0,
+            0
+          ],
+          [
+            1.0,
+            0
+          ],
+          [
+            1.0,
+            0
+          ],
+          [
+            1.0,
+            0
+          ],
+          [
+            1.0,
+            0
+          ],
+          [
+            1.0,
+            0
+          ],
+          [
+            1.0,
+            0
+          ],
+          [
+            1.0,
+            0
+          ],
+          [
+            1.0,
+            0
+          ],
+          [
+            1.0,
+            0
+          ],
+          [
+            1.0,
+            0
+          ],
+          [
+            1.0,
+            0
+          ],
+          [
+            0.0,
+            1
+          ],
+          [
+            0.0,
+            1
+          ],
+          [
+            0.0,
+            1
+          ],
+          [
+            0.0,
+            1
+          ],
+          [
+            0.0,
+            1
+          ],
+          [
+            0.0,
+            1
+          ],
+          [
+            0.0,
+            1
+          ],
+          [
+            0.0,
+            1
+          ],
+          [
+            0.0,
+            1
+          ],
+          [
+            0.0,
+            1
+          ],
+          [
+            0.0,
+            1
+          ],
+          [
+            0.0,
+            1
+          ],
+          [
+            0.0,
+            1
+          ],
+          [
+            0.0,
+            1
+          ],
+          [
+            0.0,
+            1
+          ],
+          [
+            0.0,
+            1
+          ],
+          [
+            0.0,
+            1
+          ],
+          [
+            0.0,
+            1
+          ],
+          [
+            0.0,
+            1
+          ],
+          [
+            0.0,
+            1
+          ]
+        ]
+      }
+    }
+  },
+  "halueval_revision": "b7253db3cdaa0ab2c382f92b26b390109174f77e",
+  "threshold_grid": [
+    0.3,
+    0.35,
+    0.4,
+    0.45,
+    0.5,
+    0.55,
+    0.6,
+    0.65,
+    0.7,
+    0.75,
+    0.8,
+    0.85,
+    0.9
+  ],
+  "protocol": "benchmarks/run_threshold_calibration.py scorers and sweep; serial paced transport with timeout-aware retries",
+  "faithfulness_not_measured": "gemma-4-31b-it could not complete the faithfulness protocol. Its claim extraction failed twice in different ways: on HaluEval Summarization item 33 it emitted 7,772 characters of deliberation and no JSON array (fixed by scaling the reasoning token floor), and on item 43 it extracted zero claims from an evaluative summary, which the evaluator correctly reports as unmeasured and the calibration protocol correctly refuses to score. Both behaviours are the judge reading \"include only verifiable statements\" strictly, not a library defect. A threshold fitted only over the items it happened to score would be biased, so no faithfulness row is published for this judge."
+}

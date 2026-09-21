@@ -1,0 +1,147 @@
+{
+  "study": "External open-weights judges vs the in-house QAG judge",
+  "run_at": "2026-09-21",
+  "status": "PARTIAL \u2014 one of four adapters reachable",
+  "question": "Do published open-weights specialist judges already address the in-house judge thesis?",
+  "decision_rule": "From run_external_judges_benchmark.py: re-evaluate the distillation thesis if any external judge lands within 3 F1 points of the >=0.75 projected landing zone, i.e. F1 >= 0.72.",
+  "judges_run": {
+    "vectara-hhem-open-local": {
+      "judge": "vectara-hhem-open-local (HHEM-2.1-open, published weights, CPU)",
+      "dataset": "HaluEval QA",
+      "halueval_revision": "b7253db3cdaa0ab2c382f92b26b390109174f77e",
+      "n_pairs": 100,
+      "api_key_required": false,
+      "at_vendor_default_cut": {
+        "threshold": 0.5,
+        "f1": 0.6437,
+        "precision": 0.7568,
+        "recall": 0.56,
+        "f1_ci95_bootstrap": [
+          0.519,
+          0.75
+        ]
+      },
+      "at_best_swept_cut": {
+        "threshold": 0.65,
+        "f1": 0.6735,
+        "precision": 0.6875,
+        "recall": 0.66,
+        "f1_ci95_bootstrap": [
+          0.565,
+          0.777
+        ],
+        "scope": "development fit on this same sample; no held-out estimate"
+      },
+      "sweep": [
+        {
+          "threshold": 0.3,
+          "f1": 0.6173,
+          "precision": 0.8065,
+          "recall": 0.5
+        },
+        {
+          "threshold": 0.35,
+          "f1": 0.6265,
+          "precision": 0.7879,
+          "recall": 0.52
+        },
+        {
+          "threshold": 0.4,
+          "f1": 0.6429,
+          "precision": 0.7941,
+          "recall": 0.54
+        },
+        {
+          "threshold": 0.45,
+          "f1": 0.6512,
+          "precision": 0.7778,
+          "recall": 0.56
+        },
+        {
+          "threshold": 0.5,
+          "f1": 0.6437,
+          "precision": 0.7568,
+          "recall": 0.56
+        },
+        {
+          "threshold": 0.55,
+          "f1": 0.6517,
+          "precision": 0.7436,
+          "recall": 0.58
+        },
+        {
+          "threshold": 0.6,
+          "f1": 0.6374,
+          "precision": 0.7073,
+          "recall": 0.58
+        },
+        {
+          "threshold": 0.65,
+          "f1": 0.6735,
+          "precision": 0.6875,
+          "recall": 0.66
+        },
+        {
+          "threshold": 0.7,
+          "f1": 0.6346,
+          "precision": 0.6111,
+          "recall": 0.66
+        },
+        {
+          "threshold": 0.75,
+          "f1": 0.6296,
+          "precision": 0.5862,
+          "recall": 0.68
+        },
+        {
+          "threshold": 0.8,
+          "f1": 0.6195,
+          "precision": 0.5556,
+          "recall": 0.7
+        },
+        {
+          "threshold": 0.85,
+          "f1": 0.5932,
+          "precision": 0.5147,
+          "recall": 0.7
+        },
+        {
+          "threshold": 0.9,
+          "f1": 0.6047,
+          "precision": 0.4937,
+          "recall": 0.78
+        }
+      ],
+      "seconds_total": 4.6,
+      "seconds_per_pair": 0.046,
+      "bootstrap": {
+        "resamples": 2000,
+        "unit": "labelled pair",
+        "seed": 11
+      }
+    }
+  },
+  "judges_not_run": {
+    "patronus-lynx-large": "PATRONUS_API_KEY not available in this environment",
+    "prometheus-2-7b": "TOGETHER_API_KEY not available in this environment",
+    "vectara-hhem-v2.1 (hosted)": "VECTARA_API_KEY not available; the open-weights arm above was run instead"
+  },
+  "in_house_comparator": {
+    "f1": 0.804,
+    "ci95": [
+      0.71,
+      0.88
+    ],
+    "dataset": "HaluEval QA",
+    "source": "README historical benchmark table",
+    "caveat": "The repository marks this table as predating 0.17.0's stricter verdict parser and states it needs revalidation. It is not a current measurement."
+  },
+  "verdict": [
+    "No pivot indicated on point estimate. HHEM-2.1-open reaches F1 0.644 at its vendor default cut and 0.674 at the best swept cut, both below the 0.72 trigger.",
+    "The run does not exclude the trigger either: the bootstrap intervals reach 0.750 and 0.777, so n=100 cannot rule out a judge at or above 0.72.",
+    "The comparison is additionally weak because the in-house comparator is a stale number the repository itself flags for revalidation.",
+    "Cheapest way to make this decision sound: rerun the in-house HaluEval QA arm under the current parser, then compare against this HHEM run on the same selection.",
+    "Scope: one dataset, one sample of 100 labelled pairs, one external judge. Two of the three hosted specialist judges remain unmeasured."
+  ],
+  "reproduce": "benchmarks/run_external_judges_benchmark.py now carries a _vectara_hhem_local_score adapter that needs no API key (pip install torch 'transformers<5'). HHEM's custom model code does not load on transformers 5.x."
+}
