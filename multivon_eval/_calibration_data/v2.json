@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
-  "generated_at": "2026-06-02T18:49:40+00:00",
-  "methodology": "Threshold sweep over [0.30..0.90] in steps of 0.05, selecting the value that maximises F1 against human labels. Reproduced by benchmarks/run_calibration_v2.py.",
+  "generated_at": "2026-09-21T00:00:00Z",
+  "methodology": "Threshold sweep over [0.30..0.90] in steps of 0.05, selecting the value that maximises F1 against human labels. Reproduced by benchmarks/run_calibration_v2.py. Open-weights rows (gemma-*) were measured with the same scorers and sweep through benchmarks/run_threshold_calibration.py, over a serial paced transport; see each row's notes for the serving caveat.",
   "based_on_v1": true,
   "entries": [
     {
@@ -247,6 +247,32 @@
       "f1": 1.0,
       "measured_at": "2026-06-02T18:49:40+00:00",
       "notes": "Threshold maximises F1 over a 0.30..0.90 sweep against human labels."
+    },
+    {
+      "evaluator": "hallucination",
+      "judge_model": "gemma-4-31b-it",
+      "threshold": 0.35,
+      "dataset": "HaluEval QA",
+      "dataset_hash": "halueval-qa-2024-100c",
+      "n": 100,
+      "precision": 1.0,
+      "recall": 0.82,
+      "f1": 0.9011,
+      "measured_at": "2026-09-21T00:00:00Z",
+      "notes": "Measured against Google's hosted serving of these open weights via the google provider. A self-served or quantised deployment of the same checkpoint is a different serving configuration and is not covered by this row. Requires the reasoning-judge token floor; without it this judge returns no parseable verdict."
+    },
+    {
+      "evaluator": "relevance",
+      "judge_model": "gemma-4-31b-it",
+      "threshold": 0.3,
+      "dataset": "Curated relevance golden set",
+      "dataset_hash": "relevance-gold-2026-40c",
+      "n": 40,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "measured_at": "2026-09-21T00:00:00Z",
+      "notes": "Measured against Google's hosted serving of these open weights via the google provider. A self-served or quantised deployment of the same checkpoint is a different serving configuration and is not covered by this row. Requires the reasoning-judge token floor; without it this judge returns no parseable verdict."
     }
   ]
 }

@@ -19,7 +19,31 @@ No new threshold calibration or judge-accuracy claim accompanies this fix.
 
 ## Supply images
 
-Both evaluators read caller-supplied `case.metadata`:
+Bind the bytes you want graded, and pass a resolver that produces them. The
+descriptor becomes part of case identity, and each artifact's bytes are
+re-hashed and re-probed before the judge sees them, so a run records which
+bytes were graded:
+
+```python
+from multivon_eval import EvalCase, MediaArtifact, VQAFaithfulness, with_media
+
+page = open("invoice-page-1.png", "rb").read()
+artifact = MediaArtifact.capture(page, "image/png")
+case = with_media(EvalCase(input="What is the invoice total?"), artifact)
+
+evaluator = VQAFaithfulness(media_resolver=lambda a: page)
+```
+
+Bound media that no longer matches its descriptor raises before any judge call,
+and bound media without a resolver is refused rather than silently skipped.
+Results carry `media_bound` so a report can tell the two paths apart. Bound
+audio and video are rejected by name: render or transcribe them to an image or
+PDF page first.
+
+### Unbound references (deprecated)
+
+Without bound media, both evaluators still read caller-supplied `case.metadata`
+and emit a `DeprecationWarning`, because these fields bind no bytes:
 
 - `image_path`: one local image path.
 - `image_url`: one HTTP(S) URL or base64 data URI.
@@ -34,8 +58,8 @@ for native execution and logs; render PDF pages explicitly when using these
 image-only graders.
 
 Local paths are read with the caller's filesystem access. HTTP(S) URLs may be
-fetched by the Anthropic/OpenAI provider. This Google adapter accepts local
-paths and data URIs only. These legacy path/URL fields do not hash or freeze media
+fetched by the Anthropic/OpenAI provider. The Google and ollama adapters accept
+local paths and data URIs only. These legacy path/URL fields do not hash or freeze media
 contents; retain the original bytes separately for reproducibility. The separate
 [content-bound media bridge](/guides/media-evidence) provides verified native
 Inspect inputs; these legacy graders do not automatically consume that profile. Do not
@@ -43,10 +67,11 @@ populate them from untrusted model output without authorizing the access.
 
 ## Choose a judge and threshold
 
-The adapters support the `anthropic`, `openai` and `google` providers. Configure
-a model whose endpoint supports image input. Known text-only model names are
-rejected early; an unknown or private model is passed to its provider for
-validation. This is not a tested model-compatibility matrix.
+The adapters support the `anthropic`, `openai`, `google` and `ollama` providers,
+the last keeping evaluation data on your own machine. Configure a model whose
+endpoint supports image input. Known text-only model names are rejected early;
+an unknown or private model is passed to its provider for validation. This is
+not a tested model-compatibility matrix.
 
 An explicit threshold is a task decision. Without one, the existing calibration
 fallback policy applies, usually warning and returning `0.7`; that value is not

@@ -493,9 +493,16 @@ def test_default_path_max_tokens_unchanged_for_plain_judge():
 def test_reasoning_judge_gets_raised_ceiling():
     # (b) A reasoning-model config gets the higher floor even when the call site
     # asks for the small QAG caps that would otherwise truncate its reasoning.
+    # The floor scales with the call's own budget: the yes/no call (100) only
+    # has to emit one token after reasoning and stays at the flat floor, while
+    # claim extraction (512) must emit a whole JSON array and gets more room.
+    # A flat 2048 truncated gemma-4 mid-deliberation on a HaluEval
+    # Summarization item, producing working and no array; 4096 returns a clean
+    # three-claim array for the same item.
     cfg = JudgeConfig(provider="openai", model="gpt-5.5")
-    assert _with_max_tokens(cfg, 512).max_tokens == _REASONING_MAX_TOKENS_FLOOR
     assert _with_max_tokens(cfg, 100).max_tokens == _REASONING_MAX_TOKENS_FLOOR
+    assert _with_max_tokens(cfg, 512).max_tokens == 4096
+    assert _with_max_tokens(cfg, None).max_tokens == _REASONING_MAX_TOKENS_FLOOR
     assert _REASONING_MAX_TOKENS_FLOOR >= 2048
 
 

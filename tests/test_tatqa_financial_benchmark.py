@@ -1,14 +1,20 @@
+import importlib
 import json
 import sys
 from pathlib import Path
 
 import anthropic
-import httpx
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "benchmarks" / "industrial"))
 
 import run_tatqa_financial as runner
+
+# Take the HTTP module off the SDK rather than importing httpx directly: the
+# Anthropic SDK moved to httpx2, and a MockTransport from the other package is
+# rejected outright. Same accessor test_provider_durability.py already uses.
+_base_client = importlib.import_module("anthropic._base_client")
+httpx = getattr(_base_client, "httpx2", None) or _base_client.httpx
 from tatqa_financial import (
     annotation_locations,
     location_scores,

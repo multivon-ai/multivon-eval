@@ -4,6 +4,121 @@ All notable changes to `multivon-eval`. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+## [0.20.0] — 2026-09-21
+
+### Open-weights judges were unusable; they are not any more
+
+- A judge that reasons before answering was truncated by the QAG per-call token
+  cap and returned its working instead of a verdict, so every verdict came back
+  UNKNOWN and the evaluator raised `JudgeUnavailable`. The 0.16.1 fix floored the
+  cap for reasoning judges, but only recognised OpenAI names, so every
+  open-weights reasoning model hit the original bug. Measured on gemma-4: at a
+  100-token cap it returns truncated working and scores nothing; at 2048 it
+  returns `Yes` and scores correctly.
+- `_REASONING_MODEL_PREFIXES` now also covers gemma-3/gemma-4, qwen3, qwq,
+  deepseek-r1, magistral and phi-4-reasoning. This list is deliberately separate
+  from the OpenAI API-shape check in `vision.py`, `auto.py` and `discover.py`,
+  which selects `max_completion_tokens` and drops temperature and must stay
+  OpenAI-only.
+- A name list always lags, so the all-verdicts-unparseable error now names the
+  token cap as the likely cause and points at the constant to extend.
+- The reasoning floor is no longer flat. The yes/no call reasons and then emits
+  one token; claim extraction reasons and then emits a whole JSON array, and a
+  flat 2048 truncated gemma-4 mid-deliberation on a HaluEval Summarization item
+  — 7,772 characters of working and no array, which aborted the evaluator. The
+  floor now scales with the call's own budget (×8, applied only to caps below
+  the flat floor), so extraction (512) clears at 4096 while the yes/no call
+  (100) stays at 2048 and that path is byte-identical. An explicit request at or
+  above the floor is never multiplied.
+- Known limitation, unchanged: a per-call cap cannot be raised by setting
+  `JudgeConfig.max_tokens`, so an unlisted reasoning model has no user-side
+  escape hatch yet.
+
+### First open-weights calibration rows
+
+- `_calibration_data/v2.json` gains the first rows for a judge that is not
+  Anthropic's or OpenAI's: `gemma-4-31b-it` at threshold 0.35 for hallucination
+  (F1 0.901, precision 1.00, recall 0.82, n=100, HaluEval QA) and 0.30 for
+  relevance (F1 1.00, n=40, curated golden set). Same scorers and sweep as
+  `benchmarks/run_threshold_calibration.py`; full run in
+  `benchmarks/results/calibration_openweights.json`.
+- Both rows record that the measurement was taken against Google's hosted
+  serving of these open weights. A self-served or quantised deployment of the
+  same checkpoint is a different serving configuration and is not covered.
+- Like every other row in the table these are development fits with no held-out
+  estimate, and the closed-model rows they sit beside were measured in April and
+  are flagged in the benchmarks README as needing revalidation.
+- **No faithfulness row is published for this judge.** It could not complete that
+  protocol: on one HaluEval Summarization item it emitted 7,772 characters of
+  deliberation and no JSON array (the token-floor bug above), and on another it
+  extracted zero claims from a purely evaluative summary, which the evaluator
+  reports as unmeasured and the calibration protocol refuses to score. Both are
+  the judge reading "include only verifiable statements" strictly, not a library
+  defect. A threshold fitted over only the items it happened to score would be
+  biased, so none is shipped.
+
+### Open-weights judge evidence
+
+- `benchmarks/run_external_judges_benchmark.py` gained a
+  `vectara-hhem-open-local` adapter that runs HHEM-2.1-open's published weights
+  on CPU with no API key, so the open-weights arm of the decide-or-pivot study
+  can run without vendor accounts.
+- First result recorded in `benchmarks/results/external_judges.json`:
+  HHEM-2.1-open reaches F1 0.644 [0.519–0.750] at its vendor default cut and
+  0.674 [0.565–0.777] at the best swept cut on 100 HaluEval QA pairs, against a
+  0.72 pivot trigger. No pivot on the point estimate; n=100 does not exclude one,
+  and the in-house comparator is a stale number the README already flags for
+  revalidation. Two hosted specialist judges remain unmeasured.
+
+### Self-hosted judge routing is covered by tests
+
+- New `tests/test_local_judge_routing.py`: ollama's translation onto its
+  OpenAI-compatible `/v1`, `OLLAMA_HOST` with and without a scheme, an explicit
+  `base_url` winning over the default, the guarantee that ollama never routes
+  through litellm, `base_url` surviving a per-call token override, litellm's
+  `api_base` mapping, and the reasoning-judge token floor.
+
+### Multimodal evaluators grade content-bound media
+
+- `VQAFaithfulness` and `DocumentGrounding` now read content-bound media
+  (`with_media`) in preference to unbound `case.metadata` references. Bound
+  artifacts are re-hashed and re-probed through `MediaArtifact.verify` before
+  the judge sees them, so a run records which bytes were graded. Pass the bytes
+  with the new `media_resolver=` argument, the same resolver contract the
+  Inspect media bridge uses.
+- Bound bytes that no longer match their descriptor, and bound media supplied
+  without a resolver, both raise before any judge call rather than grading an
+  unverified source. Bound audio or video is rejected by media type instead of
+  being sent to an image judge.
+- Results carry `media_bound` so a report distinguishes a verified verdict from
+  one graded through an unbound reference.
+- Unbound `image_path` / `image_url` / `images` metadata still works and now
+  emits a `DeprecationWarning`; it binds no bytes and cannot support a regrade
+  claim.
+- `MediaArtifact`, `with_media`, `case_media`, the new `media_sources` and the
+  existing `call_vision` are exported from the package root. The binding API
+  was previously importable only from `multivon_eval.media`.
+
+### Single vision dispatch
+
+- `evaluators/multimodal.py` now calls `vision.call_vision` instead of carrying
+  a second copy of the provider dispatch. The duplicated `_is_vision_capable`
+  and `_image_to_data_uri` helpers are gone; both live in `vision.py`.
+- The multimodal evaluators therefore reach the `ollama` provider and the PDF
+  document-block paths that only `vision.py` had, so document grading can run
+  against a local VLM without leaving the machine.
+- `vision.py` gained the instrumentation that only the evaluator copy had:
+  native provider evidence via `observe_provider`, HTTPX request/usage capture
+  via `sdk_http_client` / `google_http_options`, and per-judge timeout and API
+  key. The ollama path speaks urllib, so it is labelled but retains no native
+  request bytes.
+- Anthropic vision calls send temperature through `extra_body`, matching the
+  text judge path, and continue to omit it for reasoning-tier models that
+  reject it.
+- A model that matches no known name now reaches the provider instead of being
+  refused locally. The allowlist alone had silently gated out models that
+  worked; known text-only names are still rejected early.
+
 ## [0.19.0] — 2026-09-17
 
 ### Faithfulness measurement coverage

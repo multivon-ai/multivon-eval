@@ -6,19 +6,24 @@ where a hypothetical multivon-judge-1b would credibly land, the in-house
 distillation thesis is already addressed by an existing OSS competitor and
 the strategy needs to re-plan.
 
-This script DOES NOT require any GPU on the host. It calls each external
-judge through whatever hosted endpoint that judge offers (Patronus's API,
-Together / Replicate for Prometheus-2, Vectara's HHEM API). Each path is
-gated on its own env var; the script gracefully skips judges that aren't
-reachable.
+This script DOES NOT require any GPU on the host. Three adapters call a hosted
+endpoint (Patronus's API, Together / Replicate for Prometheus-2, Vectara's HHEM
+API), each gated on its own env var and skipped when unreachable. The fourth,
+``vectara-hhem-open-local``, runs HHEM-2.1-open's published weights on CPU and
+needs no key at all — which is the arm a self-hosting team would actually
+deploy, and the only one that can run without vendor accounts.
+
+Findings so far are in results/external_judges.json.
 
 Run:
     cd benchmarks
     pip install -e ..
+    # the no-key open-weights arm:
+    pip install torch 'transformers<5'   # HHEM's model code does not load on 5.x
     # then export whichever of these you have access to:
     export PATRONUS_API_KEY=...          # for Lynx (https://www.patronus.ai/)
     export TOGETHER_API_KEY=...          # for Prometheus-2 (Together hosts the weights)
-    export VECTARA_API_KEY=...           # for HHEM (https://vectara.com/)
+    export VECTARA_API_KEY=...           # for hosted HHEM (https://vectara.com/)
     export ANTHROPIC_API_KEY=...         # for the existing in-house judges
     export OPENAI_API_KEY=...
     export GOOGLE_API_KEY=...
@@ -216,10 +221,47 @@ def _vectara_hhem_score(question: str, context: str, output: str) -> float | Non
         return None
 
 
+_HHEM_LOCAL: list = []
+
+
+def _vectara_hhem_local_score(question: str, context: str, output: str) -> float | None:
+    """HHEM-2.1-open run locally from the published open weights.
+
+    The hosted adapter above needs a Vectara key. These are the same weights on
+    HuggingFace, so this arm needs no key and no network after the first
+    download, which is the point: it is the open-weights judge a self-hosting
+    team would actually deploy. CPU inference, roughly 0.1s per pair here.
+
+    HHEM scores (premise, hypothesis) consistency in [0, 1], already matching
+    multivon-eval's Hallucination convention where 1.0 is faithful. The 0.5 cut
+    is Vectara's documented default, not a threshold fitted here.
+
+    Requires ``pip install torch 'transformers<5'``. HHEM ships custom model
+    code written against transformers 4.x; on 5.x it fails to load with an
+    ``all_tied_weights_keys`` AttributeError and a missing embedding weight.
+    Returns None when unavailable so the caller excludes it rather than
+    scoring a degraded model.
+    """
+    try:
+        if not _HHEM_LOCAL:
+            import warnings
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                from transformers import AutoModelForSequenceClassification
+                _HHEM_LOCAL.append(AutoModelForSequenceClassification.from_pretrained(
+                    "vectara/hallucination_evaluation_model", trust_remote_code=True))
+        score = float(_HHEM_LOCAL[0].predict([(context, output)]).tolist()[0])
+        return 1.0 if score >= 0.5 else 0.0
+    except Exception as exc:
+        print(f"  [vectara-hhem-local] unavailable: {type(exc).__name__}: {exc}")
+        return None
+
+
 EXTERNAL_JUDGES = {
     "patronus-lynx-large": _patronus_lynx_score,
     "prometheus-2-7b":     _prometheus2_score,
     "vectara-hhem-v2.1":   _vectara_hhem_score,
+    "vectara-hhem-open-local": _vectara_hhem_local_score,
 }
 
 

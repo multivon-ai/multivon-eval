@@ -45,7 +45,7 @@ def test_readme_leads_with_current_release_and_public_surfaces() -> None:
     readme = _read("README.md")
     assert f"Current release: {multivon_eval.__version__}" in readme
     assert f"Current release — {multivon_eval.__version__}" in readme
-    assert "September 17, 2026" in readme
+    assert "September 21, 2026" in readme
     assert "eval-framework-benchmark" not in readme
     assert len(readme.splitlines()) < 350
     assert readme.index("## Start in 30 seconds") < readme.index("## Why use it")
@@ -193,7 +193,15 @@ def test_documented_python_imports_and_call_keywords_exist() -> None:
                     continue
                 if not node.module or not node.module.startswith("multivon_eval"):
                     continue
-                module = importlib.import_module(node.module)
+                try:
+                    module = importlib.import_module(node.module)
+                except ImportError as exc:
+                    # An optional integration that refuses to import without its
+                    # extra, and names that extra, is documented correctly. The
+                    # contract here is that the module and its symbols exist, not
+                    # that every extra is installed in this environment.
+                    assert "multivon-eval[" in str(exc), (path, node.module, exc)
+                    continue
                 for alias in node.names:
                     imported[alias.asname or alias.name] = getattr(module, alias.name)
             for node in ast.walk(tree):

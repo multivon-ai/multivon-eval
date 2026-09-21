@@ -16,7 +16,8 @@ from multivon_eval import (
     JudgeConfig,
     VQAFaithfulness,
 )
-from multivon_eval.evaluators.multimodal import _is_vision_capable, _parse_yes_no
+from multivon_eval.evaluators.multimodal import _parse_yes_no
+from multivon_eval.vision import _is_vision_capable
 from multivon_eval.exceptions import JudgeUnavailable
 
 MODULE = 'multivon_eval.evaluators.multimodal.'
@@ -39,13 +40,13 @@ def test_ambiguous_verdict_is_a_judge_error(reply):
     '[1]', '[null]', '[[]]', '[""]', '[" "]', '["x", "x"]', '["a","b","c","d"]',
     'prefix ["a"]', '["a"] trailing', '["a"', '```json\n["a"]\n```junk'])
 def test_invalid_claim_extraction_never_scores(reply):
-    with patch(MODULE + '_call_vision_judge', return_value=reply) as call, pytest.raises(JudgeUnavailable):
+    with patch(MODULE + 'call_vision', return_value=reply) as call, pytest.raises(JudgeUnavailable):
         evaluator().evaluate(CASE, 'Total is 12.')
     assert call.call_count == 1
 
 
 def test_json_fence_and_bracket_in_claim_are_not_truncated():
-    with patch(MODULE + '_call_vision_judge', side_effect=['```json\n["Field [total] is 12."]\n```', 'Yes']):
+    with patch(MODULE + 'call_vision', side_effect=['```json\n["Field [total] is 12."]\n```', 'Yes']):
         result = evaluator().evaluate(CASE, 'Field [total] is 12.')
     assert result.passed
     assert result.metadata['claims'] == ['Field [total] is 12.']
@@ -57,13 +58,13 @@ def test_json_fence_and_bracket_in_claim_are_not_truncated():
     'Q1: Yes\nQ2: Yes\nQ3: Yes, but no', 'Q1: Yes\nQ2: Yes\nQ3: Yes\nQ4: Yes',
     'Here are the answers:\nQ1: Yes\nQ2: Yes\nQ3: Yes'])
 def test_document_partial_duplicate_or_ambiguous_output_is_unmeasured(reply):
-    with patch(MODULE + '_call_vision_judge', return_value=reply), pytest.raises(JudgeUnavailable):
+    with patch(MODULE + 'call_vision', return_value=reply), pytest.raises(JudgeUnavailable):
         evaluator(DocumentGrounding, threshold=0).evaluate(CASE, 'Total is 12.')
 
 
 @pytest.mark.parametrize('images', ['a.png', {'a.png': 1}, {'a.png'}, [None], [''], [3]])
 def test_media_metadata_must_be_ordered_nonempty_strings(images):
-    with patch(MODULE + '_call_vision_judge') as call, pytest.raises(ValueError):
+    with patch(MODULE + 'call_vision') as call, pytest.raises(ValueError):
         evaluator().evaluate(EvalCase('x', metadata={'images': images}), 'x')
     call.assert_not_called()
 
@@ -82,7 +83,7 @@ def test_sync_and_async_policy_and_roundtrip_preserve_missing_measurements(cls, 
     async def model(_):
         return 'Total is 12.'
     for asynchronous in (False, True):
-        with patch(MODULE + '_call_vision_judge', side_effect=replies):
+        with patch(MODULE + 'call_vision', side_effect=replies):
             report = (asyncio.run(suite.run_async(model, verbose=False))
                       if asynchronous else suite.run(lambda _: 'Total is 12.', verbose=False))
         assert report.case_results[0].status.value == status
@@ -96,7 +97,7 @@ def test_sync_and_async_policy_and_roundtrip_preserve_missing_measurements(cls, 
 
 def test_complete_negative_is_quality_rejection():
     suite = EvalSuite('vision negative').add_case(CASE).add_evaluator(evaluator())
-    with patch(MODULE + '_call_vision_judge', side_effect=['["total is 12"]', 'No']):
+    with patch(MODULE + 'call_vision', side_effect=['["total is 12"]', 'No']):
         report = suite.run(lambda _: 'Total is 12.', verbose=False)
     assert report.case_results[0].status.value == 'failed_quality'
     assert AcceptancePolicy((CheckRequirement('vqa_faithfulness'),)).evaluate(report).decision == 'reject'
@@ -123,7 +124,7 @@ def test_resolved_threshold_is_local_to_concurrent_measurement():
         return JudgeConfig(provider='anthropic', model=threading.current_thread().name)
     with patch.object(ev, '_resolve_threshold', side_effect=threshold), \
          patch(MODULE + 'resolve_judge', side_effect=resolve), \
-         patch(MODULE + '_call_vision_judge', side_effect=call), \
+         patch(MODULE + 'call_vision', side_effect=call), \
          ThreadPoolExecutor(1) as a, ThreadPoolExecutor(1) as b:
         def named(model):
             threading.current_thread().name = model

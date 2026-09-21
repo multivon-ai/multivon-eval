@@ -1,194 +1,33 @@
 """Experimental image/page judge heuristics, with explicit unmeasured states.
 
-Image sources are caller-authorized local paths, data URIs or provider-fetched
-HTTP(S) URLs in case.metadata. These legacy references do not bind file bytes.
-Model support is checked by the provider; no independent accuracy or calibration
-claim is made. Native multimodal execution and retained media belong in Inspect.
+Image sources come from content-bound media when the case carries it
+(:func:`multivon_eval.media.with_media` plus a bytes resolver), so a regrade
+verifies the judge saw the same bytes. Unbound ``case.metadata`` paths, data
+URIs and provider-fetched URLs remain accepted but bind nothing and are
+deprecated. Provider dispatch is shared with :mod:`multivon_eval.vision`.
+Model support is checked by the provider; no independent accuracy or
+calibration claim is made. Native multimodal execution and retained media
+belong in Inspect.
 """
 from __future__ import annotations
-from ..provider_evidence import observe_provider
-from ..provider_http import sdk_http_client, google_http_options
 
-import base64
 import json
-import mimetypes
-import pathlib
 import re
+import warnings
+from collections.abc import Callable
 
 from ..calibration import calibrated_threshold as _calibrated_threshold
 from ..case import EvalCase
 from ..exceptions import JudgeUnavailable
 from ..judge import JudgeConfig, resolve_judge
+from ..media import MediaArtifact, case_media, media_sources
 from ..result import EvalResult
+from ..vision import call_vision
 from .base import Evaluator
 
-
-def _is_vision_capable(judge: JudgeConfig) -> bool:
-    """Reject only known text-only names; providers validate unknown models."""
-    prefixes = {"openai": ("gpt-3.5-turbo", "text-davinci-", "text-curie-"),
-                "anthropic": ("claude-2", "claude-instant-"),
-                "google": ("text-bison", "chat-bison")}
-    return not (judge.model or "").lower().startswith(prefixes.get(judge.provider, ()))
-
-
-def _image_to_data_uri(src: str) -> tuple[str, str, str]:
-    """Return ``(data_uri, mime_type, base64_data)`` for an image source.
-
-    ``src`` may be:
-    - an ``http(s)://`` URL — returned as-is with mime guessed from suffix
-      (the provider will fetch it server-side);
-    - a ``data:`` URI — returned as-is;
-    - a local filesystem path — read and inlined as a data URI.
-
-    For provider APIs that prefer a URL (OpenAI) we still emit the data
-    URI; OpenAI accepts both forms.
-    """
-    if src.startswith("data:"):
-        # data:<mime>;base64,<...>
-        match = re.match(r"data:([^;]+);base64,(.+)$", src)
-        if not match:
-            raise ValueError(f"unrecognised data URI: {src[:60]}")
-        return src, match.group(1), match.group(2)
-    if src.startswith(("http://", "https://")):
-        mime = mimetypes.guess_type(src)[0] or "image/jpeg"
-        return src, mime, ""
-    path = pathlib.Path(src).expanduser().resolve()
-    if not path.is_file():
-        raise FileNotFoundError(f"image not found: {src}")
-    mime = mimetypes.guess_type(path.name)[0] or "image/jpeg"
-    data = base64.b64encode(path.read_bytes()).decode("ascii")
-    return f"data:{mime};base64,{data}", mime, data
-
-
-def _call_vision_judge(
-    prompt: str,
-    images: list[str],
-    judge: JudgeConfig,
-    max_tokens: int = 200,
-) -> str:
-    """Call a vision-capable judge with a text prompt + one or more images.
-
-    Provider dispatch:
-    - ``anthropic``: messages API with content blocks (text + base64 image).
-    - ``openai``: chat.completions with ``image_url`` content parts.
-    - ``google``: generateContent with inline image parts.
-
-    Raises :class:`JudgeUnavailable` if the SDK isn't installed or no API
-    key is set. Provider SDKs own transport retries. Instrumented HTTPX calls
-    retain native request/usage evidence; legacy cost totals exclude this path.
-    """
-    if not _is_vision_capable(judge):
-        raise JudgeUnavailable(
-            f"multimodal evaluator requires a vision-capable judge; "
-            f"{judge.provider}/{judge.model} is a known text-only model. Select a vision-capable model supported by your endpoint."
-        )
-    provider = judge.provider
-    if provider == "anthropic":
-        return _anthropic_vision_call(prompt, images, judge, max_tokens)
-    if provider == "openai":
-        return _openai_vision_call(prompt, images, judge, max_tokens)
-    if provider == "google":
-        return _google_vision_call(prompt, images, judge, max_tokens)
-    raise JudgeUnavailable(
-        f"provider {provider!r} is not yet wired for vision input; "
-        "use anthropic, openai, or google."
-    )
-
-
-@observe_provider("anthropic", "judge")
-def _anthropic_vision_call(
-    prompt: str, images: list[str], judge: JudgeConfig, max_tokens: int
-) -> str:
-    try:
-        import anthropic  # type: ignore[import-not-found]
-    except ImportError as exc:
-        raise JudgeUnavailable("anthropic SDK not installed") from exc
-    content: list[dict] = []
-    for img in images:
-        _, mime, b64 = _image_to_data_uri(img)
-        if b64:
-            content.append({
-                "type": "image",
-                "source": {"type": "base64", "media_type": mime, "data": b64},
-            })
-        else:
-            content.append({"type": "image", "source": {"type": "url", "url": img}})
-    content.append({"type": "text", "text": prompt})
-    # SDK 1.x removed the temperature keyword. Keep the requested value on
-    # the wire via its documented migration path; the endpoint may reject
-    # unsupported sampling settings rather than silently changing the request.
-    with anthropic.Anthropic(timeout=judge.timeout, http_client=sdk_http_client(anthropic)) as client:
-        msg = client.messages.create(
-            model=judge.model,
-            max_tokens=max_tokens,
-            extra_body={"temperature": judge.temperature},
-            messages=[{"role": "user", "content": content}],
-        )
-    return "".join(b.text for b in msg.content if getattr(b, "type", "") == "text")
-
-
-@observe_provider("openai", "judge")
-def _openai_vision_call(
-    prompt: str, images: list[str], judge: JudgeConfig, max_tokens: int
-) -> str:
-    try:
-        import openai  # type: ignore[import-not-found]
-    except ImportError as exc:
-        raise JudgeUnavailable("openai SDK not installed") from exc
-    parts: list[dict] = [{"type": "text", "text": prompt}]
-    for img in images:
-        data_uri, _, _ = _image_to_data_uri(img)
-        parts.append({"type": "image_url", "image_url": {"url": data_uri}})
-    client = openai.OpenAI(
-        http_client=sdk_http_client(openai), timeout=judge.timeout,
-        api_key=judge.api_key if getattr(judge, "api_key", None) else None,
-        base_url=judge.base_url if judge.base_url else None,
-    )
-    resp = client.chat.completions.create(
-        model=judge.model,
-        max_tokens=max_tokens,
-        temperature=judge.temperature,
-        messages=[{"role": "user", "content": parts}],
-    )
-    return resp.choices[0].message.content or ""
-
-
-@observe_provider("google", "judge")
-def _google_vision_call(
-    prompt: str, images: list[str], judge: JudgeConfig, max_tokens: int
-) -> str:
-    try:
-        from google import genai  # type: ignore[import-not-found]
-        from google.genai import types as genai_types  # type: ignore[import-not-found]
-    except ImportError as exc:
-        raise JudgeUnavailable("google-genai SDK not installed") from exc
-    contents: list = []
-    for img in images:
-        _, mime, b64 = _image_to_data_uri(img)
-        if b64:
-            contents.append(
-                genai_types.Part.from_bytes(data=base64.b64decode(b64), mime_type=mime)
-            )
-        else:
-            # Gemini doesn't fetch remote URLs server-side; we'd have to
-            # download first. Keep this minimal — strongly suggest local
-            # paths or data URIs for Gemini.
-            raise JudgeUnavailable(
-                "google-genai requires local files or data URIs for image input; "
-                f"got remote URL: {img}"
-            )
-    contents.append(prompt)
-    client = genai.Client(http_options=google_http_options(judge.timeout),
-                          **({"api_key": judge.api_key} if getattr(judge, "api_key", None) else {}))
-    resp = client.models.generate_content(
-        model=judge.model,
-        contents=contents,
-        config=genai_types.GenerateContentConfig(
-            temperature=judge.temperature,
-            max_output_tokens=max_tokens,
-        ),
-    )
-    return resp.text or ""
+# A vision judge takes stills and document pages. Bound audio or video is a
+# measurement the caller has to convert first, never something to drop silently.
+_VISION_MEDIA = ("image/", "application/pdf")
 
 
 def _parse_yes_no(text: str) -> bool:
@@ -199,8 +38,25 @@ def _parse_yes_no(text: str) -> bool:
     return match.group(1).lower() == "yes"
 
 
-def _get_images(case: EvalCase) -> list[str]:
-    """Read an ordered sequence; malformed metadata is an evaluator error."""
+def _get_images(case: EvalCase, resolver=None) -> list[str]:
+    """Return ordered image sources, preferring content-bound media.
+
+    Bound artifacts are verified against the resolver's bytes before the judge
+    sees them, so the run can show which bytes were graded. The metadata path
+    cannot make that claim: it is kept for cases written before binding existed
+    and warns rather than failing.
+    """
+    artifacts = case_media(case)
+    if artifacts:
+        unsupported = sorted({a.media_type for a in artifacts
+                              if not a.media_type.startswith(_VISION_MEDIA)})
+        if unsupported:
+            raise ValueError(
+                f"Vision evaluators grade images and PDF pages; this case binds "
+                f"{', '.join(unsupported)}. Render or transcribe those to a supported "
+                "type and bind the result before grading.")
+        return list(media_sources(case, resolver))
+
     md = case.metadata or {}
     if "images" in md:
         images = md["images"]
@@ -212,6 +68,12 @@ def _get_images(case: EvalCase) -> list[str]:
             raise ValueError("Supply one image key, or an ordered 'images' list")
     if any(not isinstance(image, str) or not image.strip() for image in images):
         raise ValueError("Image sources must be nonempty strings")
+    if images:
+        warnings.warn(
+            "Unbound image references in case.metadata do not bind file bytes, so a "
+            "regrade cannot show the same image was graded. Bind them with "
+            "multivon_eval.with_media() and pass media_resolver= to the evaluator.",
+            DeprecationWarning, stacklevel=3)
     return list(images)
 
 
@@ -236,18 +98,28 @@ def _claims(text: str) -> list[str]:
 class _VisionEvaluator(Evaluator):
     uses_llm_judge = True
 
-    def __init__(self, threshold: float | None = None, judge: JudgeConfig | None = None):
+    def __init__(self, threshold: float | None = None, judge: JudgeConfig | None = None,
+                 media_resolver: Callable[[MediaArtifact], bytes] | None = None):
         if threshold is not None and (isinstance(threshold, bool) or not 0 <= threshold <= 1):
             raise ValueError("threshold must be between 0 and 1")
+        if media_resolver is not None and not callable(media_resolver):
+            raise TypeError("media_resolver must be callable")
         self.protocol = "vision-qag/v2"
         self._explicit_threshold = threshold
         self._judge_cfg = judge
+        self._media_resolver = media_resolver
         super().__init__(threshold if threshold is not None else 0.7)
 
     def _resolve_threshold(self, judge: JudgeConfig) -> float:
         if self._explicit_threshold is not None:
             return self._explicit_threshold
         return _calibrated_threshold(self.name, judge)
+
+    def _sources(self, case: EvalCase) -> list[str]:
+        return _get_images(case, self._media_resolver)
+
+    def _bound(self, case: EvalCase) -> bool:
+        return bool(case_media(case))
 
     def _grade(self, score: float, reason: str, threshold: float, **evidence) -> EvalResult:
         # Evaluators are shared between concurrent cases. A resolved threshold
@@ -275,13 +147,15 @@ class VQAFaithfulness(_VisionEvaluator):
         '\n\nAnswer with only "Yes" or "No".')
 
     def evaluate(self, case: EvalCase, output: str) -> EvalResult:
-        images = _get_images(case)
+        images = self._sources(case)
         if not images:
-            return self._skipped("No image provided; supply image_url, image_path or images in case.metadata")
+            return self._skipped(
+                "No image provided; bind it with with_media() or supply image_url, "
+                "image_path or images in case.metadata")
         judge = resolve_judge(self._judge_cfg)
         threshold = self._resolve_threshold(judge)
         try:
-            raw = _call_vision_judge(
+            raw = call_vision(
                 self._CLAIM_PROMPT.format(output=output),
                 images, judge, max_tokens=400)
             claims = _claims(raw)
@@ -291,7 +165,7 @@ class VQAFaithfulness(_VisionEvaluator):
                 return result
             verified, responses = [], []
             for claim in claims:
-                answer = _call_vision_judge(
+                answer = call_vision(
                     self._VERIFICATION_PROMPT.format(claim=claim), images, judge, max_tokens=20)
                 responses.append(answer)
                 verified.append(_parse_yes_no(answer))
@@ -303,7 +177,8 @@ class VQAFaithfulness(_VisionEvaluator):
         reasons = [f"{'✓' if ok else '✗'} {claim}" for claim, ok in zip(claims, verified)]
         return self._grade(sum(verified) / len(verified),
                            f"{sum(verified)}/{len(verified)} image-grounded claims verified\n" + "\n".join(reasons),
-                           threshold, claims=claims, claims_response=raw, verdict_responses=responses)
+                           threshold, claims=claims, claims_response=raw, verdict_responses=responses,
+                           media_bound=self._bound(case))
 
 
 class DocumentGrounding(_VisionEvaluator):
@@ -326,14 +201,16 @@ class DocumentGrounding(_VisionEvaluator):
         "\nQ1: <Yes|No>\nQ2: <Yes|No>\nQ3: <Yes|No>\nDo not include other text.")
 
     def evaluate(self, case: EvalCase, output: str) -> EvalResult:
-        images = _get_images(case)
+        images = self._sources(case)
         if not images:
-            return self._skipped("No document pages provided; supply case.metadata['images']")
+            return self._skipped(
+                "No document pages provided; bind them with with_media() or supply "
+                "case.metadata['images']")
         judge = resolve_judge(self._judge_cfg)
         threshold = self._resolve_threshold(judge)
 
         try:
-            raw = _call_vision_judge(self._PROMPT.format(output=output), images, judge, max_tokens=200)
+            raw = call_vision(self._PROMPT.format(output=output), images, judge, max_tokens=200)
         except JudgeUnavailable:
             raise
         except Exception as exc:
@@ -349,7 +226,8 @@ class DocumentGrounding(_VisionEvaluator):
             raise JudgeUnavailable(f"Vision document judge omitted required answers: {raw!r}")
         reason = "\n".join(f"{'✓' if answers[q] else '✗'} {q}" for q in ("Q1", "Q2", "Q3"))
         return self._grade(sum(answers.values()) / 3, reason, threshold,
-                           question_verdicts=answers, verdict_response=raw)
+                           question_verdicts=answers, verdict_response=raw,
+                           media_bound=self._bound(case))
 
 
 __all__ = ["DocumentGrounding", "VQAFaithfulness"]

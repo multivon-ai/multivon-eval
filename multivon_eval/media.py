@@ -4,6 +4,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 
 from .case import EvalCase
@@ -112,3 +113,19 @@ def with_media(case: EvalCase, *artifacts: MediaArtifact) -> EvalCase:
     result = replace(case, metadata={**case.metadata, MEDIA_KEY: [a.data for a in artifacts]})
     case_media(result)
     return result
+
+
+def media_sources(case: EvalCase, resolver: Callable[[MediaArtifact], bytes] | None) -> tuple[str, ...]:
+    """Resolve bound media to verified data URIs, in bound order.
+
+    Each artifact's bytes are re-hashed and re-probed before encoding, so bytes
+    that no longer match the descriptor fail here rather than reaching a judge
+    and being scored as a content difference. Returns () when nothing is bound.
+    """
+    artifacts = case_media(case)
+    if not artifacts:
+        return ()
+    if resolver is None:
+        raise ValueError(
+            'Bound media requires an explicit bytes resolver; refusing to grade unverified sources')
+    return tuple(artifact.data_uri(resolver(artifact)) for artifact in artifacts)
