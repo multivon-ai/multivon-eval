@@ -30,6 +30,7 @@ from .case import EvalCase, AgentStep, ToolCall
 from .judge import JudgeConfig, configure
 from .adapters import ModelAdapter, OpenAIAdapter, AnthropicAdapter, LiteLLMAdapter
 from .vision import call_vision  # vision-call dispatch for image/PDF inputs (0.9.1)
+from .media import MediaArtifact, case_media, media_sources, with_media
 from .integrations import (
     AgentTracer, CaseImporter,
     ManualTracer, LangChainTracer,
@@ -270,6 +271,8 @@ __all__ = [
     "ConversationCompleteness", "TurnConsistency",
     # Multimodal (experimental, 0.7.3)
     "VQAFaithfulness", "DocumentGrounding",
+    # Content-bound media: descriptors that make graded bytes part of case identity
+    "MediaArtifact", "with_media", "case_media", "media_sources", "call_vision",
     # Consistency
     "SelfConsistency",
     # Bootstrap pipeline (0.8.0)

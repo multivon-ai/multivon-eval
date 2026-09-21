@@ -163,16 +163,16 @@ def test_async_cancellation_preserves_started_request(tmp_path):
 
 @pytest.mark.parametrize('provider', ['anthropic', 'openai'])
 def test_vision_requests_retain_media_and_native_usage(provider, monkeypatch):
-    from multivon_eval.evaluators.multimodal import _call_vision_judge
+    from multivon_eval.vision import call_vision
     sdk = importlib.import_module(provider)
     http = transport_module(sdk)
     monkeypatch.setenv('ANTHROPIC_API_KEY' if provider == 'anthropic' else 'OPENAI_API_KEY', 'fixture')
     config = JudgeConfig(provider=provider, model='fixture', temperature=0.4, timeout=9).resolve()
     uri = 'data:image/png;base64,aW1hZ2UtZml4dHVyZQ=='
-    with patch('multivon_eval.evaluators.multimodal.sdk_http_client',
+    with patch('multivon_eval.vision.sdk_http_client',
                side_effect=lambda sdk: native_factory(sdk, lambda _: http.Response(200, json=reply(provider)))):
         with capture_provider_events() as capture:
-            assert _call_vision_judge('Read image', [uri], config, max_tokens=31) == 'Yes'
+            assert call_vision('Read image', [uri], config, max_tokens=31) == 'Yes'
     evidence = capture.snapshot()
     request = next(e for e in evidence['events'] if e['kind'] == 'http_request')
     response = next(e for e in evidence['events'] if e['kind'] == 'http_response')

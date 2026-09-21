@@ -32,8 +32,11 @@ provider's failure modes.
 Returns raw text or raises :class:`JudgeUnavailable` on:
   - missing SDK
   - missing API key
-  - model is text-only / not on the vision allowlist
+  - model is a known text-only name
   - provider rejects the request
+
+An unrecognised model is passed through to the provider rather than refused
+here; see :func:`_is_vision_capable`.
 """
 from __future__ import annotations
 
@@ -44,6 +47,8 @@ import re
 from typing import Any
 
 from .exceptions import JudgeUnavailable
+from .provider_evidence import observe_provider
+from .provider_http import google_http_options, sdk_http_client
 
 
 # Models we know support vision input. Conservative: when in doubt we
@@ -76,6 +81,17 @@ _VISION_CAPABLE = {
 }
 
 
+# Names that cannot accept image input at all. Checked only after the
+# allowlist misses, so an unrecognised model reaches the provider instead of
+# being refused locally: an allowlist alone silently gated out models that
+# worked (gemini-flash-lite), and a provider error names the real reason.
+_TEXT_ONLY = {
+    "openai": ("gpt-3.5-turbo", "text-davinci-", "text-curie-"),
+    "anthropic": ("claude-2", "claude-instant-"),
+    "google": ("text-bison", "chat-bison"),
+}
+
+
 def _is_vision_capable(judge: Any) -> bool:
     model = (getattr(judge, "model", "") or "").lower()
     provider = getattr(judge, "provider", "")
@@ -84,7 +100,24 @@ def _is_vision_capable(judge: Any) -> bool:
     for known in _VISION_CAPABLE.get(provider, set()):
         if model.startswith(known.lower()):
             return True
-    return provider not in _VISION_CAPABLE
+    return not model.startswith(_TEXT_ONLY.get(provider, ()))
+
+
+def _client_kwargs(judge: Any) -> dict:
+    """Pass through only the settings this judge actually carries.
+
+    ``call_vision`` also serves duck-typed configs that have no timeout or
+    key, so an absent attribute must not become an explicit ``None`` that
+    overrides an SDK default.
+    """
+    kwargs: dict = {}
+    timeout = getattr(judge, "timeout", None)
+    if timeout is not None:
+        kwargs["timeout"] = timeout
+    api_key = getattr(judge, "api_key", None)
+    if api_key:
+        kwargs["api_key"] = api_key
+    return kwargs
 
 
 def _image_to_data_uri(src: str) -> tuple[str, str, str]:
@@ -154,6 +187,7 @@ def call_vision(
     )
 
 
+@observe_provider("anthropic", "judge")
 def _anthropic_call(prompt: str, sources: list[str], judge: Any, max_tokens: int) -> str:
     try:
         import anthropic  # type: ignore[import-not-found]
@@ -177,7 +211,6 @@ def _anthropic_call(prompt: str, sources: list[str], judge: Any, max_tokens: int
         else:
             content.append({"type": "image", "source": {"type": "url", "url": src}})
     content.append({"type": "text", "text": prompt})
-    client = anthropic.Anthropic()
 
     # Anthropic's reasoning-tier models (claude-opus-4-7 and the
     # claude-opus-5+ family) deprecated the ``temperature`` parameter —
@@ -191,12 +224,16 @@ def _anthropic_call(prompt: str, sources: list[str], judge: Any, max_tokens: int
         "messages": [{"role": "user", "content": content}],
     }
     if not reasoning_tier:
-        kwargs["temperature"] = getattr(judge, "temperature", 0.0)
+        # SDK 1.x dropped the temperature keyword; judge.py's text path keeps
+        # the requested value on the wire through the same migration path.
+        kwargs["extra_body"] = {"temperature": getattr(judge, "temperature", 0.0)}
 
-    msg = client.messages.create(**kwargs)
+    with anthropic.Anthropic(http_client=sdk_http_client(anthropic), **_client_kwargs(judge)) as client:
+        msg = client.messages.create(**kwargs)
     return "".join(b.text for b in msg.content if getattr(b, "type", "") == "text")
 
 
+@observe_provider("openai", "judge")
 def _openai_call(prompt: str, sources: list[str], judge: Any, max_tokens: int) -> str:
     try:
         import openai  # type: ignore[import-not-found]
@@ -212,7 +249,8 @@ def _openai_call(prompt: str, sources: list[str], judge: Any, max_tokens: int) -
         else:
             parts.append({"type": "image_url", "image_url": {"url": data_uri}})
     base_url = getattr(judge, "base_url", None) or None
-    client = openai.OpenAI(base_url=base_url)
+    client = openai.OpenAI(
+        base_url=base_url, http_client=sdk_http_client(openai), **_client_kwargs(judge))
 
     # GPT-5.x and the o-series reasoning models deprecated ``max_tokens``
     # in favour of ``max_completion_tokens``, and reject the legacy
@@ -239,6 +277,7 @@ def _openai_call(prompt: str, sources: list[str], judge: Any, max_tokens: int) -
     return resp.choices[0].message.content or ""
 
 
+@observe_provider("google", "judge")
 def _google_call(prompt: str, sources: list[str], judge: Any, max_tokens: int) -> str:
     try:
         from google import genai  # type: ignore[import-not-found]
@@ -260,7 +299,10 @@ def _google_call(prompt: str, sources: list[str], judge: Any, max_tokens: int) -
                 f"got remote URL: {src}"
             )
     contents.append(prompt)
-    client = genai.Client()
+    api_key = getattr(judge, "api_key", None)
+    client = genai.Client(
+        http_options=google_http_options(getattr(judge, "timeout", None)),
+        **({"api_key": api_key} if api_key else {}))
     resp = client.models.generate_content(
         model=judge.model,
         contents=contents,
@@ -272,8 +314,13 @@ def _google_call(prompt: str, sources: list[str], judge: Any, max_tokens: int) -
     return resp.text or ""
 
 
+@observe_provider("ollama", "judge")
 def _ollama_call(prompt: str, sources: list[str], judge: Any, max_tokens: int) -> str:
     """Call a locally-running ollama model via its native /api/chat endpoint.
+
+    This path speaks urllib rather than an instrumented SDK client, so the
+    operation is labelled but no native request/response bytes are retained
+    for it, unlike the three cloud providers above.
 
     ollama exposes a native chat API at 127.0.0.1:11434 (configurable via
     ``OLLAMA_HOST``) that accepts inline base64 images directly. We use
@@ -322,7 +369,7 @@ def _ollama_call(prompt: str, sources: list[str], judge: Any, max_tokens: int) -
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=300) as resp:
+        with urllib.request.urlopen(req, timeout=getattr(judge, "timeout", None) or 300) as resp:
             body = _json.loads(resp.read().decode("utf-8"))
     except Exception as exc:
         raise JudgeUnavailable(

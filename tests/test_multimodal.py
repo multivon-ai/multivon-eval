@@ -19,11 +19,8 @@ from multivon_eval import (
     JudgeConfig,
     VQAFaithfulness,
 )
-from multivon_eval.evaluators.multimodal import (
-    _image_to_data_uri,
-    _is_vision_capable,
-    _parse_yes_no,
-)
+from multivon_eval.evaluators.multimodal import _parse_yes_no
+from multivon_eval.vision import _image_to_data_uri, _is_vision_capable
 from multivon_eval.exceptions import JudgeUnavailable
 
 # --- helpers ---------------------------------------------------------------
@@ -131,7 +128,7 @@ def test_vqa_faithfulness_calls_vision_judge_twice(png_path):
         "No",
     ]
     with patch(
-        "multivon_eval.evaluators.multimodal._call_vision_judge",
+        "multivon_eval.evaluators.multimodal.call_vision",
         side_effect=call_results,
     ):
         res = e.evaluate(case, "A cat is visible. The cat is orange.")
@@ -144,7 +141,7 @@ def test_vqa_faithfulness_no_claims_is_unmeasured(png_path):
     e = VQAFaithfulness(judge=JudgeConfig(provider="google", model="gemini-2.5-flash"))
     case = EvalCase(input="anything", metadata={"image_path": png_path})
     with patch(
-        "multivon_eval.evaluators.multimodal._call_vision_judge",
+        "multivon_eval.evaluators.multimodal.call_vision",
         return_value="[]",
     ):
         res = e.evaluate(case, "I cannot tell from this image.")
@@ -156,7 +153,7 @@ def test_vqa_faithfulness_accepts_images_list(png_path):
     e = VQAFaithfulness(judge=JudgeConfig(provider="google", model="gemini-2.5-flash"))
     case = EvalCase(input="anything", metadata={"images": [png_path]})
     with patch(
-        "multivon_eval.evaluators.multimodal._call_vision_judge",
+        "multivon_eval.evaluators.multimodal.call_vision",
         return_value="[]",
     ):
         res = e.evaluate(case, "Nothing")
@@ -179,7 +176,7 @@ def test_document_grounding_parses_q1_q2_q3(png_path):
     e = DocumentGrounding(judge=JudgeConfig(provider="google", model="gemini-2.5-flash"))
     case = EvalCase(input="anything", metadata={"images": [png_path, png_path]})
     with patch(
-        "multivon_eval.evaluators.multimodal._call_vision_judge",
+        "multivon_eval.evaluators.multimodal.call_vision",
         return_value="Q1: Yes\nQ2: No\nQ3: Yes",
     ):
         res = e.evaluate(case, "The contract is valid until 2027.")
@@ -192,7 +189,7 @@ def test_document_grounding_missing_q_is_unmeasured(png_path):
     e = DocumentGrounding(judge=JudgeConfig(provider="google", model="gemini-2.5-flash"))
     case = EvalCase(input="anything", metadata={"images": [png_path]})
     with patch(
-        "multivon_eval.evaluators.multimodal._call_vision_judge",
+        "multivon_eval.evaluators.multimodal.call_vision",
         return_value="Q1: Yes",  # missing Q2 and Q3
     ), pytest.raises(JudgeUnavailable, match="omitted required"):
         e.evaluate(case, "Something")
